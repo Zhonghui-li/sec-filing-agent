@@ -28,7 +28,8 @@ COMPANIES = {"AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "NVIDIA", "AMZN": "Am
              "JPM": "JPMorgan Chase", "TSLA": "Tesla", "KO": "Coca-Cola"}
 _COMPANY_LIST = ", ".join(f"{t} ({n})" for t, n in COMPANIES.items())
 
-ABSTAIN_REASONS = {"out_of_scope", "not_reported", "not_in_filings", "year_unavailable"}
+ABSTAIN_REASONS = {"out_of_scope", "not_reported", "not_in_filings",
+                   "year_unavailable", "off_topic"}
 
 
 def abstain(reason: str, detail: str = "") -> str:
@@ -38,6 +39,8 @@ def abstain(reason: str, detail: str = "") -> str:
       - not_reported: the company does not report the requested metric (e.g. a bank's gross profit)
       - not_in_filings: the topic is not discussed in the filings
       - year_unavailable: the requested fiscal year is not available
+      - off_topic: not a financial-analysis question answerable from the filings (writing
+        tasks, opinions, investment advice, forecasts/predictions, real-time market data)
     Give a one-line `detail`. After calling this, briefly tell the user you can't answer and why."""
     r = reason.strip().lower()
     if r not in ABSTAIN_REASONS:
@@ -72,8 +75,11 @@ year may already be filed); for not_in_filings, FIRST call search_filings. Only 
 the tool confirms it. Never fabricate a number, ratio, rate, or fact, and NEVER substitute \
 a different metric as a "proxy" for the one asked (e.g. do NOT report revenue when asked \
 for gross profit) — abstain instead.
-6. Only the companies above are covered. If asked about another company, call \
-`abstain` with reason out_of_scope (do not call the data tools).
+6. Only the companies above are covered. If asked about another company, call `abstain` \
+with reason out_of_scope. For requests that are NOT financial-analysis questions \
+answerable from the filings — writing tasks, opinions, investment/buy-sell advice, \
+forecasts or predictions, or real-time market data like stock prices — call `abstain` \
+with reason off_topic. Do not call the data tools for these.
 
 7. Do NOT guess which fiscal year is the most recent. When the user gives no year (or \
 says "latest"/"most recent"/"year over year"), FIRST call get_financials WITHOUT a \
