@@ -72,7 +72,7 @@ each metric catches a failure the others miss:
   tolerance, exits non-zero on regression); runs **on demand** (so the shared key isn't run
   unattended in a public repo).
 
-Current baseline (24-case set): deterministic metrics **100%**, faithfulness **0.84**,
+Current baseline (62-case set): deterministic metrics **100%**, faithfulness **0.92**,
 answer_relevancy **0.86**.
 
 > Built eval-driven: the failures the eval surfaced drove the agent — e.g. it once *guessed*

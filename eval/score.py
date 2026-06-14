@@ -101,7 +101,20 @@ def score_case(case, answer, tools_used, trace, tool_outputs):
     # numerical accuracy + citation (only for answerable numeric cases)
     val, is_pct, accns = expected(case)
     if val is not None and not case["is_abstain"]:
-        res["numerical"] = near(pcts if is_pct else dollars, val)
+        if is_pct:
+            mag_ok = any(abs(abs(v) - abs(val)) <= TOL * abs(val) for v in pcts) if val else False
+            # direction matters for a BARE YoY/ratio (short answer, e.g. "decreased by 2.4%"
+            # must match a negative expected). For COMBINED answers the "what drove it"
+            # narrative confounds a whole-answer direction scan, so match on magnitude there
+            # (direction is covered by facts / faithfulness).
+            if case["capability"] == "compute":
+                declined = any(w in a for w in ("decreas", "declin", "fell", " down",
+                                                "lower", "drop", "negative"))
+                res["numerical"] = mag_ok and (declined if val < 0 else not declined)
+            else:
+                res["numerical"] = mag_ok
+        else:
+            res["numerical"] = near(dollars, val)
         res["citation"] = any(ac and ac in answer for ac in accns)
 
     # ③ numbers-from-tools (process-level anti-hallucination): for pure number cases,
