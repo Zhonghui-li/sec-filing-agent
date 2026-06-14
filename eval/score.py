@@ -115,7 +115,7 @@ def score_case(case, answer, tools_used, trace, tool_outputs):
         for name, content in tool_outputs:
             if name in ("get_financials", "compute"):
                 sanctioned += [v for v, _ in extract_numbers(content)]
-        qualifying = [v for v, p in nums if p or abs(v) > 1e6]   # percents + big $ figures
+        qualifying = [v for v, p in nums if p or 1e6 < abs(v) < 1e13]  # $ figures, not URL/accession digits
         res["grounded"] = all(any(abs(v - s) <= TOL * abs(s) for s in sanctioned if s)
                               for v in qualifying) if qualifying else True
 

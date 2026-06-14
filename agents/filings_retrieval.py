@@ -15,6 +15,8 @@ import psycopg
 from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
 
+from agents.finance_tools import edgar_url, cik_for
+
 _EMB_MODEL = os.environ.get("EMB_MODEL", "text-embedding-3-small")
 _RERANK = os.environ.get("RERANK", "1") == "1"
 _emb = None
@@ -75,8 +77,10 @@ def search_filings(query: str, ticker: str = None, k: int = 5) -> str:
     out = []
     for d in docs:
         m = d.metadata
+        cik = cik_for(m["ticker"])
+        url = f" · {edgar_url(cik, m['accession'])}" if cik else ""
         out.append(f"[{m['ticker']} · FY{m['fiscal_year']} · {m['section']} · "
-                   f"{m['accession']}]\n{d.page_content}")
+                   f"{m['accession']}{url}]\n{d.page_content}")
     return "\n\n".join(out)
 
 

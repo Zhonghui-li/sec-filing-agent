@@ -37,6 +37,18 @@ def _rows():
     return _ROWS
 
 
+def edgar_url(cik, accession):
+    """Direct link to the filing's index page on SEC EDGAR (uses the company CIK, not
+    the accession prefix, which can be a filing agent's)."""
+    return (f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/"
+            f"{accession.replace('-', '')}/{accession}-index.htm")
+
+
+def cik_for(ticker):
+    hits = [r for r in _rows() if r["ticker"] == ticker.strip().upper()]
+    return hits[0]["cik"] if hits else None
+
+
 def _canon(metric: str) -> str:
     m = metric.strip().lower().replace("_", " ")
     return _ALIASES.get(m, metric.strip().lower().replace(" ", "_"))
@@ -66,7 +78,8 @@ def get_financials(ticker: str, metric: str, fiscal_year: int = None) -> str:
     unit = r["unit"]
     val = f"${r['value']:,}" if unit == "USD" else f"{r['value']:,} {unit}"
     return (f"{tk} {key} for FY{r['fiscal_year']} (period ending {r['period_end']}): "
-            f"{val}. [source: 10-K, accession {r['accession']}]")
+            f"{val}. [source: 10-K accession {r['accession']}, "
+            f"{edgar_url(r['cik'], r['accession'])}]")
 
 
 def compute(op: str, a: float, b: float) -> str:
