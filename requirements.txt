@@ -1,0 +1,15 @@
+# SEC Filing Agent — deps
+# Data layer
+edgartools==5.35.1
+httpx
+# Vector store (Postgres/pgvector)
+psycopg[binary]==3.3.4
+pgvector==0.4.2
+numpy==1.26.4
+# Retrieval + embeddings (reused from the Slug Advisor stack)
+langchain-openai==0.3.17
+langchain-text-splitters
+langchain-core
+rank-bm25==0.2.2
+sentence-transformers==5.2.2
+openai==1.75.0
