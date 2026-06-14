@@ -40,5 +40,5 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
-      - name: L2 — full agent eval + regression gate (exits non-zero on regression)
-        run: python -m eval.score
+      - name: L2 — full agent eval + Ragas + regression gate (exits non-zero on regression)
+        run: python -m eval.score --quality

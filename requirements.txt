@@ -8,8 +8,17 @@ pgvector==0.4.2
 numpy==1.26.4
 # Retrieval + embeddings (reused from the Slug Advisor stack)
 langchain-openai==0.3.17
+langchain-community==0.3.24
 langchain-text-splitters
 langchain-core
+# LangGraph (ReAct agent). Pin sub-packages — unpinned langgraph-prebuilt expects
+# langgraph._internal (absent in 0.4.5) -> ModuleNotFoundError at startup.
+langgraph==0.4.5
+langgraph-prebuilt==0.1.8
+langgraph-checkpoint==2.0.26
+langgraph-sdk==0.1.69
 rank-bm25==0.2.2
 sentence-transformers==5.2.2
 openai==1.75.0
+# LLM-judged eval layer (opt-in, score.py --quality)
+ragas==0.2.15

@@ -143,16 +143,21 @@ def score_case(case, answer, tools_used, trace, tool_outputs):
     return res
 
 
-def main():
+def main(quality=False):
     from agents.sec_agent import build_agent, run_agent  # heavy deps only for the live run
     cases = [json.loads(l) for l in TESTSET.open()]
     agent = build_agent()
     rows = []
+    q_items = []   # qualitative answers (with retrieved contexts) for the Ragas layer
     print(f"running {len(cases)} cases...\n")
     for c in cases:
         out = run_agent(c["question"], agent=agent)
         r = score_case(c, out["answer"], out["tools_used"], out["trace"], out["tool_outputs"])
         rows.append((c, r, out))
+        if quality and not c["is_abstain"] and "search_filings" in out["tools_used"]:
+            ctx = [content for name, content in out["tool_outputs"] if name == "search_filings"]
+            if ctx:
+                q_items.append({"question": c["question"], "answer": out["answer"], "contexts": ctx})
         flags = " ".join(f"{k}={'Y' if v else 'N'}" for k, v in r.items())
         ok = all(r.values())
         print(f"[{'PASS' if ok else 'FAIL'}] {c['id']} ({c['difficulty']:6}) {flags}")
@@ -177,6 +182,19 @@ def main():
         sub = [all(r.values()) for c, r, _ in rows if c["difficulty"] == d]
         if sub:
             print(f"  {d:6}: {sum(sub)}/{len(sub)}")
+
+    # LLM-judged layer (Ragas) — opt-in (--quality), qualitative answers only.
+    # Reported as MEAN scores (continuous 0-1), not pass rates; gated with the same
+    # 10pp tolerance (LLM-judge metrics are noisier than the deterministic ones).
+    if quality and q_items:
+        from eval.quality import score_quality
+        print(f"\n=== LLM-judged (Ragas) on {len(q_items)} qualitative answers ===")
+        scores = score_quality(q_items)
+        for name in ("faithfulness", "answer_relevancy"):
+            vals = [s[name] for s in scores if s[name] is not None]
+            if vals:
+                rates[name] = round(sum(vals) / len(vals), 3)
+                print(f"  {name:16}: {rates[name]:.3f}  (mean over {len(vals)})")
     return rates
 
 
@@ -187,9 +205,11 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--update-baseline", action="store_true",
                     help="overwrite eval/baseline.json with this run's rates")
+    ap.add_argument("--quality", action="store_true",
+                    help="also run Ragas faithfulness/relevancy (LLM judge) on qualitative answers")
     args = ap.parse_args()
 
-    rates = main()
+    rates = main(quality=args.quality)
     BASE = ROOT / "eval" / "baseline.json"
     if args.update_baseline:
         BASE.write_text(json.dumps(rates, indent=2))

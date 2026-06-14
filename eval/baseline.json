@@ -7,5 +7,7 @@
   "reason": 1.0,
   "facts": 1.0,
   "forbid": 1.0,
-  "overall": 1.0
+  "overall": 1.0,
+  "faithfulness": 0.844,
+  "answer_relevancy": 0.863
 }
