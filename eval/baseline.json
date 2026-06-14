@@ -1,0 +1,11 @@
+{
+  "numerical": 1.0,
+  "citation": 1.0,
+  "grounded": 1.0,
+  "tool": 1.0,
+  "abstain": 1.0,
+  "reason": 1.0,
+  "facts": 1.0,
+  "forbid": 1.0,
+  "overall": 1.0
+}

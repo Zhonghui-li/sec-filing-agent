@@ -11,8 +11,6 @@ import json
 import re
 from pathlib import Path
 
-from agents.sec_agent import build_agent, run_agent
-
 ROOT = Path(__file__).resolve().parent.parent
 TESTSET = ROOT / "eval" / "testset.jsonl"
 FIN = json.loads((ROOT / "data" / "financials.json").read_text())
@@ -146,6 +144,7 @@ def score_case(case, answer, tools_used, trace, tool_outputs):
 
 
 def main():
+    from agents.sec_agent import build_agent, run_agent  # heavy deps only for the live run
     cases = [json.loads(l) for l in TESTSET.open()]
     agent = build_agent()
     rows = []
@@ -164,19 +163,44 @@ def main():
     # aggregate per metric
     print("\n=== per-metric pass rate ===")
     metrics = ["numerical", "citation", "grounded", "tool", "abstain", "reason", "facts", "forbid"]
+    rates = {}
     for m in metrics:
         vals = [r[m] for _, r, _ in rows if m in r]
         if vals:
-            print(f"  {m:10}: {sum(vals)}/{len(vals)} = {sum(vals)/len(vals)*100:.0f}%")
+            rates[m] = sum(vals) / len(vals)
+            print(f"  {m:10}: {sum(vals)}/{len(vals)} = {rates[m] * 100:.0f}%")
     overall = [all(r.values()) for _, r, _ in rows]
+    rates["overall"] = sum(overall) / len(overall)
     print(f"  {'OVERALL':10}: {sum(overall)}/{len(overall)} cases fully pass")
-    # by difficulty
     print("\n=== by difficulty (fully-pass) ===")
     for d in ["easy", "medium", "hard"]:
         sub = [all(r.values()) for c, r, _ in rows if c["difficulty"] == d]
         if sub:
             print(f"  {d:6}: {sum(sub)}/{len(sub)}")
+    return rates
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    import sys
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--update-baseline", action="store_true",
+                    help="overwrite eval/baseline.json with this run's rates")
+    args = ap.parse_args()
+
+    rates = main()
+    BASE = ROOT / "eval" / "baseline.json"
+    if args.update_baseline:
+        BASE.write_text(json.dumps(rates, indent=2))
+        print(f"\nwrote baseline -> {BASE}")
+    elif BASE.exists():
+        base = json.loads(BASE.read_text())
+        regressions = [(m, base[m], rates[m]) for m in base
+                       if m in rates and rates[m] < base[m] - 0.10]   # 10pp tolerance
+        print("\n=== baseline gate (per-metric tolerance 10pp) ===")
+        for m, b, c in regressions:
+            print(f"  REGRESSION {m}: {b * 100:.0f}% -> {c * 100:.0f}%")
+        if regressions:
+            sys.exit(1)
+        print("  PASS: no metric regressed beyond tolerance.")

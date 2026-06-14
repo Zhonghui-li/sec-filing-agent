@@ -1,0 +1,44 @@
+name: Eval
+
+# Two-layer eval gate:
+#   L1 (every push / PR) -> deterministic unit tests, no LLM, no secrets, must pass.
+#   L2 (manual dispatch) -> full agent eval + regression gate vs eval/baseline.json.
+# L2 is manual-only so the shared lab OPENAI_API_KEY isn't run unattended in a public repo.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  l1-deterministic:
+    name: L1 deterministic tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pytest
+      - name: L1 — tools + scorer logic (no LLM / DB / secrets)
+        run: python -m pytest tests/ -q
+
+  l2-agent-eval:
+    name: L2 agent eval vs baseline
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      EMB_MODEL: text-embedding-3-small
+      GEN_LLM_MODEL: gpt-4o-mini
+      RERANK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: L2 — full agent eval + regression gate (exits non-zero on regression)
+        run: python -m eval.score
