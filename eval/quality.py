@@ -14,7 +14,8 @@ import os
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from ragas import evaluate, EvaluationDataset
 from ragas.dataset_schema import SingleTurnSample
-from ragas.metrics import Faithfulness, ResponseRelevancy
+from ragas.metrics import (Faithfulness, ResponseRelevancy,
+                           LLMContextPrecisionWithoutReference)
 from ragas.llms import LangchainLLMWrapper
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from ragas.run_config import RunConfig
@@ -24,7 +25,10 @@ JUDGE_MODEL = os.environ.get("RAGAS_JUDGE_MODEL", "gpt-4o-mini")
 
 def score_quality(items):
     """items: [{question, answer, contexts: list[str]}]. Returns aligned
-    [{faithfulness, answer_relevancy}] (values may be None if the judge timed out)."""
+    [{faithfulness, answer_relevancy, context_precision}] (values may be None if the judge
+    timed out). context_precision is rank-aware (mean precision@k) — rewards the retriever
+    for ranking the chunks that support the answer higher; reference-free (judges each
+    retrieved chunk's usefulness to the response, so no gold passage labels needed)."""
     judge = LangchainLLMWrapper(ChatOpenAI(model=JUDGE_MODEL, temperature=0))
     emb = LangchainEmbeddingsWrapper(
         OpenAIEmbeddings(model=os.environ.get("EMB_MODEL", "text-embedding-3-small")))
@@ -33,13 +37,15 @@ def score_quality(items):
                for it in items]
     result = evaluate(
         EvaluationDataset(samples=samples),
-        metrics=[Faithfulness(llm=judge), ResponseRelevancy(llm=judge, embeddings=emb)],
+        metrics=[Faithfulness(llm=judge), ResponseRelevancy(llm=judge, embeddings=emb),
+                 LLMContextPrecisionWithoutReference(llm=judge)],
         show_progress=False,
         run_config=RunConfig(timeout=180, max_workers=4),  # throttle -> avoid NaN timeouts
     )
     df = result.to_pandas()
     fcol = next((c for c in df.columns if "faith" in c.lower()), None)
     rcol = next((c for c in df.columns if "relevan" in c.lower()), None)
+    pcol = next((c for c in df.columns if "precision" in c.lower()), None)
     out = []
     for _, r in df.iterrows():
         def num(col):
@@ -48,5 +54,6 @@ def score_quality(items):
             except (TypeError, ValueError):
                 return None
             return None if f != f else round(f, 3)   # f != f detects NaN
-        out.append({"faithfulness": num(fcol), "answer_relevancy": num(rcol)})
+        out.append({"faithfulness": num(fcol), "answer_relevancy": num(rcol),
+                    "context_precision": num(pcol)})
     return out

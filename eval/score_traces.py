@@ -54,7 +54,7 @@ def main(limit=50):
 
     pushed = 0
     for tid, sc in zip(ids, scores):
-        for name in ("faithfulness", "answer_relevancy"):
+        for name in ("faithfulness", "answer_relevancy", "context_precision"):
             if sc.get(name) is not None:
                 lf.create_score(name=name, value=float(sc[name]),
                                 trace_id=tid, data_type="NUMERIC")

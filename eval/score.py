@@ -20,7 +20,7 @@ TOL = 0.025  # FinanceBench-style 2.5% relative tolerance
 # metrics are MONITOR-ONLY — they're noisy and systematically biased in a regulated
 # domain (e.g. answer_relevancy's noncommittal classifier penalizes honest "remains
 # uncertain / see the filing" hedging), so they're reported, never block. See README.
-MONITOR = {"faithfulness", "answer_relevancy"}
+MONITOR = {"faithfulness", "answer_relevancy", "context_precision"}
 SCALE = {"trillion": 1e12, "billion": 1e9, "million": 1e6, "thousand": 1e3}
 # v1 keyword refusal list is RETIRED — abstain is now detected via the structured
 # abstain tool call (design for evaluability), not prose. _NEG is kept for the injection guard.
@@ -217,7 +217,7 @@ def main(quality=False):
         from eval.quality import score_quality
         print(f"\n=== LLM-judged (Ragas) on {len(q_items)} qualitative answers ===")
         scores = score_quality(q_items)
-        for name in ("faithfulness", "answer_relevancy"):
+        for name in ("faithfulness", "answer_relevancy", "context_precision"):
             vals = [s[name] for s in scores if s[name] is not None]
             if vals:
                 rates[name] = round(sum(vals) / len(vals), 3)
