@@ -11,7 +11,7 @@ unsupported number is unacceptable:
 - **Every claim is cited** to the source filing, with a **clickable EDGAR link** to the 10-K.
 - The agent **abstains** (a structured, machine-readable signal) when it can't answer —
   metric not reported, company out of scope, off-topic — instead of fabricating.
-- All of it is **gated by an 11-metric eval suite in CI**.
+- All of it is **evaluated by an 11-metric suite in CI** (9 deterministic metrics gate; 2 LLM-judge metrics monitor-only).
 
 > Reuses the retrieval + eval engineering from [Slug Advisor](https://github.com/Zhonghui-li/Agentic-RAG)
 > (hybrid retrieval, CrossEncoder reranker, eval-in-CI), re-pointed from course advising to
@@ -63,8 +63,8 @@ each metric catches a failure the others miss:
 | **facts** | deterministic | qualitative answer missing the key points |
 | **context_recall** | deterministic | retrieval missed the evidence passage (incl. exact-term recall — the BM25 check) |
 | **forbid** | deterministic | prompt-injection / planted false claim |
-| **faithfulness** | LLM-judged (Ragas) | qualitative narrative not grounded in the cited text |
-| **answer_relevancy** | LLM-judged (Ragas) | off-topic / evasive answers |
+| **faithfulness** | LLM-judged (Ragas) · *monitor* | qualitative narrative not grounded in the cited text |
+| **answer_relevancy** | LLM-judged (Ragas) · *monitor* | off-topic answers (systematically under-scores honest "remains uncertain / see the filing" hedging — see Gate vs monitor) |
 
 **Eval-in-CI (two layers):**
 - **L1** — deterministic unit tests for the tools + scorer logic (no LLM, no DB, no secrets);
@@ -73,7 +73,15 @@ each metric catches a failure the others miss:
   tolerance, exits non-zero on regression); runs **on demand** (so the shared key isn't run
   unattended in a public repo).
 
-Current baseline (63-case set): deterministic metrics **100%**, faithfulness **0.94**,
+**Gate vs monitor:** only the **9 deterministic** metrics gate CI. The two Ragas (LLM-judge)
+metrics are **monitor-only** — reported every run but never block — because they're noisy and
+systematically biased in a regulated domain (`answer_relevancy`'s noncommittal classifier
+penalizes the honest "this remains uncertain — see the filing" hedging that compliant answers
+*should* use). Hard gates need low-noise, unbiased signals, so they live on the deterministic
+set; LLM-judge quality is watched, with low scores sampled for human review. The same two
+metrics also run reference-free on live traces (`eval/score_traces.py` → Langfuse Scores).
+
+Current baseline (65-case set): deterministic metrics **100%**, faithfulness **0.94**,
 answer_relevancy **0.86**. (Retrieval is dense pgvector + a CrossEncoder reranker; BM25 was
 deliberately left out and `context_recall` — including exact-term cases like "Stress Capital
 Buffer" — confirms it isn't needed.)

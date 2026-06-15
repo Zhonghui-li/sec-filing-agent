@@ -16,6 +16,11 @@ TESTSET = ROOT / "eval" / "testset.jsonl"
 FIN = json.loads((ROOT / "data" / "financials.json").read_text())
 
 TOL = 0.025  # FinanceBench-style 2.5% relative tolerance
+# Gate vs monitor: only the deterministic metrics gate CI. The two Ragas (LLM-judge)
+# metrics are MONITOR-ONLY — they're noisy and systematically biased in a regulated
+# domain (e.g. answer_relevancy's noncommittal classifier penalizes honest "remains
+# uncertain / see the filing" hedging), so they're reported, never block. See README.
+MONITOR = {"faithfulness", "answer_relevancy"}
 SCALE = {"trillion": 1e12, "billion": 1e9, "million": 1e6, "thousand": 1e3}
 # v1 keyword refusal list is RETIRED — abstain is now detected via the structured
 # abstain tool call (design for evaluability), not prose. _NEG is kept for the injection guard.
@@ -234,15 +239,24 @@ if __name__ == "__main__":
     rates = main(quality=args.quality)
     BASE = ROOT / "eval" / "baseline.json"
     if args.update_baseline:
-        BASE.write_text(json.dumps(rates, indent=2))
+        # merge so a deterministic-only run (no --quality) doesn't drop the monitor metrics
+        base = json.loads(BASE.read_text()) if BASE.exists() else {}
+        base.update(rates)
+        BASE.write_text(json.dumps(base, indent=2))
         print(f"\nwrote baseline -> {BASE}")
     elif BASE.exists():
         base = json.loads(BASE.read_text())
+        # gate on deterministic metrics only; the Ragas MONITOR metrics are reported, never block
         regressions = [(m, base[m], rates[m]) for m in base
-                       if m in rates and rates[m] < base[m] - 0.10]   # 10pp tolerance
-        print("\n=== baseline gate (per-metric tolerance 10pp) ===")
+                       if m in rates and m not in MONITOR
+                       and rates[m] < base[m] - 0.10]   # 10pp tolerance
+        print("\n=== baseline gate (deterministic metrics, tolerance 10pp) ===")
         for m, b, c in regressions:
             print(f"  REGRESSION {m}: {b * 100:.0f}% -> {c * 100:.0f}%")
+        mon = [f"{m} {rates[m]:.2f} (base {base[m]:.2f})"
+               for m in MONITOR if m in rates and m in base]
+        if mon:
+            print("  monitor (not gated): " + " · ".join(mon))
         if regressions:
             sys.exit(1)
-        print("  PASS: no metric regressed beyond tolerance.")
+        print("  PASS: no deterministic metric regressed beyond tolerance.")
