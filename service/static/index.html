@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEC Filing Agent</title>
+<style>
+  :root { --accent:#0a7d4d; --dark:#0b2239; --bg:#f6f7f9; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+         background:var(--bg); color:#1a1a1a; }
+  header { background:var(--dark); color:#fff; padding:14px 18px; font-weight:600; font-size:18px; }
+  header span { color:#48d597; }
+  header small { display:block; font-weight:400; font-size:12px; color:#9fb3c8; margin-top:3px; }
+  #chat { max-width:780px; margin:0 auto; padding:18px; }
+  .msg { margin:14px 0; }
+  .user { text-align:right; }
+  .user .bubble { background:var(--dark); color:#fff; }
+  .bot .bubble { background:#fff; border:1px solid #e3e6ea; }
+  .bubble { display:inline-block; padding:10px 14px; border-radius:12px; max-width:92%;
+            white-space:pre-wrap; line-height:1.5; text-align:left; }
+  .trace { margin-top:8px; font-size:12px; color:#5a6b7b; }
+  .trace summary { cursor:pointer; color:#8a98a6; user-select:none; list-style:none; }
+  .trace summary::-webkit-details-marker { display:none; }
+  .trace summary:hover { color:var(--accent); }
+  .trace[open] summary { margin-bottom:6px; }
+  .trace-body { padding-left:2px; line-height:1.8; }
+  .trace code { background:#eef1f4; padding:1px 5px; border-radius:4px; }
+  .hint { color:#7a8896; font-size:13px; }
+  form { max-width:780px; margin:0 auto; padding:0 18px 24px; display:flex; gap:8px; }
+  input { flex:1; padding:12px 14px; border:1px solid #cfd6dd; border-radius:10px; font-size:15px; }
+  button { padding:12px 18px; border:0; border-radius:10px; background:var(--accent);
+           color:#fff; font-weight:700; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+</style>
+</head>
+<body>
+<header>📑 SEC <span>Filing Agent</span>
+  <small>Ask about AAPL · MSFT · NVDA · AMZN · JPM · TSLA · KO — exact XBRL numbers, cited to the filing</small>
+</header>
+<div id="chat">
+  <div class="msg bot"><div class="bubble">Ask me about these companies' 10-K filings. Try:
+• What was Apple's revenue in fiscal 2024?
+• How did NVIDIA's revenue change year over year, and why?
+• Which earned more last year, Apple or Microsoft?
+• What does JPMorgan say about its capital requirements?
+
+Every number comes from XBRL (never the model's memory), every claim is cited, and I'll say so honestly when something isn't reported.</div></div>
+</div>
+<form id="f">
+  <input id="q" autocomplete="off" placeholder="Ask about a company's 10-K…" />
+  <button id="send" type="submit">Ask</button>
+</form>
+<script>
+const chat = document.getElementById('chat'), form = document.getElementById('f'),
+      input = document.getElementById('q'), send = document.getElementById('send');
+function add(role, html) {
+  const m = document.createElement('div'); m.className = 'msg ' + role;
+  m.innerHTML = '<div class="bubble">' + html + '</div>'; chat.appendChild(m);
+  window.scrollTo(0, document.body.scrollHeight); return m;
+}
+function esc(s){ return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const q = input.value.trim(); if (!q) return;
+  add('user', esc(q)); input.value = ''; send.disabled = true;
+  const wait = add('bot', '<span class="hint">Looking it up…</span>');
+  try {
+    const r = await fetch('/ask', { method:'POST', headers:{'Content-Type':'application/json'},
+                                    body: JSON.stringify({ question: q }) });
+    if (!r.ok) { wait.querySelector('.bubble').innerHTML = '<span class="hint">' +
+                 (r.status===429 ? 'Demo limit reached — please try again later.' : 'Something went wrong.') +
+                 '</span>'; send.disabled=false; return; }
+    const d = await r.json();
+    let html = esc(d.answer);
+    if (d.trace && d.trace.length) {
+      const steps = d.trace.map(s => '🔧 <code>' + esc(s.tool) + '</code>(' +
+                    esc(JSON.stringify(s.args)) + ')').join('<br>');
+      html += '<details class="trace"><summary>' + d.trace.length +
+              ' tool call' + (d.trace.length>1?'s':'') + ' · show audit trail</summary>' +
+              '<div class="trace-body">' + steps + '</div></details>';
+    }
+    wait.querySelector('.bubble').innerHTML = html;
+  } catch (err) { wait.querySelector('.bubble').innerHTML = '<span class="hint">Network error.</span>'; }
+  send.disabled = false; window.scrollTo(0, document.body.scrollHeight);
+});
+</script>
+</body>
+</html>

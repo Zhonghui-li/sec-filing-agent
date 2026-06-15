@@ -1,0 +1,19 @@
+# Runtime deps for the deployed demo (no edgartools/ragas — those are build/eval only).
+# Reranker (CrossEncoder) kept so quality matches the evaluated baseline; torch is
+# installed CPU-only in the Dockerfile.
+numpy==1.26.4
+fastapi==0.115.14
+uvicorn==0.35.0
+langchain-openai==0.3.17
+langchain-community==0.3.24
+langchain-core
+langgraph==0.4.5
+langgraph-prebuilt==0.1.8
+langgraph-checkpoint==2.0.26
+langgraph-sdk==0.1.69
+sentence-transformers==5.2.2
+openai==1.75.0
+psycopg[binary]==3.3.4
+pgvector==0.4.2
+# audit-trail observability (key-gated; activates in the container via LANGFUSE_* env)
+langfuse==4.7.1

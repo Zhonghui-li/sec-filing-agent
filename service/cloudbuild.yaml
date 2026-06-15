@@ -1,0 +1,7 @@
+# Builds the service image natively on GCP (amd64). Run from repo root:
+#   gcloud builds submit --config service/cloudbuild.yaml --substitutions=_IMAGE=<image> .
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-f', 'service/Dockerfile', '-t', '${_IMAGE}', '.']
+images:
+  - '${_IMAGE}'

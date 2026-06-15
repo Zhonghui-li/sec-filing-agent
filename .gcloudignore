@@ -1,0 +1,10 @@
+.git/
+__pycache__/
+*.pyc
+.venv/
+venv/
+tests/
+eval/
+scripts/
+data/filings.jsonl
+.github/
