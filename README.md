@@ -84,6 +84,13 @@ Buffer" — confirms it isn't needed.)
 > eval and fixed; several "failures" were scorer bugs, not agent bugs — distinguishing the two
 > is the core skill.
 
+## Observability (audit trail)
+
+Optional Langfuse tracing (`agents/observability.py`, key-gated — a no-op without keys).
+In a regulated domain the trace *is* the audit trail: every run logs the question, answer,
+latency, and token cost, plus **which tools were called, which filings (accessions) were
+cited, and whether/why it abstained** — so any answer traces back to its sources.
+
 ## Data (public SEC EDGAR — no PII / compliance scope)
 - **Numbers**: SEC `companyfacts` XBRL API → exact annual financials (`data/financials.json`).
 - **Text**: 10-K Business / Risk Factors / MD&A via `edgartools` → chunked into **pgvector**
