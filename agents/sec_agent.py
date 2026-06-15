@@ -133,9 +133,13 @@ def run_agent(question: str, agent=None, verbose: bool = False,
         # audit trail: which filings were cited + whether/why it abstained
         accns = sorted({a for _, c in tool_outputs
                         for a in re.findall(r"\d{10}-\d{2}-\d{6}", c)})
+        # retrieved passages stored so the offline scorer (eval/score_traces.py) can
+        # grade faithfulness on production traces (the eval <-> observability loop)
+        contexts = [c[:1500] for name, c in tool_outputs if name == "search_filings"][:6]
         audit = {"accessions_cited": accns, "abstained": "abstain" in tools_used,
                  "abstain_reason": next((t["args"].get("reason")
-                                         for t in trace if t["tool"] == "abstain"), None)}
+                                         for t in trace if t["tool"] == "abstain"), None),
+                 "contexts": contexts}
         record(answer=answer, tools_used=tools_used, usage=usage, audit=audit)
     if verbose:
         for step in trace:
