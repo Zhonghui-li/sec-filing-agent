@@ -12,6 +12,7 @@ Same create_react_agent orchestration as the Slug Advisor; only the tools and th
 system prompt change (raised to the finance bar).
 """
 import os
+import re
 from typing import Dict, List
 
 from langchain_core.tools import tool
@@ -22,6 +23,7 @@ from langgraph.errors import GraphRecursionError
 
 from agents.finance_tools import get_financials as _get_financials, compute as _compute
 from agents.filings_retrieval import search_filings as _search_filings
+from agents import observability
 
 DEFAULT_RECURSION_LIMIT = 15
 COMPANIES = {"AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "NVIDIA", "AMZN": "Amazon",
@@ -109,25 +111,37 @@ def run_agent(question: str, agent=None, verbose: bool = False,
               recursion_limit: int = DEFAULT_RECURSION_LIMIT) -> Dict:
     """Run the agent on a question. Returns {answer, trace, tools_used}."""
     agent = agent or build_agent()
-    try:
-        result = agent.invoke({"messages": [("user", question)]},
-                              {"recursion_limit": recursion_limit})
-        messages = result["messages"]
-        answer = messages[-1].content
-        trace = _extract_trace(messages)
-        # tool outputs (with tool name) — used to verify every number in the answer
-        # traces back to get_financials/compute (not read out of search_filings prose).
-        tool_outputs = [(getattr(m, "name", "") or "", m.content)
-                        for m in messages if isinstance(m, ToolMessage)]
-    except GraphRecursionError:
-        answer = ("I couldn't resolve this within the step limit — please narrow the "
-                  "question.")
-        trace, tool_outputs = [], []
+    usage, tool_outputs = None, []
+    # the Langfuse span (if enabled) wraps the invoke, so its duration is the real latency
+    with observability.trace_agent(question) as record:
+        try:
+            result = agent.invoke({"messages": [("user", question)]},
+                                  {"recursion_limit": recursion_limit})
+            messages = result["messages"]
+            answer = messages[-1].content
+            trace = _extract_trace(messages)
+            # tool outputs (with tool name) — used to verify every number in the answer
+            # traces back to get_financials/compute (not read out of search_filings prose).
+            tool_outputs = [(getattr(m, "name", "") or "", m.content)
+                            for m in messages if isinstance(m, ToolMessage)]
+            usage = observability.sum_usage(messages)
+        except GraphRecursionError:
+            answer = ("I couldn't resolve this within the step limit — please narrow the "
+                      "question.")
+            trace = []
+        tools_used = [t["tool"] for t in trace]
+        # audit trail: which filings were cited + whether/why it abstained
+        accns = sorted({a for _, c in tool_outputs
+                        for a in re.findall(r"\d{10}-\d{2}-\d{6}", c)})
+        audit = {"accessions_cited": accns, "abstained": "abstain" in tools_used,
+                 "abstain_reason": next((t["args"].get("reason")
+                                         for t in trace if t["tool"] == "abstain"), None)}
+        record(answer=answer, tools_used=tools_used, usage=usage, audit=audit)
     if verbose:
         for step in trace:
             print(f"  🔧 {step['tool']}({step['args']})")
     return {"answer": answer, "trace": trace, "tool_outputs": tool_outputs,
-            "tools_used": [t["tool"] for t in trace]}
+            "tools_used": tools_used}
 
 
 if __name__ == "__main__":

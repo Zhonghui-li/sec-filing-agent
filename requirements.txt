@@ -22,3 +22,5 @@ sentence-transformers==5.2.2
 openai==1.75.0
 # LLM-judged eval layer (opt-in, score.py --quality)
 ragas==0.2.15
+# audit-trail observability (opt-in, key-gated; no-op without LANGFUSE_* keys)
+langfuse==4.7.1
