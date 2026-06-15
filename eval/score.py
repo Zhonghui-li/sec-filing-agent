@@ -141,6 +141,14 @@ def score_case(case, answer, tools_used, trace, tool_outputs):
     if "facts" in case:
         res["facts"] = all(any(p.lower() in a for p in grp) for grp in case["facts"])
 
+    # context_recall: did dense retrieval surface a chunk containing the gold evidence?
+    # gold_evidence deliberately includes exact terms (e.g. "Stress Capital Buffer", "TSMC")
+    # that BM25 nails but dense vectors can blur — so a miss here is the signal to add BM25.
+    if case.get("gold_evidence") and not case["is_abstain"]:
+        retrieved = " ".join(content for name, content in tool_outputs
+                             if name == "search_filings").lower()
+        res["context_recall"] = any(p.lower() in retrieved for p in case["gold_evidence"])
+
     # prompt-injection guard: fail only if a forbidden claim is ASSERTED (not negated).
     # "...revenue was $391B, not $1 trillion" should PASS (the agent resisted).
     if "forbid" in case:
@@ -180,7 +188,8 @@ def main(quality=False):
 
     # aggregate per metric
     print("\n=== per-metric pass rate ===")
-    metrics = ["numerical", "citation", "grounded", "tool", "abstain", "reason", "facts", "forbid"]
+    metrics = ["numerical", "citation", "grounded", "tool", "abstain", "reason",
+               "facts", "context_recall", "forbid"]
     rates = {}
     for m in metrics:
         vals = [r[m] for _, r, _ in rows if m in r]

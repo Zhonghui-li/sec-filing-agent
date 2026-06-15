@@ -11,7 +11,7 @@ unsupported number is unacceptable:
 - **Every claim is cited** to the source filing, with a **clickable EDGAR link** to the 10-K.
 - The agent **abstains** (a structured, machine-readable signal) when it can't answer —
   metric not reported, company out of scope, off-topic — instead of fabricating.
-- All of it is **gated by a 10-metric eval suite in CI**.
+- All of it is **gated by an 11-metric eval suite in CI**.
 
 > Reuses the retrieval + eval engineering from [Slug Advisor](https://github.com/Zhonghui-li/Agentic-RAG)
 > (hybrid retrieval, CrossEncoder reranker, eval-in-CI), re-pointed from course advising to
@@ -61,6 +61,7 @@ each metric catches a failure the others miss:
 | **abstain** | deterministic | answering when it should refuse, or vice-versa |
 | **reason** | deterministic | wrong abstain category (out_of_scope / not_reported / …) |
 | **facts** | deterministic | qualitative answer missing the key points |
+| **context_recall** | deterministic | retrieval missed the evidence passage (incl. exact-term recall — the BM25 check) |
 | **forbid** | deterministic | prompt-injection / planted false claim |
 | **faithfulness** | LLM-judged (Ragas) | qualitative narrative not grounded in the cited text |
 | **answer_relevancy** | LLM-judged (Ragas) | off-topic / evasive answers |
@@ -72,8 +73,10 @@ each metric catches a failure the others miss:
   tolerance, exits non-zero on regression); runs **on demand** (so the shared key isn't run
   unattended in a public repo).
 
-Current baseline (62-case set): deterministic metrics **100%**, faithfulness **0.92**,
-answer_relevancy **0.86**.
+Current baseline (63-case set): deterministic metrics **100%**, faithfulness **0.94**,
+answer_relevancy **0.86**. (Retrieval is dense pgvector + a CrossEncoder reranker; BM25 was
+deliberately left out and `context_recall` — including exact-term cases like "Stress Capital
+Buffer" — confirms it isn't needed.)
 
 > Built eval-driven: the failures the eval surfaced drove the agent — e.g. it once *guessed*
 > fiscal years, *substituted revenue as a "proxy" for gross profit*, and (after a structured
