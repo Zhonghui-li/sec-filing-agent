@@ -86,8 +86,10 @@ To fix the `answer_relevancy` bias rather than just tolerate it, `eval/judge.py`
 domain-tuned judge (G-Eval style: rubric that treats honest hedging / appropriate abstention
 as *good*, + chain-of-thought) calibrated against human labels — **Cohen's κ = 0.95** on a
 52-case set (39 good / 13 bad, incl. 12 synthetic hallucinations), with **zero false positives
-on the hedged/abstaining answers** the generic metric misfires on. It's the path to replacing
-the borrowed metric in monitoring.
+on the hedged/abstaining answers** the generic metric misfires on. It now runs on every live
+trace too (`score_traces.py` → a `domain_judge` score), so a trace shows both signals
+side by side — e.g. JPMorgan: `answer_relevancy` 0.0 (the generic metric's bias) vs
+`domain_judge` 1.0 (correct).
 
 Current baseline (65-case set): deterministic metrics **100%**, faithfulness **0.94**,
 answer_relevancy **0.86**. (Retrieval is dense pgvector + a CrossEncoder reranker; BM25 was
