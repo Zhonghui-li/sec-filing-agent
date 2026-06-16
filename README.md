@@ -82,6 +82,13 @@ penalizes the honest "this remains uncertain — see the filing" hedging that co
 set; LLM-judge quality is watched, with low scores sampled for human review. The same two
 metrics also run reference-free on live traces (`eval/score_traces.py` → Langfuse Scores).
 
+To fix the `answer_relevancy` bias rather than just tolerate it, `eval/judge.py` is a
+domain-tuned judge (G-Eval style: rubric that treats honest hedging / appropriate abstention
+as *good*, + chain-of-thought) calibrated against human labels — **Cohen's κ = 0.95** on a
+52-case set (39 good / 13 bad, incl. 12 synthetic hallucinations), with **zero false positives
+on the hedged/abstaining answers** the generic metric misfires on. It's the path to replacing
+the borrowed metric in monitoring.
+
 Current baseline (65-case set): deterministic metrics **100%**, faithfulness **0.94**,
 answer_relevancy **0.86**. (Retrieval is dense pgvector + a CrossEncoder reranker; BM25 was
 deliberately left out and `context_recall` — including exact-term cases like "Stress Capital
