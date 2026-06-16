@@ -134,8 +134,11 @@ def run_agent(question: str, agent=None, verbose: bool = False,
         accns = sorted({a for _, c in tool_outputs
                         for a in re.findall(r"\d{10}-\d{2}-\d{6}", c)})
         # retrieved passages stored so the offline scorer (eval/score_traces.py) can
-        # grade faithfulness on production traces (the eval <-> observability loop)
-        contexts = [c[:1500] for name, c in tool_outputs if name == "search_filings"][:6]
+        # grade faithfulness on production traces (the eval <-> observability loop).
+        # Keep the full retrieved block: an earlier 1500-char cap dropped most passages, which
+        # made faithfulness/domain_judge see "unsupported" claims and emit false BADs (verified:
+        # -0.38 mean faithfulness, 9/12 good->bad flips). 8000 holds a full k=5 search result.
+        contexts = [c[:8000] for name, c in tool_outputs if name == "search_filings"][:6]
         audit = {"accessions_cited": accns, "abstained": "abstain" in tools_used,
                  "abstain_reason": next((t["args"].get("reason")
                                          for t in trace if t["tool"] == "abstain"), None),
