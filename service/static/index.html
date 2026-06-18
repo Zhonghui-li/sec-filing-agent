@@ -26,6 +26,10 @@
   .trace[open] summary { margin-bottom:6px; }
   .trace-body { padding-left:2px; line-height:1.8; }
   .trace code { background:#eef1f4; padding:1px 5px; border-radius:4px; }
+  .bubble a { color:var(--accent); }
+  .sources { margin-top:8px; font-size:12px; color:#5a6b7b; }
+  .sources a { color:var(--accent); text-decoration:none; }
+  .sources a:hover { text-decoration:underline; }
   .hint { color:#7a8896; font-size:13px; }
   form { max-width:780px; margin:0 auto; padding:0 18px 24px; display:flex; gap:8px; }
   input { flex:1; padding:12px 14px; border:1px solid #cfd6dd; border-radius:10px; font-size:15px; }
@@ -54,12 +58,21 @@ Every number comes from XBRL (never the model's memory), every claim is cited, a
 <script>
 const chat = document.getElementById('chat'), form = document.getElementById('f'),
       input = document.getElementById('q'), send = document.getElementById('send');
+let history = [];  // [{role, content}] — sent each turn so the agent has multi-turn memory (Model B)
 function add(role, html) {
   const m = document.createElement('div'); m.className = 'msg ' + role;
   m.innerHTML = '<div class="bubble">' + html + '</div>'; chat.appendChild(m);
   window.scrollTo(0, document.body.scrollHeight); return m;
 }
 function esc(s){ return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+// turn inline markdown links [label](url) into clickable anchors (run after esc)
+function linkify(s){ return s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
+  '<a href="$2" target="_blank" rel="noopener">$1</a>'); }
+// link bare accession numbers in the body using the sources map, leaving existing <a> intact
+function linkAccessions(html, srcMap){
+  return html.replace(/(<a\b[^>]*>.*?<\/a>)|(\d{10}-\d{2}-\d{6})/g, (m, anchor, acc) =>
+    anchor ? anchor : (srcMap[acc] ? '<a href="' + srcMap[acc] +
+      '" target="_blank" rel="noopener">' + acc + '</a>' : m)); }
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const q = input.value.trim(); if (!q) return;
@@ -67,12 +80,21 @@ form.addEventListener('submit', async (e) => {
   const wait = add('bot', '<span class="hint">Looking it up…</span>');
   try {
     const r = await fetch('/ask', { method:'POST', headers:{'Content-Type':'application/json'},
-                                    body: JSON.stringify({ question: q }) });
+                                    body: JSON.stringify({ question: q, history }) });
     if (!r.ok) { wait.querySelector('.bubble').innerHTML = '<span class="hint">' +
                  (r.status===429 ? 'Demo limit reached — please try again later.' : 'Something went wrong.') +
                  '</span>'; send.disabled=false; return; }
     const d = await r.json();
-    let html = esc(d.answer);
+    history.push({ role:'user', content:q }, { role:'assistant', content:d.answer });
+    history = history.slice(-12);   // keep recent turns (matches backend trim)
+    const srcMap = {};
+    (d.sources || []).forEach(s => { srcMap[s.accession] = s.url; });
+    let html = linkAccessions(linkify(esc(d.answer)), srcMap);
+    if (d.sources && d.sources.length) {
+      const links = d.sources.map(s => '<a href="' + s.url + '" target="_blank" rel="noopener">' +
+                    esc(s.accession) + '</a>').join(' · ');
+      html += '<div class="sources">📎 Sources: ' + links + '</div>';
+    }
     if (d.trace && d.trace.length) {
       const steps = d.trace.map(s => '🔧 <code>' + esc(s.tool) + '</code>(' +
                     esc(JSON.stringify(s.args)) + ')').join('<br>');

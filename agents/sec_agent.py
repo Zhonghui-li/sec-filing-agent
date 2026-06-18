@@ -16,7 +16,7 @@ import re
 from typing import Dict, List
 
 from langchain_core.tools import tool
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import ToolMessage, HumanMessage, AIMessage, trim_messages
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from langgraph.errors import GraphRecursionError
@@ -26,6 +26,7 @@ from agents.filings_retrieval import search_filings as _search_filings
 from agents import observability
 
 DEFAULT_RECURSION_LIMIT = 15
+MAX_HISTORY_MSGS = 12  # keep the last ~6 turns of prior conversation (Model B: client sends history)
 COMPANIES = {"AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "NVIDIA", "AMZN": "Amazon",
              "JPM": "JPMorgan Chase", "TSLA": "Tesla", "KO": "Coca-Cola"}
 _COMPANY_LIST = ", ".join(f"{t} ({n})" for t, n in COMPANIES.items())
@@ -83,10 +84,14 @@ answerable from the filings — writing tasks, opinions, investment/buy-sell adv
 forecasts or predictions, or real-time market data like stock prices — call `abstain` \
 with reason off_topic. Do not call the data tools for these.
 
-7. Do NOT guess which fiscal year is the most recent. When the user gives no year (or \
-says "latest"/"most recent"/"year over year"), FIRST call get_financials WITHOUT a \
-fiscal_year — it returns the latest available year — then use that year (and the year \
-before it for YoY).
+7. Do NOT guess or compute which fiscal year is the most recent, and do NOT infer a year \
+from your sense of today's date — your internal sense of the current date is likely out of \
+date. When the user gives no year, or uses ANY relative-time term ("latest", "most recent", \
+"last year", "this year", "recently", "currently", "year over year"), treat it as the most \
+recent fiscal year IN THE DATA: call get_financials WITHOUT a fiscal_year (it returns the \
+latest available year), then use that year (and the year before it for YoY). For a comparison \
+across companies with no year given, get each company's own latest fiscal year separately \
+(fiscal calendars differ), and state which fiscal year you used for each.
 
 Notes: map a plain year to the fiscal year (e.g. "2024" -> FY2024); fiscal years differ \
 across companies (NVDA's fiscal year ends in January). Be concise and always cite tickers \
@@ -107,15 +112,35 @@ def _extract_trace(messages) -> List[Dict]:
     return trace
 
 
-def run_agent(question: str, agent=None, verbose: bool = False,
+def _build_messages(question: str, history) -> List:
+    """Model B: the client (browser / open-webui) sends the prior conversation, the agent is
+    stateless. Convert the history to LangChain messages, trim to the last few turns to bound
+    token cost/latency (trim_messages, count-based), then append the new question."""
+    prior = []
+    for m in history or []:
+        role, content = (m.get("role"), m.get("content")) if isinstance(m, dict) else (None, None)
+        if not content:
+            continue
+        if role == "user":
+            prior.append(HumanMessage(content))
+        elif role == "assistant":
+            prior.append(AIMessage(content))
+        # ignore system/tool roles coming from the client
+    prior = trim_messages(prior, token_counter=len, max_tokens=MAX_HISTORY_MSGS,
+                          strategy="last", include_system=False, allow_partial=False)
+    return prior + [HumanMessage(question)]
+
+
+def run_agent(question: str, agent=None, history=None, verbose: bool = False,
               recursion_limit: int = DEFAULT_RECURSION_LIMIT) -> Dict:
-    """Run the agent on a question. Returns {answer, trace, tools_used}."""
+    """Run the agent on a question. `history` (optional) is prior turns [{role, content}, ...]
+    for multi-turn (Model B). Returns {answer, trace, tools_used, tool_outputs}."""
     agent = agent or build_agent()
     usage, tool_outputs = None, []
     # the Langfuse span (if enabled) wraps the invoke, so its duration is the real latency
     with observability.trace_agent(question) as record:
         try:
-            result = agent.invoke({"messages": [("user", question)]},
+            result = agent.invoke({"messages": _build_messages(question, history)},
                                   {"recursion_limit": recursion_limit})
             messages = result["messages"]
             answer = messages[-1].content
