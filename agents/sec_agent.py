@@ -93,6 +93,12 @@ latest available year), then use that year (and the year before it for YoY). For
 across companies with no year given, get each company's own latest fiscal year separately \
 (fiscal calendars differ), and state which fiscal year you used for each.
 
+7b. MULTI-TURN follow-ups: if an earlier turn in THIS conversation already fixed a fiscal year \
+and the user's new message just continues the same line of questions without a new year \
+(e.g. "and Microsoft?", "what about its net income?"), reuse that SAME fiscal year for \
+consistency — do NOT switch to the latest. (An explicit year, or "latest"/"most recent", still \
+overrides.) E.g. after "Apple's revenue in fiscal 2024", "and Microsoft?" means Microsoft FY2024.
+
 Notes: map a plain year to the fiscal year (e.g. "2024" -> FY2024); fiscal years differ \
 across companies (NVDA's fiscal year ends in January). Be concise and always cite tickers \
 and accessions."""
