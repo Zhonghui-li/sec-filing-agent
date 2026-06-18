@@ -109,6 +109,26 @@ In a regulated domain the trace *is* the audit trail: every run logs the questio
 latency, and token cost, plus **which tools were called, which filings (accessions) were
 cited, and whether/why it abstained** — so any answer traces back to its sources.
 
+## Serving
+
+A FastAPI service (`service/`) exposes the agent over HTTP, with in-memory abuse controls
+(rate limit, daily quota, input cap) sized for a cheap single-instance demo:
+
+- **`/ask`** + a static chat UI (`service/static/`) — renders the answer, the **clickable
+  EDGAR citations**, and a collapsible **audit trail** of the tool calls.
+- **Multi-turn memory** — the client sends the prior conversation each turn and the agent
+  consumes it (trimmed to the recent turns); the agent itself stays stateless.
+- **`/v1/chat/completions`** (+ `/v1/models`, streaming) — an **OpenAI-compatible** endpoint,
+  so the same agent drops into a multi-user chat shell like **open-webui** or **LibreChat**
+  (which bring login, per-user history, and data isolation for free) without a rewrite; cited
+  filings are appended as markdown links so they stay clickable there.
+
+```bash
+# run the demo locally
+DATABASE_URL=... OPENAI_API_KEY=... uvicorn service.app:app --port 8100   # http://localhost:8100
+```
+Deployed on Cloud Run with `max-instances=1`, so the in-memory daily quota is an exact global cap.
+
 ## Data (public SEC EDGAR — no PII / compliance scope)
 - **Numbers**: SEC `companyfacts` XBRL API → exact annual financials (`data/financials.json`).
 - **Text**: 10-K Business / Risk Factors / MD&A via `edgartools` → chunked into **pgvector**
