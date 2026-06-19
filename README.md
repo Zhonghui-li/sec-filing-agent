@@ -157,3 +157,6 @@ DATABASE_URL=... OPENAI_API_KEY=... python -m eval.score --quality   # L2 (full 
   standard section — surfaced as "not reported" (feeds the abstain behavior); numbers stay exact.
 - A company can migrate the same metric across XBRL tags between years (e.g. NVDA revenue →
   `Revenues`); the extractor merges across candidate tags to avoid gaps.
+- Numbers cite the **most recent filing that reports them** (restatement-aware): a
+  historical-year figure may therefore link to a later 10-K that carries it as a comparative
+  column. Year-specific narrative is a separate concern, handled by retrieval (`search_filings`).
