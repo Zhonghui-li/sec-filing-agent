@@ -106,38 +106,76 @@ and accessions."""
 # Appended only when a user has uploaded documents (build_agent(user_id=...)).
 USER_DOCS_PROMPT = """
 
-ADDITIONAL TOOL — search_my_documents: the user has uploaded their OWN private documents (e.g. an \
-internal financial statement or memo for a company that is NOT one of the 7 public companies above). \
-This OVERRIDES Rule 6: a company not in the public list is NOT automatically out_of_scope — it may \
-be covered by the user's uploaded documents. So before abstaining out_of_scope, FIRST call \
-search_my_documents; if it returns relevant passages, answer from them and cite the [filename · page]. \
-Numbers found in the user's documents are acceptable to report (cite the filename · page); only abstain \
-(not_in_filings) if search_my_documents finds nothing relevant. Still abstain off_topic for non-analysis \
-requests (advice, forecasts, writing)."""
+ADDITIONAL TOOLS for the user's OWN uploaded private documents (e.g. an internal financial \
+statement or memo for a company that is NOT one of the 7 public companies above):
+- get_my_financials: EXACT numbers from the document's tables (the analogue of get_financials).
+- search_my_documents: qualitative passages from the document.
+
+This OVERRIDES Rule 6. A company not in the public list of 7 is NOT automatically out_of_scope — \
+the user may have uploaded documents about it. You MUST NEVER abstain out_of_scope for a company \
+without FIRST calling get_my_financials and/or search_my_documents to check the user's own \
+documents. Only if BOTH return nothing relevant may you abstain (then use not_in_filings).
+For ANY number from an uploaded document — including a figure for a specific business segment, \
+division, or line item (e.g. "how much did the railroad earn", "insurance underwriting", "operating \
+earnings") — you MUST use get_my_financials, NOT search_my_documents. These are table figures: \
+get_my_financials reads them from the table with cell-level provenance. Rule 1 still holds: NEVER \
+read a figure out of search_my_documents prose, and route arithmetic through compute. Use \
+search_my_documents ONLY for non-numeric narrative (commentary, risks, descriptions); cite \
+[filename · page]. Still abstain off_topic for non-analysis requests (advice, forecasts, writing)."""
 
 
-def _user_docs_tool(user_id: str):
-    """Bind search_my_documents to a user_id via a closure — the user_id comes from the request
-    context, NOT the LLM, so a user can only ever search their own uploaded documents."""
+def _user_docs_tools(user_id: str):
+    """Bind the private-document tools to a user_id via closures — the user_id comes from the
+    request context, NOT the LLM, so a user only ever touches their own uploaded documents."""
     from langchain_core.tools import tool as _tool
-    from agents.user_docs_retrieval import search_my_documents as _smd
+    from agents.user_docs_retrieval import (search_my_documents as _smd,
+                                            get_my_financials as _gmf)
 
     @_tool
     def search_my_documents(query: str) -> str:
         """Search the USER'S OWN uploaded private documents (e.g. an internal financial
-        statement or memo they provided) for relevant passages, each tagged [filename · page]
-        to cite. Use this when the question is about a file the user uploaded, not a public
-        SEC filing."""
+        statement or memo they provided) for QUALITATIVE passages, each tagged [filename · page]
+        to cite. Use for narrative/risk/commentary in a file the user uploaded — NOT for exact
+        numbers (use get_my_financials for those)."""
         return _smd(query, user_id=user_id)
-    return search_my_documents
+
+    @_tool
+    def get_my_financials(metric: str, period: str = None) -> str:
+        """Exact financial numbers from the TABLES in the user's uploaded documents (the
+        private-data analogue of get_financials). `metric` matches a table row label (e.g.
+        "net income"); optional `period` matches a column (e.g. "FY2025"). Returns the exact
+        value with cell-level provenance. Use this for ANY number from an uploaded document —
+        never read a figure out of search_my_documents prose."""
+        return _gmf(metric, user_id=user_id, period=period)
+
+    return [search_my_documents, get_my_financials]
+
+
+def _uploaded_doc_names(user_id: str):
+    """Filenames the user has uploaded — injected into the prompt so the agent KNOWS the docs
+    exist (and won't dismiss their subject as out_of_scope)."""
+    try:
+        import psycopg
+        with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+            cur.execute("select distinct filename from user_chunks where user_id=%s", (user_id,))
+            return [r[0] for r in cur.fetchall()]
+    except Exception:
+        return []
 
 
 def build_agent(model: str = None, temperature: float = 0.0, user_id: str = None):
     model = model or os.environ.get("GEN_LLM_MODEL", "gpt-4o-mini")
     llm = ChatOpenAI(model=model, temperature=temperature)
-    # only add the private-docs tool when a user is in scope, so eval/public demo are unchanged
-    tools = TOOLS + [_user_docs_tool(user_id)] if user_id else TOOLS
-    prompt = SYSTEM_PROMPT + USER_DOCS_PROMPT if user_id else SYSTEM_PROMPT
+    # only add the private-docs tools when a user is in scope, so eval/public demo are unchanged
+    if user_id:
+        tools = TOOLS + _user_docs_tools(user_id)
+        names = _uploaded_doc_names(user_id)
+        have = (" The user has uploaded these documents: " + ", ".join(names) +
+                ". Treat their subjects as IN scope and answerable from those documents."
+                if names else "")
+        prompt = SYSTEM_PROMPT + USER_DOCS_PROMPT + have
+    else:
+        tools, prompt = TOOLS, SYSTEM_PROMPT
     return create_react_agent(llm, tools, prompt=prompt)
 
 

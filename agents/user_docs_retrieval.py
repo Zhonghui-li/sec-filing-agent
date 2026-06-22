@@ -66,3 +66,36 @@ def search_my_documents(query: str, user_id: str, k: int = 5) -> str:
         tag = m["filename"] + (f" · p.{m['page']}" if m.get("page") is not None else "")
         out.append(f"[{tag}]\n{d.page_content}")
     return "\n\n".join(out)
+
+
+def get_my_financials(metric: str, user_id: str, period: str = None) -> str:
+    """Exact numbers from the TABLES in the user's uploaded documents (the private-data analogue
+    of get_financials/XBRL). Matches the metric against table row labels; optional `period`
+    (e.g. "FY2025") matches the column. Returns exact value + cell provenance, never prose.
+    Returns the available metrics if no match, so the caller can retry."""
+    like = f"%{metric.strip().lower()}%"
+    sql = ("select filename,page,metric,period,value,raw,cell from user_facts "
+           "where user_id=%s and lower(metric) like %s")
+    params = [user_id, like]
+    if period:
+        sql += " and lower(period) like %s"
+        params.append(f"%{period.strip().lower()}%")
+    sql += " order by metric, period"
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+        if not rows:
+            cur.execute("select distinct metric from user_facts where user_id=%s order by metric",
+                        (user_id,))
+            avail = [r[0] for r in cur.fetchall()]
+            if not avail:
+                return ("No table figures found in your uploaded documents "
+                        f"(nothing matching '{metric}').")
+            return (f"No figure matching '{metric}'"
+                    f"{' for ' + period if period else ''} in your documents. "
+                    f"Available metrics: {', '.join(avail)}.")
+    out = []
+    for fn, page, m, per, val, raw, cell in rows:
+        loc = f"{fn}" + (f" · p.{page}" if page is not None else "") + f" · {cell}"
+        out.append(f"{m} ({per}): {raw} (exact value {val:g}). [source: {loc}]")
+    return "\n".join(out)

@@ -36,6 +36,19 @@
   button { padding:12px 18px; border:0; border-radius:10px; background:var(--accent);
            color:#fff; font-weight:700; cursor:pointer; }
   button:disabled { opacity:.5; cursor:default; }
+  #uploadbar { max-width:780px; margin:0 auto; padding:4px 18px 0; display:flex; gap:8px;
+               align-items:center; font-size:13px; color:#5a6b7b; }
+  #uploadbar label { background:#eef1f4; color:#0b2239; padding:7px 12px; border-radius:8px;
+                     cursor:pointer; font-weight:600; }
+  #uploadbar label:hover { background:#e3e6ea; }
+  .parsed { margin-top:8px; font-size:12px; }
+  .parsed summary { cursor:pointer; color:#8a98a6; list-style:none; }
+  .parsed summary::-webkit-details-marker { display:none; }
+  .parsed summary:hover { color:var(--accent); }
+  .parsed pre { background:#0b2239; color:#d7e3ee; padding:10px; border-radius:8px; overflow:auto;
+                white-space:pre-wrap; line-height:1.4; max-height:320px; font-size:11.5px; }
+  .parsed table { border-collapse:collapse; margin-top:6px; font-size:11.5px; }
+  .parsed td, .parsed th { border:1px solid #d7e3ee; padding:2px 6px; text-align:left; }
 </style>
 </head>
 <body>
@@ -49,16 +62,27 @@
 • Which earned more last year, Apple or Microsoft?
 • What does JPMorgan say about its capital requirements?
 
-Every number comes from XBRL (never the model's memory), every claim is cited, and I'll say so honestly when something isn't reported.</div></div>
+Every number comes from XBRL (never the model's memory), every claim is cited, and I'll say so honestly when something isn't reported.
+
+You can also upload your own document (PDF) — an internal statement or a private company's financials — and ask about it. Exact numbers come from its tables, cited to the cell.</div></div>
+</div>
+<div id="uploadbar">
+  <label for="file">📎 Upload a document</label>
+  <input id="file" type="file" accept=".pdf,.docx,.xlsx" style="display:none" />
+  <span id="upstatus"></span>
 </div>
 <form id="f">
-  <input id="q" autocomplete="off" placeholder="Ask about a company's 10-K…" />
+  <input id="q" autocomplete="off" placeholder="Ask about a company's 10-K, or your uploaded file…" />
   <button id="send" type="submit">Ask</button>
 </form>
 <script>
 const chat = document.getElementById('chat'), form = document.getElementById('f'),
       input = document.getElementById('q'), send = document.getElementById('send');
 let history = [];  // [{role, content}] — sent each turn so the agent has multi-turn memory (Model B)
+// stable per-browser session id -> isolates this user's uploaded documents
+const sessionId = (() => { let s = localStorage.getItem('sid');
+  if (!s) { s = 'sess_' + Math.random().toString(36).slice(2,14); localStorage.setItem('sid', s); }
+  return s; })();
 function add(role, html) {
   const m = document.createElement('div'); m.className = 'msg ' + role;
   m.innerHTML = '<div class="bubble">' + html + '</div>'; chat.appendChild(m);
@@ -80,7 +104,7 @@ form.addEventListener('submit', async (e) => {
   const wait = add('bot', '<span class="hint">Looking it up…</span>');
   try {
     const r = await fetch('/ask', { method:'POST', headers:{'Content-Type':'application/json'},
-                                    body: JSON.stringify({ question: q, history }) });
+                                    body: JSON.stringify({ question: q, history, session_id: sessionId }) });
     if (!r.ok) { wait.querySelector('.bubble').innerHTML = '<span class="hint">' +
                  (r.status===429 ? 'Demo limit reached — please try again later.' : 'Something went wrong.') +
                  '</span>'; send.disabled=false; return; }
@@ -95,6 +119,18 @@ form.addEventListener('submit', async (e) => {
                     esc(s.accession) + '</a>').join(' · ');
       html += '<div class="sources">📎 Sources: ' + links + '</div>';
     }
+    if (d.doc_sources && d.doc_sources.length) {
+      const items = d.doc_sources.map(s => {
+        let pg = s.page!=null ? ' · p.'+s.page : '';
+        if (s.page!=null && s.doc_id) {  // deep-link to the original PDF page (method 乙)
+          const url = '/file/' + s.doc_id + '?session_id=' + encodeURIComponent(sessionId) +
+                      '#page=' + s.page;
+          pg = ' · <a href="' + url + '" target="_blank" rel="noopener">p.' + s.page + '</a>';
+        }
+        return esc(s.filename) + pg + (s.cell ? ' · ' + esc(s.cell) : '');
+      }).join('<br>');
+      html += '<div class="sources">📎 From your document: ' + items + '</div>';
+    }
     if (d.trace && d.trace.length) {
       const steps = d.trace.map(s => '🔧 <code>' + esc(s.tool) + '</code>(' +
                     esc(JSON.stringify(s.args)) + ')').join('<br>');
@@ -105,6 +141,41 @@ form.addEventListener('submit', async (e) => {
     wait.querySelector('.bubble').innerHTML = html;
   } catch (err) { wait.querySelector('.bubble').innerHTML = '<span class="hint">Network error.</span>'; }
   send.disabled = false; window.scrollTo(0, document.body.scrollHeight);
+});
+
+// --- document upload (bring-your-own-data) ---
+const fileInput = document.getElementById('file'), upstatus = document.getElementById('upstatus');
+fileInput.addEventListener('change', async () => {
+  const f = fileInput.files[0]; if (!f) return;
+  upstatus.textContent = 'Parsing ' + f.name + '…';
+  const fd = new FormData(); fd.append('file', f); fd.append('session_id', sessionId);
+  try {
+    const r = await fetch('/upload', { method:'POST', body: fd });
+    if (!r.ok) { upstatus.textContent = (r.status===429 ? 'Demo limit reached.' : 'Upload failed.'); return; }
+    const d = await r.json();
+    upstatus.textContent = '✓ ' + d.filename + ' — ' + d.n_facts + ' figures extracted';
+    // show what docling parsed, so the parse is visible (markdown truncated for long docs)
+    let factsTable = '';
+    if (d.facts && d.facts.length) {
+      const rows = d.facts.map(x => '<tr><td>' + esc(x.metric) + '</td><td>' + esc(x.period) +
+        '</td><td>' + esc(x.value) + '</td><td>' + esc('p.'+x.page) + '</td></tr>').join('');
+      factsTable = '<div style="margin-top:6px">Extracted table figures (' + d.facts.length +
+        '):</div><table><tr><th>metric</th><th>period</th><th>value</th><th>loc</th></tr>' +
+        rows + '</table>';
+    }
+    const stats = d.n_facts + ' figures · ' + d.n_chars.toLocaleString() + ' chars parsed';
+    const cap = d.page_cap ? ' <span class="hint">(demo parses the first ' + d.page_cap +
+      ' pages; production parses the full document asynchronously)</span>' : '';
+    const cut = d.truncated ? '\n\n…(preview truncated — parsed text is searchable)' : '';
+    const html = '📄 Uploaded <b>' + esc(d.filename) + '</b> (' + stats + ').' + cap +
+      ' You can now ask about it.' +
+      '<details class="parsed"><summary>show what was parsed (docling)</summary>' +
+      (factsTable || '') +
+      '<div style="margin-top:6px">Parsed text' + (d.truncated ? ' (first part)' : '') + ':</div>' +
+      '<pre>' + esc(d.parsed_markdown || '') + esc(cut) + '</pre></details>';
+    add('bot', html);
+  } catch (err) { upstatus.textContent = 'Network error.'; }
+  fileInput.value = '';
 });
 </script>
 </body>

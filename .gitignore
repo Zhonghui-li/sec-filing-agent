@@ -7,3 +7,4 @@ venv/
 
 ingest/.venv/
 ingest/sample/
+ingest/uploads/
