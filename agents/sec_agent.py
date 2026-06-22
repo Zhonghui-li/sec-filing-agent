@@ -103,11 +103,42 @@ Notes: map a plain year to the fiscal year (e.g. "2024" -> FY2024); fiscal years
 across companies (NVDA's fiscal year ends in January). Be concise and always cite tickers \
 and accessions."""
 
+# Appended only when a user has uploaded documents (build_agent(user_id=...)).
+USER_DOCS_PROMPT = """
 
-def build_agent(model: str = None, temperature: float = 0.0):
+ADDITIONAL TOOL — search_my_documents: the user has uploaded their OWN private documents (e.g. an \
+internal financial statement or memo for a company that is NOT one of the 7 public companies above). \
+This OVERRIDES Rule 6: a company not in the public list is NOT automatically out_of_scope — it may \
+be covered by the user's uploaded documents. So before abstaining out_of_scope, FIRST call \
+search_my_documents; if it returns relevant passages, answer from them and cite the [filename · page]. \
+Numbers found in the user's documents are acceptable to report (cite the filename · page); only abstain \
+(not_in_filings) if search_my_documents finds nothing relevant. Still abstain off_topic for non-analysis \
+requests (advice, forecasts, writing)."""
+
+
+def _user_docs_tool(user_id: str):
+    """Bind search_my_documents to a user_id via a closure — the user_id comes from the request
+    context, NOT the LLM, so a user can only ever search their own uploaded documents."""
+    from langchain_core.tools import tool as _tool
+    from agents.user_docs_retrieval import search_my_documents as _smd
+
+    @_tool
+    def search_my_documents(query: str) -> str:
+        """Search the USER'S OWN uploaded private documents (e.g. an internal financial
+        statement or memo they provided) for relevant passages, each tagged [filename · page]
+        to cite. Use this when the question is about a file the user uploaded, not a public
+        SEC filing."""
+        return _smd(query, user_id=user_id)
+    return search_my_documents
+
+
+def build_agent(model: str = None, temperature: float = 0.0, user_id: str = None):
     model = model or os.environ.get("GEN_LLM_MODEL", "gpt-4o-mini")
     llm = ChatOpenAI(model=model, temperature=temperature)
-    return create_react_agent(llm, TOOLS, prompt=SYSTEM_PROMPT)
+    # only add the private-docs tool when a user is in scope, so eval/public demo are unchanged
+    tools = TOOLS + [_user_docs_tool(user_id)] if user_id else TOOLS
+    prompt = SYSTEM_PROMPT + USER_DOCS_PROMPT if user_id else SYSTEM_PROMPT
+    return create_react_agent(llm, tools, prompt=prompt)
 
 
 def _extract_trace(messages) -> List[Dict]:
