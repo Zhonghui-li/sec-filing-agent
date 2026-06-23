@@ -8,3 +8,4 @@ venv/
 ingest/.venv/
 ingest/sample/
 ingest/uploads/
+eval/labeling/judge_calibration.md
