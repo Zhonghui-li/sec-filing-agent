@@ -1,4 +1,4 @@
-# SEC Filing Agent — a finance-grade tool-calling agent over SEC filings
+# SEC Filing Agent — a finance-grade tool-calling agent over SEC filings (and your own documents)
 
 [![Eval](https://github.com/Zhonghui-li/sec-filing-agent/actions/workflows/eval.yml/badge.svg)](https://github.com/Zhonghui-li/sec-filing-agent/actions/workflows/eval.yml)
 
@@ -11,6 +11,9 @@ unsupported number is unacceptable:
 - **Every claim is cited** to the source filing, with a **clickable EDGAR link** to the 10-K.
 - The agent **abstains** (a structured, machine-readable signal) when it can't answer —
   metric not reported, company out of scope, off-topic — instead of fabricating.
+- The same finance bar extends to **your own uploaded documents** (a private financial
+  statement, a non-public company): numbers come from **structured table extraction** (Docling),
+  cited to the cell and **deep-linked to the source page** — never read from prose.
 - All of it is **evaluated by a 12-metric suite in CI** (9 deterministic metrics gate; 3 LLM-judge metrics monitor-only).
 
 > Reuses the retrieval + eval engineering from [Slug Advisor](https://github.com/Zhonghui-li/Agentic-RAG)
@@ -44,6 +47,27 @@ The LLM never does arithmetic on financials, and never reads a number out of fil
 
 **Tools:** `get_financials` · `compute` · `search_filings` · `abstain(reason)` — orchestrated
 by `create_react_agent` (LangGraph), with a system prompt enforcing the finance-bar rules.
+
+## Bring your own data (private documents)
+
+A second retrieval path runs alongside the public SEC data: a user uploads their own document
+(an internal statement, a non-public company's financials) and the agent answers from it — with
+the **same finance bar**, applied to data that has no XBRL.
+
+- **Structured extraction, not prose.** [Docling](https://github.com/docling-project/docling)
+  parses the upload (tables preserved) into a per-user fact table; `get_my_financials` reads exact
+  figures from those **table cells** (the private-data analogue of XBRL), so a number is never read
+  out of narrative. Qualitative questions use `search_my_documents`.
+- **Cell-level, click-to-source citations.** Each figure cites `filename · page · row/col`, and the
+  page **deep-links to the original PDF** (`/file/{doc_id}#page=N`) — the auditable trail a regulated
+  domain needs (mirrors FinChat's "click a number, see the page").
+- **Per-user isolation.** A user only ever retrieves, and can only open, their own documents.
+- **Dependency-isolated ingestion.** Docling pulls heavyweight, conflicting deps, so ingestion runs
+  in a **separate venv** (`ingest/`) and the agent never imports it; the two decouple through pgvector
+  — mirroring the public path. See [`ingest/README.md`](ingest/README.md).
+
+> The demo page-caps long uploads to keep the synchronous parse responsive (Docling's precise
+> parse is ~2s/page on CPU); production would parse the full document asynchronously.
 
 ## Evaluation — the part most agent demos skip
 
@@ -116,6 +140,8 @@ A FastAPI service (`service/`) exposes the agent over HTTP, with in-memory abuse
 
 - **`/ask`** + a static chat UI (`service/static/`) — renders the answer, the **clickable
   EDGAR citations**, and a collapsible **audit trail** of the tool calls.
+- **`/upload`** + **`/file/{doc_id}`** — upload a document (parsed in the isolated ingest venv),
+  see what Docling extracted, then ask about it; citations deep-link back to the source page.
 - **Multi-turn memory** — the client sends the prior conversation each turn and the agent
   consumes it (trimmed to the recent turns); the agent itself stays stateless.
 - **`/v1/chat/completions`** (+ `/v1/models`, streaming) — an **OpenAI-compatible** endpoint,
@@ -146,6 +172,9 @@ DATABASE_URL=... OPENAI_API_KEY=... python scripts/build_filings_store.py   # ->
 
 # ask the agent
 DATABASE_URL=... OPENAI_API_KEY=... python -m agents.sec_agent "How did NVIDIA's revenue change YoY?"
+
+# (optional) ingest a private document — runs in its own venv (see ingest/README.md)
+DATABASE_URL=... OPENAI_API_KEY=... ingest/.venv/bin/python ingest/ingest.py --user me --file report.pdf
 
 # eval
 python -m pytest tests/                                     # L1 (deterministic, no keys)
