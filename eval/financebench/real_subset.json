@@ -1,0 +1,93 @@
+[
+ {
+  "financebench_id": "financebench_id_06655",
+  "company": "Amazon",
+  "question_type": "metrics-generated",
+  "question": "What is Amazon's FY2017 days payable outstanding (DPO)? DPO is defined as: 365 * (average accounts payable between FY2016 and FY2017) / (FY2017 COGS + change in inventory between FY2016 and FY2017). Round your answer to two decimal places. Address the question by using the line items and information shown within the balance sheet and the P&L statement.",
+  "answer": "93.86"
+ },
+ {
+  "financebench_id": "financebench_id_08135",
+  "company": "Amazon",
+  "question_type": "metrics-generated",
+  "question": "What is Amazon's year-over-year change in revenue from FY2016 to FY2017 (in units of percents and round to one decimal place)? Calculate what was asked by utilizing the line items clearly shown in the statement of income.",
+  "answer": "30.8%"
+ },
+ {
+  "financebench_id": "financebench_id_08286",
+  "company": "Amazon",
+  "question_type": "metrics-generated",
+  "question": "By drawing conclusions from the information stated only in the income statement, what is Amazon's FY2019 net income attributable to shareholders (in USD millions)?",
+  "answer": "$11588.00"
+ },
+ {
+  "financebench_id": "financebench_id_03473",
+  "company": "Coca-Cola",
+  "question_type": "metrics-generated",
+  "question": "What is the FY2017 return on assets (ROA) for Coca Cola? ROA is defined as: FY2017 net income / (average total assets between FY2016 and FY2017). Round your answer to two decimal places. Give a response to the question by relying on the details shown in the balance sheet and the P&L statement.",
+  "answer": "0.01"
+ },
+ {
+  "financebench_id": "financebench_id_09724",
+  "company": "Coca-Cola",
+  "question_type": "metrics-generated",
+  "question": "What is Coca Cola's FY2021 COGS % margin? Calculate what was asked by utilizing the line items clearly shown in the income statement.",
+  "answer": "39.7%"
+ },
+ {
+  "financebench_id": "financebench_id_06272",
+  "company": "Coca-Cola",
+  "question_type": "metrics-generated",
+  "question": "What is Coca Cola's FY2022 dividend payout ratio (using total cash dividends paid and net income attributable to shareholders)? Round answer to two decimal places. Answer the question asked by assuming you only have access to information clearly displayed in the cash flow statement and the income statement.",
+  "answer": "0.8"
+ },
+ {
+  "financebench_id": "financebench_id_00299",
+  "company": "JPMorgan",
+  "question_type": "novel-generated",
+  "question": "Which of JPM's business segments had the lowest net revenue in 2021 Q1?",
+  "answer": "Corporate. Its net revenue was -$473 million."
+ },
+ {
+  "financebench_id": "financebench_id_02119",
+  "company": "JPMorgan",
+  "question_type": "novel-generated",
+  "question": "If JPM went bankrupted by the end by 2021 Q1 and liquidated all of its assets to pay its shareholders, how much could each shareholder get?",
+  "answer": "They could receive $66.56 per share."
+ },
+ {
+  "financebench_id": "financebench_id_00206",
+  "company": "JPMorgan",
+  "question_type": "domain-relevant",
+  "question": "Are JPM's gross margins historically consistent (not fluctuating more than roughly 2% each year)? If gross margins are not a relevant metric for a company like this, then please state that and explain why.",
+  "answer": "Since JPM is a financial institution, gross margin is not a relevant metric."
+ },
+ {
+  "financebench_id": "financebench_id_00394",
+  "company": "JPMorgan",
+  "question_type": "novel-generated",
+  "question": "In 2022 Q2, which of JPM's business segments had the highest net income?",
+  "answer": "Corporate & Investment Bank. Its net income was $3725 million."
+ },
+ {
+  "financebench_id": "financebench_id_02049",
+  "company": "JPMorgan",
+  "question_type": "novel-generated",
+  "question": "Looking at VaR, did the risk that JPM faced in the second fiscal quarter of 2023 decrease compared to the same period in the prior year?",
+  "answer": "Yes. It decreased."
+ },
+ {
+  "financebench_id": "financebench_id_04700",
+  "company": "Microsoft",
+  "question_type": "metrics-generated",
+  "question": "What is the FY2016 COGS for Microsoft? Please state answer in USD millions. Provide a response to the question by primarily using the statement of income.",
+  "answer": "$32780.00"
+ },
+ {
+  "financebench_id": "financebench_id_00552",
+  "company": "Microsoft",
+  "question_type": "domain-relevant",
+  "question": "Has Microsoft increased its debt on balance sheet between FY2023 and the FY2022 period?",
+  "answer": "No. Microsoft decreased its debt by $2.5bn in FY 2023 vs FY 2022."
+ }
+]

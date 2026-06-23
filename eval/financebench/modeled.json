@@ -1,0 +1,156 @@
+[
+ {
+  "id": "M01",
+  "company": "AAPL",
+  "metric": "COGS_margin",
+  "gold": 53.8,
+  "question": "What is Apple's FY2024 COGS as a percentage of revenue (COGS % margin)? Use only the income statement figures."
+ },
+ {
+  "id": "M02",
+  "company": "AAPL",
+  "metric": "ROA",
+  "gold": 25.7,
+  "question": "What is Apple's FY2024 return on assets (ROA = net income / total assets), as a percentage?"
+ },
+ {
+  "id": "M03",
+  "company": "AAPL",
+  "metric": "current_ratio",
+  "gold": 0.87,
+  "question": "What is Apple's FY2024 current ratio (current assets / current liabilities)?"
+ },
+ {
+  "id": "M04",
+  "company": "AAPL",
+  "metric": "payout_ratio",
+  "gold": 0.16,
+  "question": "What is Apple's FY2024 dividend payout ratio (dividends paid / net income)?"
+ },
+ {
+  "id": "M05",
+  "company": "MSFT",
+  "metric": "COGS_margin",
+  "gold": 30.2,
+  "question": "What is Microsoft's FY2024 COGS as a percentage of revenue (COGS % margin)? Use only the income statement figures."
+ },
+ {
+  "id": "M06",
+  "company": "MSFT",
+  "metric": "ROA",
+  "gold": 17.2,
+  "question": "What is Microsoft's FY2024 return on assets (ROA = net income / total assets), as a percentage?"
+ },
+ {
+  "id": "M07",
+  "company": "MSFT",
+  "metric": "current_ratio",
+  "gold": 1.27,
+  "question": "What is Microsoft's FY2024 current ratio (current assets / current liabilities)?"
+ },
+ {
+  "id": "M08",
+  "company": "MSFT",
+  "metric": "payout_ratio",
+  "gold": 0.25,
+  "question": "What is Microsoft's FY2024 dividend payout ratio (dividends paid / net income)?"
+ },
+ {
+  "id": "M09",
+  "company": "NVDA",
+  "metric": "COGS_margin",
+  "gold": 27.3,
+  "question": "What is NVIDIA's FY2024 COGS as a percentage of revenue (COGS % margin)? Use only the income statement figures."
+ },
+ {
+  "id": "M10",
+  "company": "NVDA",
+  "metric": "ROA",
+  "gold": 45.3,
+  "question": "What is NVIDIA's FY2024 return on assets (ROA = net income / total assets), as a percentage?"
+ },
+ {
+  "id": "M11",
+  "company": "NVDA",
+  "metric": "current_ratio",
+  "gold": 4.17,
+  "question": "What is NVIDIA's FY2024 current ratio (current assets / current liabilities)?"
+ },
+ {
+  "id": "M12",
+  "company": "NVDA",
+  "metric": "payout_ratio",
+  "gold": 0.01,
+  "question": "What is NVIDIA's FY2024 dividend payout ratio (dividends paid / net income)?"
+ },
+ {
+  "id": "M13",
+  "company": "KO",
+  "metric": "COGS_margin",
+  "gold": 38.9,
+  "question": "What is Coca-Cola's FY2024 COGS as a percentage of revenue (COGS % margin)? Use only the income statement figures."
+ },
+ {
+  "id": "M14",
+  "company": "KO",
+  "metric": "ROA",
+  "gold": 10.6,
+  "question": "What is Coca-Cola's FY2024 return on assets (ROA = net income / total assets), as a percentage?"
+ },
+ {
+  "id": "M15",
+  "company": "KO",
+  "metric": "current_ratio",
+  "gold": 1.03,
+  "question": "What is Coca-Cola's FY2024 current ratio (current assets / current liabilities)?"
+ },
+ {
+  "id": "M16",
+  "company": "KO",
+  "metric": "payout_ratio",
+  "gold": 0.79,
+  "question": "What is Coca-Cola's FY2024 dividend payout ratio (dividends paid / net income)?"
+ },
+ {
+  "id": "M17",
+  "company": "AMZN",
+  "metric": "COGS_margin",
+  "gold": 51.1,
+  "question": "What is Amazon's FY2024 COGS as a percentage of revenue (COGS % margin)? Use only the income statement figures."
+ },
+ {
+  "id": "M18",
+  "company": "AMZN",
+  "metric": "ROA",
+  "gold": 9.5,
+  "question": "What is Amazon's FY2024 return on assets (ROA = net income / total assets), as a percentage?"
+ },
+ {
+  "id": "M19",
+  "company": "AMZN",
+  "metric": "current_ratio",
+  "gold": 1.06,
+  "question": "What is Amazon's FY2024 current ratio (current assets / current liabilities)?"
+ },
+ {
+  "id": "M20",
+  "company": "TSLA",
+  "metric": "COGS_margin",
+  "gold": 82.1,
+  "question": "What is Tesla's FY2024 COGS as a percentage of revenue (COGS % margin)? Use only the income statement figures."
+ },
+ {
+  "id": "M21",
+  "company": "TSLA",
+  "metric": "ROA",
+  "gold": 5.8,
+  "question": "What is Tesla's FY2024 return on assets (ROA = net income / total assets), as a percentage?"
+ },
+ {
+  "id": "M22",
+  "company": "TSLA",
+  "metric": "current_ratio",
+  "gold": 2.02,
+  "question": "What is Tesla's FY2024 current ratio (current assets / current liabilities)?"
+ }
+]

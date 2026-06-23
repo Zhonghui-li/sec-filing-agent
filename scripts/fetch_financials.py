@@ -37,6 +37,16 @@ METRICS = {
     "stockholders_equity": (["StockholdersEquity",
                             "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"], "instant"),
     "cash":               (["CashAndCashEquivalentsAtCarryingValue"], "instant"),
+    # added for FinanceBench-style derived metrics (COGS%, DPO, payout ratio, ROA, current ratio):
+    "cost_of_revenue":    (["CostOfRevenue", "CostOfGoodsAndServicesSold",
+                            "CostOfGoodsSold"], "duration"),
+    "dividends_paid":     (["PaymentsOfDividendsCommonStock", "PaymentsOfDividends"], "duration"),
+    "accounts_payable":   (["AccountsPayableCurrent",
+                            "AccountsPayableTradeCurrent"], "instant"),
+    "inventory":          (["InventoryNet"], "instant"),
+    "current_assets":     (["AssetsCurrent"], "instant"),
+    "current_liabilities": (["LiabilitiesCurrent"], "instant"),
+    "long_term_debt":     (["LongTermDebtNoncurrent", "LongTermDebt"], "instant"),
 }
 
 OUT = Path(__file__).resolve().parent.parent / "data" / "financials.json"

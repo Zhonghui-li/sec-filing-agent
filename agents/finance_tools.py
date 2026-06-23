@@ -27,6 +27,17 @@ _ALIASES = {
     "stockholders equity": "stockholders_equity", "shareholders equity": "stockholders_equity",
     "equity": "stockholders_equity",
     "cash": "cash", "cash and cash equivalents": "cash",
+    "cost of revenue": "cost_of_revenue", "cost of goods sold": "cost_of_revenue",
+    "cogs": "cost_of_revenue", "cost of sales": "cost_of_revenue",
+    "dividends paid": "dividends_paid", "dividends": "dividends_paid",
+    "total dividends": "dividends_paid", "cash dividends": "dividends_paid",
+    "accounts payable": "accounts_payable", "trade payables": "accounts_payable",
+    "inventory": "inventory", "inventories": "inventory",
+    "current assets": "current_assets", "total current assets": "current_assets",
+    "current liabilities": "current_liabilities",
+    "total current liabilities": "current_liabilities",
+    "long term debt": "long_term_debt", "long-term debt": "long_term_debt",
+    "debt": "long_term_debt",
 }
 
 
