@@ -126,6 +126,20 @@ Buffer" — confirms it isn't needed.)
 > eval and fixed; several "failures" were scorer bugs, not agent bugs — distinguishing the two
 > is the core skill.
 
+**External validation — FinanceBench (Patronus AI).** Beyond the self-authored set, the agent
+is checked against [FinanceBench](https://github.com/patronus-ai/financebench), a benchmark we
+did *not* write (`eval/financebench/`). It covers ~40 companies / many years vs. our 7 latest, so
+two tracks:
+- **Abstain calibration** — the 13 real FinanceBench questions on our companies. Most ask for
+  metrics/years outside our coverage, so the correct behavior is to abstain, not guess:
+  **12/13 handled safely** (correct answer or correct abstention).
+- **In-coverage accuracy** — FinanceBench-style derived metrics (COGS %, ROA, current ratio,
+  payout ratio) on companies/years we cover, with gold computed from our XBRL data: **22/22**.
+
+Supporting this extended the XBRL extractor with 7 base metrics (cost of revenue, dividends,
+payables, inventory, current assets/liabilities, debt) so the ratios compute — a
+**benchmark-driven coverage fix**, not a one-off.
+
 ## Observability (audit trail)
 
 Optional Langfuse tracing (`agents/observability.py`, key-gated — a no-op without keys).
