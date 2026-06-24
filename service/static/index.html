@@ -166,8 +166,16 @@ fileInput.addEventListener('change', async () => {
     const stats = d.n_facts + ' figures · ' + d.n_chars.toLocaleString() + ' chars parsed';
     const cap = d.page_cap ? ' <span class="hint">(demo parses the first ' + d.page_cap +
       ' pages; production parses the full document asynchronously)</span>' : '';
+    // layer-1 parse-quality signal
+    let pq = '';
+    if (d.parse_quality) {
+      pq = d.parse_quality.status === 'ok'
+        ? '<div class="sources">✓ parse quality: looks healthy</div>'
+        : '<div class="sources" style="color:#b06a00">⚠ parse quality: please review — ' +
+          esc((d.parse_quality.warnings || []).join('; ')) + '</div>';
+    }
     const cut = d.truncated ? '\n\n…(preview truncated — parsed text is searchable)' : '';
-    const html = '📄 Uploaded <b>' + esc(d.filename) + '</b> (' + stats + ').' + cap +
+    const html = '📄 Uploaded <b>' + esc(d.filename) + '</b> (' + stats + ').' + cap + pq +
       ' You can now ask about it.' +
       '<details class="parsed"><summary>show what was parsed (docling)</summary>' +
       (factsTable || '') +

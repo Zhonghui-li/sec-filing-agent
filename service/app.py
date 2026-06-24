@@ -165,6 +165,15 @@ async def upload(request: Request, file: UploadFile = File(...), session_id: str
             os.unlink(tmp_path)
         raise
 
+    # layer-1 parse-quality signal printed by the ingest job (machine-readable line)
+    parse_quality = None
+    for line in proc.stdout.splitlines():
+        if line.startswith("PARSE_QUALITY="):
+            try:
+                parse_quality = json.loads(line[len("PARSE_QUALITY="):])
+            except Exception:
+                pass
+
     # keep the original file so its citations can link back to the source page (method 乙)
     user_dir = os.path.join(_UPLOAD_DIR, session_id)
     os.makedirs(user_dir, exist_ok=True)
@@ -192,7 +201,7 @@ async def upload(request: Request, file: UploadFile = File(...), session_id: str
     return {"filename": file.filename, "doc_id": doc_id,
             "parsed_markdown": preview, "truncated": len(full) > PREVIEW_CHARS,
             "n_chars": len(full), "n_pages": n_pages, "facts": facts, "n_facts": len(facts),
-            "page_cap": _MAX_PAGES}
+            "page_cap": _MAX_PAGES, "parse_quality": parse_quality}
 
 
 @app.get("/file/{doc_id}")

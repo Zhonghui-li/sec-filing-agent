@@ -13,6 +13,7 @@ Usage (from repo root):
       ingest/.venv/bin/python ingest/ingest.py --user demo --file path/to/report.pdf
 """
 import argparse
+import json
 import os
 import re
 import uuid
@@ -73,10 +74,20 @@ def _parse_value(s: str):
     return -v if neg else v
 
 
+def _clean_label(s):
+    """Strip parsing noise from a row/column label: dot-leaders (the "Revenue . . . ." filler
+    PDFs use to align columns) and the unit caption that often bleeds into a period header
+    (e.g. "(in $ millions).2023" -> "2023"). Keeps the meaningful label for clean citations."""
+    s = re.sub(r"[.…\s]{3,}", " ", s or "")          # collapse dot-leaders / ellipses
+    s = re.sub(r"\(in[^)]*\)\.?", "", s, flags=re.I)       # drop "(in $ millions)" unit caption
+    return s.strip(" .…")
+
+
 def extract_table_facts(doc):
     """docling tables -> [(page, metric, period, value, raw, cell)]. First column is the metric
     (row label); each remaining numeric column is a period. Values stay exact; non-numeric cells
-    are skipped. This is the structured source the agent grounds numbers in (mirrors XBRL)."""
+    are skipped. Labels are cleaned of parsing noise. This is the structured source the agent
+    grounds numbers in (mirrors XBRL)."""
     facts = []
     for t in doc.tables:
         df = t.export_to_dataframe(doc=doc)
@@ -89,7 +100,7 @@ def extract_table_facts(doc):
         metric_col = df.columns[0]
         period_cols = list(df.columns[1:])
         for _, row in df.iterrows():
-            metric = str(row[metric_col]).strip()
+            metric = _clean_label(str(row[metric_col]))
             if not metric:
                 continue
             for pcol in period_cols:
@@ -97,9 +108,37 @@ def extract_table_facts(doc):
                 v = _parse_value(raw)
                 if v is None:
                     continue
-                facts.append((page, metric, str(pcol).strip(), v, raw,
-                              f"row '{metric}' / col '{pcol}'"))
+                period = _clean_label(str(pcol))
+                facts.append((page, metric, period, v, raw,
+                              f"row '{metric}' / col '{period}'"))
     return facts
+
+
+def parse_quality(markdown, facts, n_pages):
+    """Layer-1 parse-quality self-checks — deterministic, no ground truth needed. Flags when a
+    parse is likely unreliable so it can be reviewed (the production pattern: know when to trust
+    an extraction). Returns {status, warnings, signals}. status: ok | review.
+
+    Checks: (1) coverage — chars/page, catches scanned/encrypted/image-only PDFs that parse to
+    almost nothing; (2) extraction hallucination — every extracted figure's digits must appear
+    in the parsed text (a parser-introduced number is a silent RAG killer); (3) figures present
+    when tables exist."""
+    warnings = []
+    chars_per_page = len(markdown) / max(n_pages or 1, 1)
+    # (1) coverage
+    if chars_per_page < 200:
+        warnings.append(f"very low text density ({chars_per_page:.0f} chars/page) — the "
+                        "document may be scanned, image-only, or failed to parse")
+    # (2) extraction hallucination: each fact's digits must be in the text
+    text_digits = re.sub(r"[^\d]", "", markdown)
+    unfound = [raw for (_, _, _, _, raw, _) in facts
+               if re.sub(r"[^\d]", "", raw) and re.sub(r"[^\d]", "", raw) not in text_digits]
+    if unfound:
+        warnings.append(f"{len(unfound)} extracted figure(s) not found in the parsed text "
+                        "(possible extraction error)")
+    signals = {"chars_per_page": round(chars_per_page), "n_facts": len(facts),
+               "unfound_figures": len(unfound)}
+    return {"status": "review" if warnings else "ok", "warnings": warnings, "signals": signals}
 
 
 def _vec(v):
@@ -140,6 +179,13 @@ def main():
             chunks.append((page, piece))
     print(f"{len(chunks)} narrative chunks, {len(facts)} table facts; embedding ({EMB_MODEL})...")
 
+    full_md = "\n".join(t for _, t in pages)
+    n_pages = args.max_pages
+    pq = parse_quality(full_md, facts, n_pages)
+    print(f"parse-quality: {pq['status']} {pq['signals']}")
+    for w in pq["warnings"]:
+        print(f"  ! {w}")
+
     emb = OpenAIEmbeddings(model=EMB_MODEL)
     vectors = emb.embed_documents([c[1] for c in chunks])
 
@@ -165,6 +211,8 @@ def main():
         nfacts = cur.fetchone()[0]
         print(f"ingested doc_id={doc_id} for user={args.user}; "
               f"{nchunks} chunks, {nfacts} table facts for this user.")
+    # machine-readable line for the calling service to surface the parse-quality signal
+    print("PARSE_QUALITY=" + json.dumps(pq))
 
 
 if __name__ == "__main__":
