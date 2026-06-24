@@ -36,8 +36,36 @@ _MAX_PAGES = int(os.environ.get("UPLOAD_MAX_PAGES", "15"))
 # original uploads are kept so the citation can link back to the source page (auditability).
 # local demo: a folder on disk; production would use object storage (GCS/S3) + encryption.
 _UPLOAD_DIR = os.environ.get("UPLOAD_DIR", os.path.join(_ROOT, "ingest", "uploads"))
+# Optional Google sign-in: set GOOGLE_CLIENT_ID to require login (the user_id then becomes the
+# verified email, so data is isolated per account and persists across sessions). Unset = the
+# demo stays open with an anonymous per-browser session_id (current behavior, fully testable).
+_GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
 _agent = None
-_user_agents = {}   # session_id -> agent (built lazily once a user has uploaded docs)
+_user_agents = {}   # user_id -> agent (built lazily once a user has uploaded docs)
+
+
+def _verify_google(token):
+    """Verify a Google ID token (JWT) and return the user's email, or None if invalid."""
+    if not token:
+        return None
+    try:
+        from google.oauth2 import id_token
+        from google.auth.transport import requests as g_requests
+        info = id_token.verify_oauth2_token(token, g_requests.Request(), _GOOGLE_CLIENT_ID)
+        return info.get("email") if info.get("email_verified") else None
+    except Exception:
+        return None
+
+
+def _user_id(token, session_id):
+    """The effective per-user id. With Google sign-in on: the verified email (raises 401 if the
+    token is missing/invalid). Off: the anonymous browser session_id."""
+    if _GOOGLE_CLIENT_ID:
+        email = _verify_google(token)
+        if not email:
+            raise HTTPException(401, "Sign-in required.")
+        return email
+    return session_id
 
 
 _ACC = re.compile(r"\d{10}-\d{2}-\d{6}")
@@ -111,13 +139,20 @@ app = FastAPI(title="SEC Filing Agent", lifespan=lifespan)
 class Query(BaseModel):
     question: str
     history: Optional[List[dict]] = None   # prior turns [{role, content}] for multi-turn (Model B)
-    session_id: Optional[str] = None       # browser session -> isolates this user's uploaded docs
+    session_id: Optional[str] = None       # anonymous browser session (when sign-in is off)
+    token: Optional[str] = None            # Google ID token (when sign-in is on)
 
 
-def _agent_for(session_id):
-    """Use the per-session agent (with the user's private-doc tools) if they've uploaded
+def _agent_for(user_id):
+    """Use the per-user agent (with the user's private-doc tools) if they've uploaded
     anything; otherwise the shared public-only agent."""
-    return _user_agents.get(session_id, _agent) if session_id else _agent
+    return _user_agents.get(user_id, _agent) if user_id else _agent
+
+
+@app.get("/auth/config")
+def auth_config():
+    """Tells the frontend whether to show a Google sign-in screen, and the client id to use."""
+    return {"auth_required": bool(_GOOGLE_CLIENT_ID), "client_id": _GOOGLE_CLIENT_ID}
 
 
 @app.post("/ask")
@@ -128,12 +163,13 @@ def ask(q: Query, request: Request):
         raise HTTPException(429, "Too many requests — please wait a minute and try again.")
     if not check_daily_quota():
         raise HTTPException(429, "This demo has reached its daily limit. Please try again tomorrow.")
+    user_id = _user_id(q.token, q.session_id)
     # sync def -> FastAPI runs it in a threadpool, so the blocking LangGraph/LLM calls
     # don't block the event loop
-    out = run_agent(q.question, agent=_agent_for(q.session_id), history=q.history)
+    out = run_agent(q.question, agent=_agent_for(user_id), history=q.history)
     return {"answer": out["answer"], "trace": out["trace"], "tools_used": out["tools_used"],
             "sources": _sources(out["answer"], out["tool_outputs"]),
-            "doc_sources": _private_sources(out["tool_outputs"], q.session_id)}
+            "doc_sources": _private_sources(out["tool_outputs"], user_id)}
 
 
 def _remove_prior_uploads(session_id, filename):
@@ -160,12 +196,14 @@ def _remove_prior_uploads(session_id, filename):
 
 
 @app.post("/upload")
-async def upload(request: Request, file: UploadFile = File(...), session_id: str = Form(...)):
+async def upload(request: Request, file: UploadFile = File(...),
+                 session_id: str = Form(None), token: str = Form(None)):
     """Bring-your-own-data: ingest a user's document into their private space, then return a
     preview of what docling parsed (markdown + extracted table facts) so the parse is visible.
     Ingestion runs in the isolated docling venv via subprocess — the service never imports it."""
     if not check_rate_limit(_client_ip(request)):
         raise HTTPException(429, "Too many requests — please wait a minute and try again.")
+    session_id = _user_id(token, session_id)   # verified email if sign-in is on
     data = await file.read()
     if len(data) > _MAX_UPLOAD_BYTES:
         raise HTTPException(400, "File too large (max 10 MB for this demo).")

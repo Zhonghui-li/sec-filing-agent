@@ -49,10 +49,29 @@
                 white-space:pre-wrap; line-height:1.4; max-height:320px; font-size:11.5px; }
   .parsed table { border-collapse:collapse; margin-top:6px; font-size:11.5px; }
   .parsed td, .parsed th { border:1px solid #d7e3ee; padding:2px 6px; text-align:left; }
+  header .userchip { float:right; font-weight:400; font-size:13px; color:#9fb3c8; }
+  header .userchip a { color:#48d597; cursor:pointer; margin-left:8px; }
+  #login { position:fixed; inset:0; background:var(--bg); z-index:50; display:none;
+           flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px; }
+  #login h1 { color:var(--dark); margin:0 0 6px; font-size:24px; }
+  #login h1 span { color:var(--accent); }
+  #login p { color:#5a6b7b; max-width:440px; line-height:1.6; margin:0 0 24px; }
+  #login .gbtn { display:flex; justify-content:center; }
+  #app { display:none; }
 </style>
 </head>
 <body>
+<!-- sign-in screen (only shown when GOOGLE_CLIENT_ID is configured server-side) -->
+<div id="login">
+  <h1>📑 SEC <span>Filing Agent</span></h1>
+  <p>A finance-grade agent over SEC 10-K filings and your own documents. Sign in to continue —
+     your uploaded documents stay private to your account.</p>
+  <div class="gbtn" id="gbtn"></div>
+</div>
+
+<div id="app">
 <header>📑 SEC <span>Filing Agent</span>
+  <span class="userchip" id="userchip"></span>
   <small>Ask about AAPL · MSFT · NVDA · AMZN · JPM · TSLA · KO — exact XBRL numbers, cited to the filing</small>
 </header>
 <div id="chat">
@@ -75,14 +94,21 @@ You can also upload your own document (PDF) — an internal statement or a priva
   <input id="q" autocomplete="off" placeholder="Ask about a company's 10-K, or your uploaded file…" />
   <button id="send" type="submit">Ask</button>
 </form>
+</div><!-- /#app -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 const chat = document.getElementById('chat'), form = document.getElementById('f'),
       input = document.getElementById('q'), send = document.getElementById('send');
 let history = [];  // [{role, content}] — sent each turn so the agent has multi-turn memory (Model B)
-// stable per-browser session id -> isolates this user's uploaded documents
+// anonymous per-browser session id (used when Google sign-in is OFF)
 const sessionId = (() => { let s = localStorage.getItem('sid');
   if (!s) { s = 'sess_' + Math.random().toString(36).slice(2,14); localStorage.setItem('sid', s); }
   return s; })();
+let googleToken = null, userEmail = null;   // set after Google sign-in (when ON)
+// identity sent with each request: a Google token if signed in, else the anonymous session.
+// `who` is the id used for /file deep-links and per-user isolation (email or session).
+function idFields(){ return googleToken ? { token: googleToken } : { session_id: sessionId }; }
+function who(){ return userEmail || sessionId; }
 function add(role, html) {
   const m = document.createElement('div'); m.className = 'msg ' + role;
   m.innerHTML = '<div class="bubble">' + html + '</div>'; chat.appendChild(m);
@@ -104,7 +130,7 @@ form.addEventListener('submit', async (e) => {
   const wait = add('bot', '<span class="hint">Looking it up…</span>');
   try {
     const r = await fetch('/ask', { method:'POST', headers:{'Content-Type':'application/json'},
-                                    body: JSON.stringify({ question: q, history, session_id: sessionId }) });
+                                    body: JSON.stringify({ question: q, history, ...idFields() }) });
     if (!r.ok) { wait.querySelector('.bubble').innerHTML = '<span class="hint">' +
                  (r.status===429 ? 'Demo limit reached — please try again later.' : 'Something went wrong.') +
                  '</span>'; send.disabled=false; return; }
@@ -123,7 +149,7 @@ form.addEventListener('submit', async (e) => {
       const items = d.doc_sources.map(s => {
         let pg = s.page!=null ? ' · p.'+s.page : '';
         if (s.page!=null && s.doc_id) {  // deep-link to the original PDF page (method 乙)
-          const url = '/file/' + s.doc_id + '?session_id=' + encodeURIComponent(sessionId) +
+          const url = '/file/' + s.doc_id + '?session_id=' + encodeURIComponent(who()) +
                       '#page=' + s.page;
           pg = ' · <a href="' + url + '" target="_blank" rel="noopener">p.' + s.page + '</a>';
         }
@@ -148,7 +174,8 @@ const fileInput = document.getElementById('file'), upstatus = document.getElemen
 fileInput.addEventListener('change', async () => {
   const f = fileInput.files[0]; if (!f) return;
   upstatus.textContent = 'Parsing ' + f.name + '…';
-  const fd = new FormData(); fd.append('file', f); fd.append('session_id', sessionId);
+  const fd = new FormData(); fd.append('file', f);
+  if (googleToken) fd.append('token', googleToken); else fd.append('session_id', sessionId);
   try {
     const r = await fetch('/upload', { method:'POST', body: fd });
     if (!r.ok) { upstatus.textContent = (r.status===429 ? 'Demo limit reached.' : 'Upload failed.'); return; }
@@ -185,6 +212,35 @@ fileInput.addEventListener('change', async () => {
   } catch (err) { upstatus.textContent = 'Network error.'; }
   fileInput.value = '';
 });
+
+// --- Google sign-in (only when the server has GOOGLE_CLIENT_ID configured) ---
+function decodeEmail(jwt){ try { return JSON.parse(atob(jwt.split('.')[1])).email; } catch(e){ return null; } }
+function showApp(){ document.getElementById('login').style.display='none';
+                    document.getElementById('app').style.display='block'; }
+function onGoogle(resp){
+  googleToken = resp.credential; userEmail = decodeEmail(googleToken);
+  localStorage.setItem('gtok', googleToken);
+  document.getElementById('userchip').innerHTML =
+    esc(userEmail || '') + '<a id="logout">sign out</a>';
+  document.getElementById('logout').onclick = () => {
+    localStorage.removeItem('gtok'); location.reload(); };
+  showApp();
+}
+(async () => {
+  let cfg; try { cfg = await (await fetch('/auth/config')).json(); } catch(e){ cfg = {auth_required:false}; }
+  if (!cfg.auth_required) { showApp(); return; }   // sign-in off -> open demo
+  document.getElementById('login').style.display = 'flex';
+  // reuse a stored token if still valid (skip the click)
+  const saved = localStorage.getItem('gtok');
+  if (saved && decodeEmail(saved)) { onGoogle({ credential: saved }); }
+  const init = () => {
+    if (!window.google || !google.accounts) { return setTimeout(init, 200); }
+    google.accounts.id.initialize({ client_id: cfg.client_id, callback: onGoogle });
+    google.accounts.id.renderButton(document.getElementById('gbtn'),
+      { theme:'filled_blue', size:'large', text:'signin_with' });
+  };
+  init();
+})();
 </script>
 </body>
 </html>
