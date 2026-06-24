@@ -70,7 +70,18 @@ the **same finance bar**, applied to data that has no XBRL.
 - **Cell-level, click-to-source citations.** Each figure cites `filename · page · row/col`, and the
   page **deep-links to the original PDF** (`/file/{doc_id}#page=N`) — the auditable trail a regulated
   domain needs (mirrors FinChat's "click a number, see the page").
-- **Per-user isolation.** A user only ever retrieves, and can only open, their own documents.
+- **Per-user isolation, with optional Google sign-in.** A user only ever retrieves, and can only
+  open, their own documents. Set `GOOGLE_CLIENT_ID` to require sign-in (the user_id becomes the
+  verified email, so documents persist across sessions); unset, the demo stays open with an
+  anonymous browser session.
+- **Multi-document scoping** (the *indistinguishable-multi-documents problem*: standard RAG mixes
+  chunks across files, which in finance means attributing one file's number to another). Solved
+  with **metadata filtering**: a UI document selector hard-scopes lookups to one file, the agent
+  can also pass a `document` hint inferred from the question, and across-all answers tag every
+  figure with its source file — so figures never get cross-attributed.
+- **Parse-quality self-checks.** Deterministic, no-ground-truth signals (text-density / coverage,
+  and an extraction-hallucination check that every figure's digits appear in the parsed text) flag
+  a parse for review — the production pattern of knowing when to trust an extraction.
 - **Dependency-isolated ingestion.** Docling pulls heavyweight, conflicting deps, so ingestion runs
   in a **separate venv** (`ingest/`) and the agent never imports it; the two decouple through pgvector
   — mirroring the public path. See [`ingest/README.md`](ingest/README.md).
@@ -163,6 +174,9 @@ A FastAPI service (`service/`) exposes the agent over HTTP, with in-memory abuse
 
 - **`/ask`** + a static chat UI (`service/static/`) — renders the answer, the **clickable
   EDGAR citations**, and a collapsible **audit trail** of the tool calls.
+- **Optional Google sign-in** (`GOOGLE_CLIENT_ID`) keeps our own UI (audit trail, sources, upload
+  preview, click-to-source) while adding accounts: documents are isolated per email and persist
+  across logins. Off by default (anonymous session), so the demo stays open.
 - **`/upload`** + **`/file/{doc_id}`** — upload a document (parsed in the isolated ingest venv),
   see what Docling extracted, then ask about it; citations deep-link back to the source page.
 - **Multi-turn memory** — the client sends the prior conversation each turn and the agent
