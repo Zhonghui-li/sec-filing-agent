@@ -141,23 +141,26 @@ class Query(BaseModel):
     history: Optional[List[dict]] = None   # prior turns [{role, content}] for multi-turn (Model B)
     session_id: Optional[str] = None       # anonymous browser session (when sign-in is off)
     token: Optional[str] = None            # Google ID token (when sign-in is on)
+    doc: Optional[str] = None              # selected document to scope to (A); None = all docs
 
 
-def _agent_for(user_id):
+def _agent_for(user_id, scope_doc=None):
     """Use the per-user agent (with the user's private-doc tools) if they've uploaded anything;
-    otherwise the shared public-only agent. The per-user agent is cached in memory and built on
-    upload, but also lazily rebuilt here if the user has docs in the DB but no cached agent — so
-    a returning user (new login / after a restart) can still query their persisted documents."""
+    otherwise the shared public-only agent. `scope_doc` (A) restricts lookups to one selected
+    document. Agents are cached by (user_id, scope_doc); lazily rebuilt if not cached but the
+    user has docs in the DB — so a returning user (new login / restart) can still query their
+    persisted documents."""
     if not user_id:
         return _agent
-    if user_id in _user_agents:
-        return _user_agents[user_id]
+    key = (user_id, scope_doc)
+    if key in _user_agents:
+        return _user_agents[key]
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
         cur.execute("select 1 from user_chunks where user_id=%s limit 1", (user_id,))
         has_docs = cur.fetchone() is not None
     if has_docs:
-        _user_agents[user_id] = build_agent(user_id=user_id)
-        return _user_agents[user_id]
+        _user_agents[key] = build_agent(user_id=user_id, scope_doc=scope_doc)
+        return _user_agents[key]
     return _agent
 
 
@@ -194,7 +197,7 @@ def ask(q: Query, request: Request):
     user_id = _user_id(q.token, q.session_id)
     # sync def -> FastAPI runs it in a threadpool, so the blocking LangGraph/LLM calls
     # don't block the event loop
-    out = run_agent(q.question, agent=_agent_for(user_id), history=q.history)
+    out = run_agent(q.question, agent=_agent_for(user_id, scope_doc=q.doc), history=q.history)
     return {"answer": out["answer"], "trace": out["trace"], "tools_used": out["tools_used"],
             "sources": _sources(out["answer"], out["tool_outputs"]),
             "doc_sources": _private_sources(out["tool_outputs"], user_id)}
@@ -271,8 +274,10 @@ async def upload(request: Request, file: UploadFile = File(...),
     os.makedirs(user_dir, exist_ok=True)
     os.replace(tmp_path, os.path.join(user_dir, doc_id + suffix))
 
-    # rebuild this session's agent so it knows about the new document
-    _user_agents[session_id] = build_agent(user_id=session_id)
+    # the user's doc list changed: drop all their cached agents (any scope) so they rebuild
+    # with the new document; _agent_for lazily reconstructs on the next request
+    for k in [k for k in _user_agents if k[0] == session_id]:
+        del _user_agents[k]
 
     # read back what was parsed, for a visible preview
     PREVIEW_CHARS = 3000

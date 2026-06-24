@@ -131,29 +131,37 @@ search_my_documents ONLY for non-numeric narrative (commentary, risks, descripti
 [filename · page]. Still abstain off_topic for non-analysis requests (advice, forecasts, writing)."""
 
 
-def _user_docs_tools(user_id: str):
+def _user_docs_tools(user_id: str, scope_doc: str = None):
     """Bind the private-document tools to a user_id via closures — the user_id comes from the
-    request context, NOT the LLM, so a user only ever touches their own uploaded documents."""
+    request context, NOT the LLM, so a user only ever touches their own uploaded documents.
+    `scope_doc` (A): an explicit document the user selected in the UI; when set it HARD-filters
+    every lookup to that file (overrides any LLM hint), the safe default for multi-document use.
+    The tools also accept an optional `document` arg (B) the LLM may pass when the question names
+    a file/company, to disambiguate when the user hasn't picked one."""
     from langchain_core.tools import tool as _tool
     from agents.user_docs_retrieval import (search_my_documents as _smd,
                                             get_my_financials as _gmf)
 
-    @_tool
-    def search_my_documents(query: str) -> str:
-        """Search the USER'S OWN uploaded private documents (e.g. an internal financial
-        statement or memo they provided) for QUALITATIVE passages, each tagged [filename · page]
-        to cite. Use for narrative/risk/commentary in a file the user uploaded — NOT for exact
-        numbers (use get_my_financials for those)."""
-        return _smd(query, user_id=user_id)
+    def _filter(document):
+        return scope_doc or document   # explicit UI selection (A) wins over the LLM hint (B)
 
     @_tool
-    def get_my_financials(metric: str, period: str = None) -> str:
+    def search_my_documents(query: str, document: str = None) -> str:
+        """Search the USER'S OWN uploaded private documents for QUALITATIVE passages, each tagged
+        [filename · page] to cite. Use for narrative/risk/commentary in an uploaded file — NOT for
+        exact numbers (use get_my_financials). If the question is about a SPECIFIC uploaded file,
+        pass its name (or the company) as `document` to search only that file."""
+        return _smd(query, user_id=user_id, doc_filter=_filter(document))
+
+    @_tool
+    def get_my_financials(metric: str, period: str = None, document: str = None) -> str:
         """Exact financial numbers from the TABLES in the user's uploaded documents (the
         private-data analogue of get_financials). `metric` matches a table row label (e.g.
-        "net income"); optional `period` matches a column (e.g. "FY2025"). Returns the exact
-        value with cell-level provenance. Use this for ANY number from an uploaded document —
-        never read a figure out of search_my_documents prose."""
-        return _gmf(metric, user_id=user_id, period=period)
+        "net income"); optional `period` matches a column (e.g. "FY2025"). Use this for ANY number
+        from an uploaded document — never read a figure out of search_my_documents prose. If the
+        question is about a SPECIFIC uploaded file, pass its name (or the company) as `document`
+        so the figure comes from the right file (important when several files are uploaded)."""
+        return _gmf(metric, user_id=user_id, period=period, doc_filter=_filter(document))
 
     return [search_my_documents, get_my_financials]
 
@@ -170,16 +178,26 @@ def _uploaded_doc_names(user_id: str):
         return []
 
 
-def build_agent(model: str = None, temperature: float = 0.0, user_id: str = None):
+def build_agent(model: str = None, temperature: float = 0.0, user_id: str = None,
+                scope_doc: str = None):
     model = model or os.environ.get("GEN_LLM_MODEL", "gpt-4o-mini")
     llm = ChatOpenAI(model=model, temperature=temperature)
     # only add the private-docs tools when a user is in scope, so eval/public demo are unchanged
     if user_id:
-        tools = TOOLS + _user_docs_tools(user_id)
+        tools = TOOLS + _user_docs_tools(user_id, scope_doc=scope_doc)
         names = _uploaded_doc_names(user_id)
         have = (" The user has uploaded these documents: " + ", ".join(names) +
                 ". Treat their subjects as IN scope and answerable from those documents."
                 if names else "")
+        if scope_doc:
+            have += (f" The user has SELECTED the document '{scope_doc}' and is asking about it. "
+                     f"Treat every financial question as being about this document: use "
+                     f"get_my_financials / search_my_documents for it, and do NOT ask which "
+                     f"company they mean.")
+        elif len(names) > 1:
+            have += (" Several documents are uploaded: when a question is about a specific one, "
+                     "pass its name as the `document` argument so figures come from the right file, "
+                     "and always make clear which file each figure is from.")
         prompt = SYSTEM_PROMPT + USER_DOCS_PROMPT + have
     else:
         tools, prompt = TOOLS, SYSTEM_PROMPT

@@ -39,17 +39,27 @@ def _get_reranker():
     return _reranker or None
 
 
-def search_my_documents(query: str, user_id: str, k: int = 5) -> str:
+def _doc_clause(doc_filter):
+    """Build a SQL fragment + params to scope a query to one document. doc_filter is a doc_id
+    (exact) or a filename substring; None = all of the user's documents (metadata filtering —
+    the fix for the 'indistinguishable multi-documents problem')."""
+    if not doc_filter:
+        return "", []
+    return " and (doc_id = %s or lower(filename) like %s)", [doc_filter, f"%{doc_filter.lower()}%"]
+
+
+def search_my_documents(query: str, user_id: str, k: int = 5, doc_filter: str = None) -> str:
     """Search the USER'S OWN uploaded documents (private files they provided, e.g. an internal
     financial statement or memo) for relevant passages. Returns passages tagged
     [filename · page] so you can cite the source. Only this user's documents are searched.
     Use this when the question is about a file the user uploaded, not a public SEC filing."""
     qv = _embed(query)
     kk = max(k * 3, k)
+    clause, dparams = _doc_clause(doc_filter)
     sql = ("select filename,page,chunk_text,embedding<=>%s::vector as d "
-           "from user_chunks where user_id=%s order by d limit %s")
+           "from user_chunks where user_id=%s" + clause + " order by d limit %s")
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
-        cur.execute(sql, (qv, user_id, kk))
+        cur.execute(sql, [qv, user_id, *dparams, kk])
         rows = cur.fetchall()
 
     docs = [Document(page_content=r[2], metadata={"filename": r[0], "page": r[1]}) for r in rows]
@@ -68,19 +78,20 @@ def search_my_documents(query: str, user_id: str, k: int = 5) -> str:
     return "\n\n".join(out)
 
 
-def get_my_financials(metric: str, user_id: str, period: str = None) -> str:
+def get_my_financials(metric: str, user_id: str, period: str = None, doc_filter: str = None) -> str:
     """Exact numbers from the TABLES in the user's uploaded documents (the private-data analogue
     of get_financials/XBRL). Matches the metric against table row labels; optional `period`
     (e.g. "FY2025") matches the column. Returns exact value + cell provenance, never prose.
     Returns the available metrics if no match, so the caller can retry."""
     like = f"%{metric.strip().lower()}%"
+    clause, dparams = _doc_clause(doc_filter)
     sql = ("select filename,page,metric,period,value,raw,cell from user_facts "
-           "where user_id=%s and lower(metric) like %s")
-    params = [user_id, like]
+           "where user_id=%s and lower(metric) like %s" + clause)
+    params = [user_id, like, *dparams]
     if period:
         sql += " and lower(period) like %s"
         params.append(f"%{period.strip().lower()}%")
-    sql += " order by metric, period"
+    sql += " order by filename, metric, period"
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
         cur.execute(sql, params)
         rows = cur.fetchall()

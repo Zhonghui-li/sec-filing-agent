@@ -88,6 +88,10 @@ You can also upload your own document (PDF) — an internal statement or a priva
 <div id="uploadbar">
   <label for="file">📎 Upload a document</label>
   <input id="file" type="file" accept=".pdf,.docx,.xlsx" style="display:none" />
+  <select id="docscope" style="display:none; padding:6px 8px; border:1px solid #cfd6dd;
+          border-radius:8px; font-size:13px; color:#0b2239;">
+    <option value="">Ask across all my documents</option>
+  </select>
   <span id="upstatus"></span>
 </div>
 <form id="f">
@@ -130,7 +134,8 @@ form.addEventListener('submit', async (e) => {
   const wait = add('bot', '<span class="hint">Looking it up…</span>');
   try {
     const r = await fetch('/ask', { method:'POST', headers:{'Content-Type':'application/json'},
-                                    body: JSON.stringify({ question: q, history, ...idFields() }) });
+                                    body: JSON.stringify({ question: q, history,
+                                      doc: document.getElementById('docscope').value || null, ...idFields() }) });
     if (!r.ok) { wait.querySelector('.bubble').innerHTML = '<span class="hint">' +
                  (r.status===429 ? 'Demo limit reached — please try again later.' : 'Something went wrong.') +
                  '</span>'; send.disabled=false; return; }
@@ -209,6 +214,7 @@ fileInput.addEventListener('change', async () => {
       '<div style="margin-top:6px">Parsed text' + (d.truncated ? ' (first part)' : '') + ':</div>' +
       '<pre>' + esc(d.parsed_markdown || '') + esc(cut) + '</pre></details>';
     add('bot', html);
+    loadMyDocs(false);   // refresh the doc-scope selector now that a new document exists
   } catch (err) { upstatus.textContent = 'Network error.'; }
   fileInput.value = '';
 });
@@ -217,18 +223,29 @@ fileInput.addEventListener('change', async () => {
 function decodeEmail(jwt){ try { return JSON.parse(atob(jwt.split('.')[1])).email; } catch(e){ return null; } }
 function showApp(){ document.getElementById('login').style.display='none';
                     document.getElementById('app').style.display='block';
-                    loadMyDocs(); }
+                    loadMyDocs(true); }
 // show the user's persisted documents so they know their uploads are still there after re-login
-async function loadMyDocs(){
+async function loadMyDocs(showMsg){
   try {
     const r = await fetch('/mydocs', { method:'POST', headers:{'Content-Type':'application/json'},
                                        body: JSON.stringify(idFields()) });
     const d = await r.json();
-    if (d.documents && d.documents.length) {
+    populateDocScope(d.documents || []);
+    if (showMsg && d.documents && d.documents.length) {
       add('bot', '📂 Your documents (still here from before): <b>' +
           d.documents.map(esc).join('</b>, <b>') + '</b>. Ask about them anytime.');
     }
   } catch(e) {}
+}
+// the doc scope selector (A): pick one document to restrict questions to, or all of them.
+// shown only when 2+ documents exist (with one doc there's nothing to disambiguate).
+function populateDocScope(docs){
+  const sel = document.getElementById('docscope');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Ask across all my documents</option>' +
+    docs.map(f => '<option value="' + esc(f) + '">Only: ' + esc(f) + '</option>').join('');
+  if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+  sel.style.display = docs.length >= 2 ? '' : 'none';
 }
 function onGoogle(resp){
   googleToken = resp.credential; userEmail = decodeEmail(googleToken);
