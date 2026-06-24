@@ -42,11 +42,20 @@ via `compute`, qualitative context via `search_filings`, and `abstain` when it s
 
 **Design principle — text vs numbers.** Unstructured narrative (risk factors, MD&A) goes
 through **retrieval** (`search_filings`, pgvector + reranker); exact figures go through
-**tools** that read **XBRL** (`get_financials`) and a deterministic `compute` (YoY, ratios).
-The LLM never does arithmetic on financials, and never reads a number out of filing prose.
+**tools** that read **XBRL** (`get_financials`), a deterministic `compute` (YoY, diffs), and
+`get_ratio` for standard ratios. The LLM never does arithmetic on financials, and never reads
+a number out of filing prose.
 
-**Tools:** `get_financials` · `compute` · `search_filings` · `abstain(reason)` — orchestrated
-by `create_react_agent` (LangGraph), with a system prompt enforcing the finance-bar rules.
+**Ratios are computed, not guessed.** LLMs reliably pick the *wrong base metric* for a ratio
+(total liabilities for "debt", period-end vs average assets for ROA — both surfaced by
+FinanceBench). So `get_ratio` computes 10 standard ratios (margins, ROA/ROE, current/quick,
+payout, debt-to-equity) from **fixed formulas with the conventions baked in** (ROA uses *average*
+assets; "debt" means long-term debt) and returns the value, the formula, and the citation. The
+agent calls it instead of fetching pieces and dividing — the finance bar extended from "numbers
+only from tools" to "ratios only from tools."
+
+**Tools:** `get_financials` · `compute` · `get_ratio` · `search_filings` · `abstain(reason)` —
+orchestrated by `create_react_agent` (LangGraph), with a system prompt enforcing the finance-bar rules.
 
 ## Bring your own data (private documents)
 
