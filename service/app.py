@@ -144,15 +144,43 @@ class Query(BaseModel):
 
 
 def _agent_for(user_id):
-    """Use the per-user agent (with the user's private-doc tools) if they've uploaded
-    anything; otherwise the shared public-only agent."""
-    return _user_agents.get(user_id, _agent) if user_id else _agent
+    """Use the per-user agent (with the user's private-doc tools) if they've uploaded anything;
+    otherwise the shared public-only agent. The per-user agent is cached in memory and built on
+    upload, but also lazily rebuilt here if the user has docs in the DB but no cached agent — so
+    a returning user (new login / after a restart) can still query their persisted documents."""
+    if not user_id:
+        return _agent
+    if user_id in _user_agents:
+        return _user_agents[user_id]
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+        cur.execute("select 1 from user_chunks where user_id=%s limit 1", (user_id,))
+        has_docs = cur.fetchone() is not None
+    if has_docs:
+        _user_agents[user_id] = build_agent(user_id=user_id)
+        return _user_agents[user_id]
+    return _agent
 
 
 @app.get("/auth/config")
 def auth_config():
     """Tells the frontend whether to show a Google sign-in screen, and the client id to use."""
     return {"auth_required": bool(_GOOGLE_CLIENT_ID), "client_id": _GOOGLE_CLIENT_ID}
+
+
+class Ident(BaseModel):
+    session_id: Optional[str] = None
+    token: Optional[str] = None
+
+
+@app.post("/mydocs")
+def mydocs(ident: Ident):
+    """The current user's previously uploaded documents (persisted, keyed by account) — so a
+    returning user sees their docs are still there after signing back in."""
+    user_id = _user_id(ident.token, ident.session_id)
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+        cur.execute("select distinct filename from user_chunks where user_id=%s order by filename",
+                    (user_id,))
+        return {"documents": [r[0] for r in cur.fetchall()]}
 
 
 @app.post("/ask")

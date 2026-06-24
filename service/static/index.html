@@ -216,7 +216,20 @@ fileInput.addEventListener('change', async () => {
 // --- Google sign-in (only when the server has GOOGLE_CLIENT_ID configured) ---
 function decodeEmail(jwt){ try { return JSON.parse(atob(jwt.split('.')[1])).email; } catch(e){ return null; } }
 function showApp(){ document.getElementById('login').style.display='none';
-                    document.getElementById('app').style.display='block'; }
+                    document.getElementById('app').style.display='block';
+                    loadMyDocs(); }
+// show the user's persisted documents so they know their uploads are still there after re-login
+async function loadMyDocs(){
+  try {
+    const r = await fetch('/mydocs', { method:'POST', headers:{'Content-Type':'application/json'},
+                                       body: JSON.stringify(idFields()) });
+    const d = await r.json();
+    if (d.documents && d.documents.length) {
+      add('bot', '📂 Your documents (still here from before): <b>' +
+          d.documents.map(esc).join('</b>, <b>') + '</b>. Ask about them anytime.');
+    }
+  } catch(e) {}
+}
 function onGoogle(resp){
   googleToken = resp.credential; userEmail = decodeEmail(googleToken);
   localStorage.setItem('gtok', googleToken);

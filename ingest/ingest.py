@@ -154,7 +154,9 @@ def parse_document(path: str, max_pages: int = None):
     kwargs = {"page_range": (1, max_pages)} if max_pages else {}
     doc = DocumentConverter().convert(path, **kwargs).document
     md = doc.export_to_markdown()
-    return [(None, md)], extract_table_facts(doc)
+    pages = getattr(doc, "pages", None)
+    n_pages = len(pages) if pages else 1   # ACTUAL pages parsed (not the cap)
+    return [(None, md)], extract_table_facts(doc), n_pages
 
 
 def main():
@@ -170,7 +172,7 @@ def main():
     doc_id = args.doc_id or uuid.uuid4().hex[:12]
     filename = args.name or os.path.basename(args.file)
     print(f"parsing {filename} (docling{', max '+str(args.max_pages)+' pages' if args.max_pages else ''})...")
-    pages, facts = parse_document(args.file, max_pages=args.max_pages)
+    pages, facts, n_pages = parse_document(args.file, max_pages=args.max_pages)
 
     splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=150)
     chunks = []  # (page, text)
@@ -180,7 +182,6 @@ def main():
     print(f"{len(chunks)} narrative chunks, {len(facts)} table facts; embedding ({EMB_MODEL})...")
 
     full_md = "\n".join(t for _, t in pages)
-    n_pages = args.max_pages
     pq = parse_quality(full_md, facts, n_pages)
     print(f"parse-quality: {pq['status']} {pq['signals']}")
     for w in pq["warnings"]:
