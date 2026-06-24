@@ -136,6 +136,29 @@ def ask(q: Query, request: Request):
             "doc_sources": _private_sources(out["tool_outputs"], q.session_id)}
 
 
+def _remove_prior_uploads(session_id, filename):
+    """Delete this user's previous upload(s) of the same filename: DB rows (chunks + facts) and
+    the stored original file(s), so re-uploading replaces rather than duplicates."""
+    if not filename:
+        return
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+        cur.execute("select distinct doc_id from user_chunks where user_id=%s and filename=%s",
+                    (session_id, filename))
+        old_ids = [r[0] for r in cur.fetchall()]
+        for did in old_ids:
+            cur.execute("delete from user_chunks where user_id=%s and doc_id=%s", (session_id, did))
+            cur.execute("delete from user_facts where user_id=%s and doc_id=%s", (session_id, did))
+        conn.commit()
+    user_dir = os.path.join(_UPLOAD_DIR, session_id)
+    for did in old_ids:
+        for fn in (os.listdir(user_dir) if os.path.isdir(user_dir) else []):
+            if fn.startswith(did + "."):
+                try:
+                    os.unlink(os.path.join(user_dir, fn))
+                except OSError:
+                    pass
+
+
 @app.post("/upload")
 async def upload(request: Request, file: UploadFile = File(...), session_id: str = Form(...)):
     """Bring-your-own-data: ingest a user's document into their private space, then return a
@@ -146,6 +169,9 @@ async def upload(request: Request, file: UploadFile = File(...), session_id: str
     data = await file.read()
     if len(data) > _MAX_UPLOAD_BYTES:
         raise HTTPException(400, "File too large (max 10 MB for this demo).")
+    # re-uploading the same filename replaces the prior copy (DB rows + original file on disk),
+    # so a user never ends up with stale duplicates of the same document
+    _remove_prior_uploads(session_id, file.filename)
     doc_id = uuid.uuid4().hex[:12]
     suffix = os.path.splitext(file.filename or "upload.pdf")[1] or ".pdf"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
