@@ -3,7 +3,7 @@
 These gate every PR: they verify the exact-number / abstain / citation-URL logic that
 the agent depends on, using only the committed data (data/financials.json).
 """
-from agents.finance_tools import get_financials, compute, edgar_url, cik_for
+from agents.finance_tools import get_financials, compute, get_ratio, edgar_url, cik_for
 
 
 def test_exact_revenue():
@@ -59,3 +59,31 @@ def test_edgar_url_uses_company_cik():
 def test_cik_lookup():
     assert int(cik_for("AAPL")) == 320193
     assert cik_for("ZZZZ") is None
+
+
+def test_get_ratio_gross_margin():
+    # gross_profit / revenue, as a percent, with a citation
+    out = get_ratio("gross_margin", "AAPL", 2024)
+    assert "gross_margin" in out and "%" in out and "accession" in out
+
+
+def test_get_ratio_alias_and_convention():
+    # alias resolves; ROA states the AVERAGE-assets convention (not period-end)
+    out = get_ratio("return on assets", "AAPL", 2024)
+    assert "roa" in out and "average" in out.lower()
+
+
+def test_get_ratio_debt_is_not_total_liabilities():
+    # debt_to_equity uses long-term debt; the definition makes the convention explicit
+    out = get_ratio("debt to equity", "NVDA", 2024)
+    assert "long-term debt" in out.lower() and "total liabilities" in out.lower()
+
+
+def test_get_ratio_abstains_when_base_missing():
+    # a bank has no current_assets -> can't compute current_ratio, must say so (not fabricate)
+    out = get_ratio("current_ratio", "JPM", 2024)
+    assert "Cannot compute" in out
+
+
+def test_get_ratio_unknown():
+    assert "Unknown ratio" in get_ratio("made_up_ratio", "AAPL", 2024)

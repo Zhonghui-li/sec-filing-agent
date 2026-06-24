@@ -21,7 +21,8 @@ from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from langgraph.errors import GraphRecursionError
 
-from agents.finance_tools import get_financials as _get_financials, compute as _compute
+from agents.finance_tools import (get_financials as _get_financials, compute as _compute,
+                                  get_ratio as _get_ratio)
 from agents.filings_retrieval import search_filings as _search_filings
 from agents import observability
 
@@ -51,7 +52,8 @@ def abstain(reason: str, detail: str = "") -> str:
     return f"ABSTAIN[{r}] {detail}".strip()
 
 
-TOOLS = [tool(_get_financials), tool(_compute), tool(_search_filings), tool(abstain)]
+TOOLS = [tool(_get_financials), tool(_compute), tool(_get_ratio),
+         tool(_search_filings), tool(abstain)]
 
 SYSTEM_PROMPT = f"""You are a financial-analysis assistant that answers questions about \
 public companies' SEC 10-K filings. Covered companies (ticker = name): {_COMPANY_LIST}. \
@@ -59,7 +61,11 @@ Map any company name to its ticker before calling tools (e.g. "JPMorgan" -> JPM)
 
 Use the tools; never rely on memory for facts or figures:
 - get_financials: any exact financial number (revenue, net income, assets, EPS, ...).
-- compute: any arithmetic — year-over-year change, ratios (e.g. net margin), differences.
+- compute: ad-hoc arithmetic — year-over-year change, differences, a one-off ratio.
+- get_ratio: a STANDARD financial ratio (gross/operating/net margin, cogs_pct, roa, roe, \
+current_ratio, quick_ratio, payout_ratio, debt_to_equity). Prefer this over assembling the \
+ratio yourself — the formula and conventions (e.g. ROA uses AVERAGE assets, "debt" means \
+long-term debt not total liabilities) are fixed in the tool.
 - search_filings: qualitative content — risk factors, strategy, management's discussion.
 - abstain: call this (instead of answering) whenever you cannot answer from the data.
 

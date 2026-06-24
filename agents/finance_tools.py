@@ -93,6 +93,108 @@ def get_financials(ticker: str, metric: str, fiscal_year: int = None) -> str:
             f"{edgar_url(r['cik'], r['accession'])}]")
 
 
+def _value(ticker, metric, year=None):
+    """Raw numeric value + the source row, or (None, None) if unavailable. Used internally
+    by get_ratio (which needs the number, not the formatted string)."""
+    tk, key = ticker.strip().upper(), _canon(metric)
+    hits = [r for r in _rows() if r["ticker"] == tk and r["metric"] == key]
+    if year is not None:
+        hits = [r for r in hits if r["fiscal_year"] == int(year)]
+    if not hits:
+        return None, None
+    r = max(hits, key=lambda x: x["period_end"])
+    return r["value"], r
+
+
+# Declarative ratio definitions: name -> (formula spec, output kind, one-line definition).
+# Each operand is a base metric; "avg:METRIC" means the average of this year and the prior
+# year (the standard denominator for return ratios). Formulas are fixed in code so the LLM
+# never picks the wrong base metric (e.g. "debt" must be long_term_debt, not total liabilities).
+RATIOS = {
+    "gross_margin":     (("gross_profit", "/", "revenue"), "pct", "gross profit / revenue"),
+    "operating_margin": (("operating_income", "/", "revenue"), "pct", "operating income / revenue"),
+    "net_margin":       (("net_income", "/", "revenue"), "pct", "net income / revenue"),
+    "cogs_pct":         (("cost_of_revenue", "/", "revenue"), "pct", "cost of revenue / revenue"),
+    "roa":              (("net_income", "/", "avg:total_assets"), "pct",
+                         "net income / average total assets (avg of this and prior year)"),
+    "roe":              (("net_income", "/", "avg:stockholders_equity"), "pct",
+                         "net income / average shareholders' equity"),
+    "current_ratio":    (("current_assets", "/", "current_liabilities"), "ratio",
+                         "current assets / current liabilities"),
+    "quick_ratio":      (("current_assets-inventory", "/", "current_liabilities"), "ratio",
+                         "(current assets - inventory) / current liabilities"),
+    "payout_ratio":     (("dividends_paid", "/", "net_income"), "ratio",
+                         "dividends paid / net income"),
+    "debt_to_equity":   (("long_term_debt", "/", "stockholders_equity"), "ratio",
+                         "long-term debt / shareholders' equity (debt = interest-bearing debt, "
+                         "NOT total liabilities)"),
+}
+
+_RATIO_ALIASES = {
+    "gross margin": "gross_margin", "gross profit margin": "gross_margin",
+    "operating margin": "operating_margin",
+    "net margin": "net_margin", "net profit margin": "net_margin", "profit margin": "net_margin",
+    "cogs %": "cogs_pct", "cogs percentage": "cogs_pct", "cogs margin": "cogs_pct",
+    "cost of revenue %": "cogs_pct",
+    "roa": "roa", "return on assets": "roa",
+    "roe": "roe", "return on equity": "roe",
+    "current ratio": "current_ratio",
+    "quick ratio": "quick_ratio", "acid test": "quick_ratio",
+    "payout ratio": "payout_ratio", "dividend payout ratio": "payout_ratio",
+    "debt to equity": "debt_to_equity", "debt-to-equity": "debt_to_equity",
+    "d/e": "debt_to_equity",
+}
+
+
+def _operand(ticker, spec, year):
+    """Resolve one side of a ratio formula. Supports a base metric, "avg:METRIC" (this year
+    and prior averaged), and "A-B" (difference of two base metrics, for quick ratio)."""
+    if spec.startswith("avg:"):
+        m = spec[4:]
+        cur, r = _value(ticker, m, year)
+        if cur is None:
+            return None, None
+        prev, _ = _value(ticker, m, int(year) - 1) if year else (None, None)
+        return ((cur + prev) / 2 if prev is not None else cur), r
+    if "-" in spec:
+        parts = spec.split("-")
+        vals, src = [], None
+        for p in parts:
+            v, r = _value(ticker, p, year)
+            if v is None:
+                return None, None
+            vals.append(v)
+            src = src or r
+        return vals[0] - sum(vals[1:]), src
+    return _value(ticker, spec, year)
+
+
+def get_ratio(ratio: str, ticker: str, fiscal_year: int = None) -> str:
+    """Compute a standard financial RATIO deterministically (the formula is fixed in code, so
+    the right base metrics and conventions are always used). Supports: gross_margin,
+    operating_margin, net_margin, cogs_pct, roa, roe, current_ratio, quick_ratio, payout_ratio,
+    debt_to_equity. Use this for ANY ratio instead of fetching pieces and dividing yourself —
+    it returns the exact value, the formula used, and the source filing."""
+    name = _RATIO_ALIASES.get(ratio.strip().lower(), ratio.strip().lower().replace(" ", "_"))
+    if name not in RATIOS:
+        return (f"Unknown ratio '{ratio}'. Supported: {', '.join(sorted(RATIOS))}.")
+    (num_spec, _op, den_spec), kind, definition = RATIOS[name]
+    tk = ticker.strip().upper()
+    num, src = _operand(tk, num_spec, fiscal_year)
+    den, _ = _operand(tk, den_spec, fiscal_year)
+    if num is None or den is None:
+        return (f"Cannot compute {name} for {tk}"
+                f"{(' FY' + str(fiscal_year)) if fiscal_year else ''}: a required figure "
+                f"({num_spec if num is None else den_spec}) isn't in the data. Abstain.")
+    if den == 0:
+        return f"Cannot compute {name} for {tk}: denominator is 0."
+    raw = num / den
+    fy = src["fiscal_year"] if src else fiscal_year
+    out = f"{raw * 100:.1f}%" if kind == "pct" else f"{raw:.2f}"
+    return (f"{tk} {name} for FY{fy} = {out} ({definition}). "
+            f"[source: 10-K accession {src['accession']}, {edgar_url(src['cik'], src['accession'])}]")
+
+
 def compute(op: str, a: float, b: float) -> str:
     """Deterministic math on EXACT figures obtained from get_financials. Never do
     arithmetic yourself — call this. op: 'yoy' = percent change from b (prior) to a
