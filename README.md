@@ -27,7 +27,7 @@ Q: How did NVIDIA's revenue change year over year, and what does management attr
 
 A: NVIDIA's revenue grew +65.5% year over year, from $130.5B (FY2025) to $215.9B (FY2026),
    driven by data-center / accelerated-computing demand for AI.
-   🔧 get_financials(NVDA, revenue) · get_financials(NVDA, revenue, 2025) · compute(yoy) · search_filings(NVDA)
+   🔧 get_growth(revenue, NVDA) · search_filings(NVDA)
    [source: 10-K accession 0001045810-26-000021 → https://www.sec.gov/Archives/edgar/data/1045810/...]
 
 Q: What is JPMorgan's gross profit?
@@ -42,19 +42,21 @@ via `compute`, qualitative context via `search_filings`, and `abstain` when it s
 
 **Design principle — text vs numbers.** Unstructured narrative (risk factors, MD&A) goes
 through **retrieval** (`search_filings`, pgvector + reranker); exact figures go through
-**tools** that read **XBRL** (`get_financials`), a deterministic `compute` (YoY, diffs), and
-`get_ratio` for standard ratios. The LLM never does arithmetic on financials, and never reads
-a number out of filing prose.
+**tools** that read **XBRL** (`get_financials`), a deterministic `compute` (diffs), `get_growth`
+for year-over-year change, and `get_ratio` for standard ratios. The LLM never does arithmetic on
+financials, and never reads a number out of filing prose.
 
-**Ratios are computed, not guessed.** LLMs reliably pick the *wrong base metric* for a ratio
-(total liabilities for "debt", period-end vs average assets for ROA — both surfaced by
+**Ratios and growth are computed, not assembled.** LLMs reliably pick the *wrong base metric* for a
+ratio (total liabilities for "debt", period-end vs average assets for ROA — both surfaced by
 FinanceBench). So `get_ratio` computes 10 standard ratios (margins, ROA/ROE, current/quick,
 payout, debt-to-equity) from **fixed formulas with the conventions baked in** (ROA uses *average*
-assets; "debt" means long-term debt) and returns the value, the formula, and the citation. The
-agent calls it instead of fetching pieces and dividing — the finance bar extended from "numbers
-only from tools" to "ratios only from tools."
+assets; "debt" means long-term debt) and returns the value, the formula, and the citation.
+Likewise `get_growth` fetches a metric's year **and its immediately-preceding year itself**, so a
+year-over-year question always compares consecutive years — the model can't slip in a non-adjacent
+baseline (a real failure the live eval caught: a 3-year span mislabeled as YoY). The finance bar
+extended from "numbers only from tools" to "ratios and growth only from tools."
 
-**Tools:** `get_financials` · `compute` · `get_ratio` · `search_filings` · `abstain(reason)` —
+**Tools:** `get_financials` · `compute` · `get_growth` · `get_ratio` · `search_filings` · `abstain(reason)` —
 orchestrated by `create_react_agent` (LangGraph), with a system prompt enforcing the finance-bar rules.
 
 ## Bring your own data (private documents)
@@ -166,6 +168,12 @@ Optional Langfuse tracing (`agents/observability.py`, key-gated — a no-op with
 In a regulated domain the trace *is* the audit trail: every run logs the question, answer,
 latency, and token cost, plus **which tools were called, which filings (accessions) were
 cited, and whether/why it abstained** — so any answer traces back to its sources.
+
+**User feedback as labeled data.** Each answer carries a 👍/👎 in the UI that writes a
+`user_feedback` score (with the question/answer in metadata) onto its Langfuse trace via
+`/feedback` — turning live traffic into *labeled* evaluation data. The offline scorer then
+adds the model-judge metrics, so a trace shows the human signal and the automated ones side by
+side (and a 👎 surfaces exactly the cases worth investigating).
 
 ## Serving
 

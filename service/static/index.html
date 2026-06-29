@@ -41,6 +41,16 @@
   #uploadbar label { background:#eef1f4; color:#0b2239; padding:7px 12px; border-radius:8px;
                      cursor:pointer; font-weight:600; }
   #uploadbar label:hover { background:#e3e6ea; }
+  #deldoc { display:inline-flex; align-items:center; gap:4px; white-space:nowrap;
+            background:#fff; color:#c0392b; border:1px solid #e6c3c0; border-radius:8px;
+            padding:7px 11px; font-size:13px; font-weight:600; line-height:1; cursor:pointer; }
+  #deldoc:hover { background:#fbeeed; border-color:#d9a39f; }
+  .fb { margin-top:8px; display:flex; align-items:center; gap:6px; }
+  .fb button { background:#fff; border:1px solid #cfd6dd; border-radius:6px; padding:2px 8px;
+               font-size:14px; line-height:1.4; cursor:pointer; }
+  .fb button:hover:not(:disabled) { background:#eef1f4; }
+  .fb button:disabled { opacity:.45; cursor:default; }
+  .fb .fbmsg { font-size:12px; color:#3a8d4f; }
   .parsed { margin-top:8px; font-size:12px; }
   .parsed summary { cursor:pointer; color:#8a98a6; list-style:none; }
   .parsed summary::-webkit-details-marker { display:none; }
@@ -84,6 +94,7 @@
 Every number comes from XBRL (never the model's memory), every claim is cited, and I'll say so honestly when something isn't reported.
 
 You can also upload your own document (PDF) — an internal statement or a private company's financials — and ask about it. Exact numbers come from its tables, cited to the cell.</div></div>
+  <div id="docsnote" class="msg bot" style="display:none"><div class="bubble"></div></div>
 </div>
 <div id="uploadbar">
   <label for="file">📎 Upload a document</label>
@@ -92,6 +103,12 @@ You can also upload your own document (PDF) — an internal statement or a priva
           border-radius:8px; font-size:13px; color:#0b2239;">
     <option value="">Ask across all my documents</option>
   </select>
+  <button id="deldoc" type="button" title="Delete the selected document" style="display:none">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="3 6 5 6 21 6"></polyline>
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+    </svg>Delete</button>
   <span id="upstatus"></span>
 </div>
 <form id="f">
@@ -169,7 +186,22 @@ form.addEventListener('submit', async (e) => {
               ' tool call' + (d.trace.length>1?'s':'') + ' · show audit trail</summary>' +
               '<div class="trace-body">' + steps + '</div></details>';
     }
+    if (d.trace_id) {   // thumbs up/down -> Langfuse score, turning traffic into labeled eval data
+      html += '<div class="fb" data-tid="' + esc(d.trace_id) + '">' +
+              '<button class="fbup" type="button" title="Good answer">👍</button>' +
+              '<button class="fbdown" type="button" title="Inaccurate or unhelpful">👎</button>' +
+              '<span class="fbmsg"></span></div>';
+    }
     wait.querySelector('.bubble').innerHTML = html;
+    const fb = wait.querySelector('.fb');
+    if (fb) fb.querySelectorAll('button').forEach(b => b.addEventListener('click', async () => {
+      fb.querySelectorAll('button').forEach(x => x.disabled = true);
+      try { await fetch('/feedback', { method:'POST', headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ trace_id: fb.dataset.tid,
+                value: b.classList.contains('fbup') ? 1 : 0,
+                question: q, answer: d.answer, ...idFields() }) }); } catch(e){}
+      fb.querySelector('.fbmsg').textContent = ' Thanks — feedback recorded.';
+    }));
   } catch (err) { wait.querySelector('.bubble').innerHTML = '<span class="hint">Network error.</span>'; }
   send.disabled = false; window.scrollTo(0, document.body.scrollHeight);
 });
@@ -221,6 +253,9 @@ fileInput.addEventListener('change', async () => {
 
 // --- Google sign-in (only when the server has GOOGLE_CLIENT_ID configured) ---
 function decodeEmail(jwt){ try { return JSON.parse(atob(jwt.split('.')[1])).email; } catch(e){ return null; } }
+function tokenExpired(jwt){ try { const p = JSON.parse(atob(jwt.split('.')[1]));
+  return !p.exp || p.exp * 1000 < Date.now() + 30000;   // expired (or within 30s) -> treat as expired
+} catch(e){ return true; } }
 function showApp(){ document.getElementById('login').style.display='none';
                     document.getElementById('app').style.display='block';
                     loadMyDocs(true); }
@@ -231,9 +266,15 @@ async function loadMyDocs(showMsg){
                                        body: JSON.stringify(idFields()) });
     const d = await r.json();
     populateDocScope(d.documents || []);
-    if (showMsg && d.documents && d.documents.length) {
-      add('bot', '📂 Your documents (still here from before): <b>' +
-          d.documents.map(esc).join('</b>, <b>') + '</b>. Ask about them anytime.');
+    // a fixed banner pinned at the top of the chat (not an appended bubble), so it always
+    // shows above the conversation regardless of when the /mydocs fetch resolves
+    const note = document.getElementById('docsnote');
+    if (d.documents && d.documents.length) {
+      note.querySelector('.bubble').innerHTML = '📂 Your documents (still here from before): <b>' +
+          d.documents.map(esc).join('</b>, <b>') + '</b>. Ask about them anytime.';
+      note.style.display = '';
+    } else {
+      note.style.display = 'none';
     }
   } catch(e) {}
 }
@@ -246,7 +287,25 @@ function populateDocScope(docs){
     docs.map(f => '<option value="' + esc(f) + '">Only: ' + esc(f) + '</option>').join('');
   if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
   sel.style.display = docs.length >= 2 ? '' : 'none';
+  updateDelBtn();
 }
+// the delete button acts on whichever document is currently selected in the scope dropdown
+function updateDelBtn(){
+  const sel = document.getElementById('docscope');
+  const btn = document.getElementById('deldoc');
+  btn.style.display = (sel.style.display !== 'none' && sel.value) ? '' : 'none';
+}
+document.getElementById('docscope').addEventListener('change', updateDelBtn);
+document.getElementById('deldoc').addEventListener('click', async () => {
+  const sel = document.getElementById('docscope');
+  const name = sel.value;
+  if (!name || !confirm('Delete "' + name + '"? This removes it from your documents.')) return;
+  await fetch('/mydocs/delete', { method:'POST', headers:{'Content-Type':'application/json'},
+                                  body: JSON.stringify({ filename: name, ...idFields() }) });
+  sel.value = '';                       // drop the scope (the doc is gone)
+  add('bot', '🗑 Deleted <b>' + esc(name) + '</b> from your documents.');
+  loadMyDocs(false);                    // refresh the selector
+});
 function onGoogle(resp){
   googleToken = resp.credential; userEmail = decodeEmail(googleToken);
   localStorage.setItem('gtok', googleToken);
@@ -260,9 +319,10 @@ function onGoogle(resp){
   let cfg; try { cfg = await (await fetch('/auth/config')).json(); } catch(e){ cfg = {auth_required:false}; }
   if (!cfg.auth_required) { showApp(); return; }   // sign-in off -> open demo
   document.getElementById('login').style.display = 'flex';
-  // reuse a stored token if still valid (skip the click)
+  // reuse a stored token only if it hasn't expired (Google ID tokens last ~1h); else clear it
   const saved = localStorage.getItem('gtok');
-  if (saved && decodeEmail(saved)) { onGoogle({ credential: saved }); }
+  if (saved && !tokenExpired(saved)) { onGoogle({ credential: saved }); }
+  else { localStorage.removeItem('gtok'); }
   const init = () => {
     if (!window.google || !google.accounts) { return setTimeout(init, 200); }
     google.accounts.id.initialize({ client_id: cfg.client_id, callback: onGoogle });

@@ -186,6 +186,24 @@ def mydocs(ident: Ident):
         return {"documents": [r[0] for r in cur.fetchall()]}
 
 
+class DocRef(BaseModel):
+    session_id: Optional[str] = None
+    token: Optional[str] = None
+    filename: str
+
+
+@app.post("/mydocs/delete")
+def delete_doc(ref: DocRef):
+    """Remove one of the user's uploaded documents (DB rows + stored original file), then drop
+    their cached agents so the next request rebuilds without it. Deletes by filename, the same
+    key the doc list and selector use (one filename = one document, since re-upload replaces)."""
+    user_id = _user_id(ref.token, ref.session_id)
+    _remove_prior_uploads(user_id, ref.filename)   # same teardown re-upload uses (chunks+facts+file)
+    for k in [k for k in _user_agents if k[0] == user_id]:
+        del _user_agents[k]
+    return {"ok": True}
+
+
 @app.post("/ask")
 def ask(q: Query, request: Request):
     if len(q.question) > MAX_INPUT_CHARS:
@@ -197,10 +215,50 @@ def ask(q: Query, request: Request):
     user_id = _user_id(q.token, q.session_id)
     # sync def -> FastAPI runs it in a threadpool, so the blocking LangGraph/LLM calls
     # don't block the event loop
-    out = run_agent(q.question, agent=_agent_for(user_id, scope_doc=q.doc), history=q.history)
+    try:
+        out = run_agent(q.question, agent=_agent_for(user_id, scope_doc=q.doc), history=q.history)
+    except Exception as e:
+        # public testing: an LLM/timeout error should be a friendly bubble, not a 500
+        print(f"[/ask] agent error: {type(e).__name__}: {e}")
+        return {"answer": "Sorry — I hit an error answering that. Please try again in a moment.",
+                "trace": [], "tools_used": [], "sources": [], "doc_sources": [], "trace_id": None}
     return {"answer": out["answer"], "trace": out["trace"], "tools_used": out["tools_used"],
             "sources": _sources(out["answer"], out["tool_outputs"]),
-            "doc_sources": _private_sources(out["tool_outputs"], user_id)}
+            "doc_sources": _private_sources(out["tool_outputs"], user_id),
+            "trace_id": out.get("trace_id")}
+
+
+class Feedback(BaseModel):
+    session_id: Optional[str] = None
+    token: Optional[str] = None
+    trace_id: str
+    value: int                      # 1 = thumbs up, 0 = thumbs down
+    comment: Optional[str] = None
+    question: Optional[str] = None   # carried so the score row is self-explanatory in the UI
+    answer: Optional[str] = None
+
+
+@app.post("/feedback")
+def feedback(fb: Feedback):
+    """Capture a user's thumbs up/down on an answer as a Langfuse score (name=user_feedback),
+    so community testing yields LABELED eval data, not just unlabeled traces. The question/answer
+    are attached as the score's metadata so a reviewer can read what was rated without opening the
+    trace (and to find the thumbs-down cases worth investigating)."""
+    _user_id(fb.token, fb.session_id)   # gate behind sign-in (raises 401 if required & absent)
+    if not (os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY")):
+        return {"ok": False, "reason": "observability disabled"}
+    try:
+        from langfuse import get_client
+        lf = get_client()
+        meta = {k: v[:500] for k, v in (("question", fb.question), ("answer", fb.answer)) if v}
+        lf.create_score(name="user_feedback", value=float(1 if fb.value >= 1 else 0),
+                        trace_id=fb.trace_id, data_type="NUMERIC",
+                        comment=(fb.comment or None), metadata=(meta or None))
+        lf.flush()
+    except Exception as e:
+        print(f"[/feedback] {type(e).__name__}: {e}")
+        return {"ok": False}
+    return {"ok": True}
 
 
 def _remove_prior_uploads(session_id, filename):
