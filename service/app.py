@@ -5,6 +5,7 @@ Run locally (from repo root, with OPENAI_API_KEY + DATABASE_URL set):
     uvicorn service.app:app --reload --port 8100
 Then open http://localhost:8100
 """
+import hashlib
 import json
 import os
 import re
@@ -284,6 +285,51 @@ def _remove_prior_uploads(session_id, filename):
                     pass
 
 
+def _find_duplicate(user_id, sha):
+    """Return (doc_id, filename) of an already-uploaded file with byte-identical content, or None.
+    Compares the SHA-256 of the new upload against this user's stored original files — so an exact
+    re-upload is detected and reused instead of re-parsed (parsing is slow + costs embeddings)."""
+    user_dir = os.path.join(_UPLOAD_DIR, user_id)
+    if not os.path.isdir(user_dir):
+        return None
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+        cur.execute("select distinct doc_id, filename from user_chunks where user_id=%s", (user_id,))
+        names = {d: f for d, f in cur.fetchall()}
+    for fn in os.listdir(user_dir):
+        path = os.path.join(user_dir, fn)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "rb") as fh:
+                if hashlib.sha256(fh.read()).hexdigest() == sha:
+                    did = os.path.splitext(fn)[0]
+                    return did, names.get(did, fn)
+        except OSError:
+            continue
+    return None
+
+
+def _doc_payload(user_id, doc_id, filename):
+    """Read back an ingested document (parsed-text preview + extracted table facts) in the shape
+    the upload UI expects. Shared by a fresh ingest and a dedup hit."""
+    PREVIEW_CHARS = 3000
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+        cur.execute("select chunk_text from user_chunks where user_id=%s and doc_id=%s order by id",
+                    (user_id, doc_id))
+        full = "\n".join(r[0] for r in cur.fetchall())
+        cur.execute("select max(page) from user_chunks where user_id=%s and doc_id=%s",
+                    (user_id, doc_id))
+        n_pages = cur.fetchone()[0]
+        cur.execute("select metric,period,raw,cell,page from user_facts where user_id=%s "
+                    "and doc_id=%s order by id", (user_id, doc_id))
+        facts = [{"metric": m, "period": p, "value": v, "cell": c, "page": pg}
+                 for (m, p, v, c, pg) in cur.fetchall()]
+    return {"filename": filename, "doc_id": doc_id,
+            "parsed_markdown": full[:PREVIEW_CHARS], "truncated": len(full) > PREVIEW_CHARS,
+            "n_chars": len(full), "n_pages": n_pages, "facts": facts, "n_facts": len(facts),
+            "page_cap": _MAX_PAGES}
+
+
 @app.post("/upload")
 async def upload(request: Request, file: UploadFile = File(...),
                  session_id: str = Form(None), token: str = Form(None)):
@@ -296,6 +342,13 @@ async def upload(request: Request, file: UploadFile = File(...),
     data = await file.read()
     if len(data) > _MAX_UPLOAD_BYTES:
         raise HTTPException(400, "File too large (max 10 MB for this demo).")
+    # content dedup: an exact re-upload (byte-identical) reuses the existing parse instead of
+    # re-running docling. A same-NAME but changed file has a different hash, so it falls through
+    # to the replace path below and re-parses (treated as an updated version).
+    dup = _find_duplicate(session_id, hashlib.sha256(data).hexdigest())
+    if dup:
+        return {**_doc_payload(session_id, dup[0], dup[1]),
+                "already_uploaded": True, "parse_quality": None}
     # re-uploading the same filename replaces the prior copy (DB rows + original file on disk),
     # so a user never ends up with stale duplicates of the same document
     _remove_prior_uploads(session_id, file.filename)
@@ -338,25 +391,7 @@ async def upload(request: Request, file: UploadFile = File(...),
         del _user_agents[k]
 
     # read back what was parsed, for a visible preview
-    PREVIEW_CHARS = 3000
-    facts = []
-    with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
-        # full parsed text spans multiple chunks for a long doc; stitch + report totals
-        cur.execute("select chunk_text from user_chunks where user_id=%s and doc_id=%s order by id",
-                    (session_id, doc_id))
-        full = "\n".join(r[0] for r in cur.fetchall())
-        cur.execute("select max(page) from user_chunks where user_id=%s and doc_id=%s",
-                    (session_id, doc_id))
-        n_pages = cur.fetchone()[0]
-        cur.execute("select metric,period,raw,cell,page from user_facts where user_id=%s "
-                    "and doc_id=%s order by id", (session_id, doc_id))
-        facts = [{"metric": m, "period": p, "value": v, "cell": c, "page": pg}
-                 for (m, p, v, c, pg) in cur.fetchall()]
-    preview = full[:PREVIEW_CHARS]
-    return {"filename": file.filename, "doc_id": doc_id,
-            "parsed_markdown": preview, "truncated": len(full) > PREVIEW_CHARS,
-            "n_chars": len(full), "n_pages": n_pages, "facts": facts, "n_facts": len(facts),
-            "page_cap": _MAX_PAGES, "parse_quality": parse_quality}
+    return {**_doc_payload(session_id, doc_id, file.filename), "parse_quality": parse_quality}
 
 
 @app.get("/file/{doc_id}")

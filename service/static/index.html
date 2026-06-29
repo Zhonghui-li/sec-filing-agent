@@ -217,7 +217,9 @@ fileInput.addEventListener('change', async () => {
     const r = await fetch('/upload', { method:'POST', body: fd });
     if (!r.ok) { upstatus.textContent = (r.status===429 ? 'Demo limit reached.' : 'Upload failed.'); return; }
     const d = await r.json();
-    upstatus.textContent = '✓ ' + d.filename + ' — ' + d.n_facts + ' figures extracted';
+    upstatus.textContent = d.already_uploaded
+      ? '↩︎ ' + d.filename + ' — already uploaded (reusing existing copy)'
+      : '✓ ' + d.filename + ' — ' + d.n_facts + ' figures extracted';
     // show what docling parsed, so the parse is visible (markdown truncated for long docs)
     let factsTable = '';
     if (d.facts && d.facts.length) {
@@ -239,8 +241,10 @@ fileInput.addEventListener('change', async () => {
           esc((d.parse_quality.warnings || []).join('; ')) + '</div>';
     }
     const cut = d.truncated ? '\n\n…(preview truncated — parsed text is searchable)' : '';
-    const html = '📄 Uploaded <b>' + esc(d.filename) + '</b> (' + stats + ').' + cap + pq +
-      ' You can now ask about it.' +
+    const head = d.already_uploaded
+      ? '↩︎ <b>' + esc(d.filename) + '</b> was already uploaded — reusing the existing copy (' + stats + ').'
+      : '📄 Uploaded <b>' + esc(d.filename) + '</b> (' + stats + ').' + cap + pq;
+    const html = head + ' You can now ask about it.' +
       '<details class="parsed"><summary>show what was parsed (docling)</summary>' +
       (factsTable || '') +
       '<div style="margin-top:6px">Parsed text' + (d.truncated ? ' (first part)' : '') + ':</div>' +
