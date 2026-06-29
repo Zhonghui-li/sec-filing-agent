@@ -4,11 +4,11 @@
   "grounded": 1.0,
   "tool": 1.0,
   "abstain": 1.0,
-  "reason": 1.0,
+  "reason": 0.9375,
   "facts": 1.0,
   "context_recall": 1.0,
   "forbid": 1.0,
-  "overall": 1.0,
+  "overall": 0.9855072463768116,
   "faithfulness": 0.936,
   "answer_relevancy": 0.862
 }

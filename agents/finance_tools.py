@@ -195,6 +195,33 @@ def get_ratio(ratio: str, ticker: str, fiscal_year: int = None) -> str:
             f"[source: 10-K accession {src['accession']}, {edgar_url(src['cik'], src['accession'])}]")
 
 
+def get_growth(metric: str, ticker: str, fiscal_year: int = None) -> str:
+    """Compute year-over-year (YoY) change of a metric DETERMINISTICALLY. The tool itself
+    fetches the given fiscal year (or the latest) AND the immediately preceding fiscal year,
+    then returns the percent change — so the two years compared are ALWAYS consecutive. Use
+    this for ANY 'year over year' / 'YoY' / 'how did X change' question instead of fetching two
+    years and dividing yourself (that lets a wrong baseline slip in, e.g. a multi-year span
+    mislabeled as YoY). If the prior fiscal year isn't in the data, it abstains rather than
+    using a non-adjacent year. Returns the % change, both values, both years, and source filings."""
+    tk, key = ticker.strip().upper(), _canon(metric)
+    cur, rc = _value(tk, key, fiscal_year)        # latest if year omitted
+    if cur is None:
+        return get_financials(ticker, metric, fiscal_year)   # reuse its "not reported / bad year" msg
+    cur_year = rc["fiscal_year"]
+    prev, rp = _value(tk, key, cur_year - 1)      # the immediately preceding fiscal year, in code
+    if prev is None:
+        return (f"Cannot compute YoY for {tk} {key} FY{cur_year}: the prior fiscal year "
+                f"(FY{cur_year - 1}) isn't in the data, so there's no adjacent year to compare. "
+                f"Abstain rather than use a non-consecutive year.")
+    if prev == 0:
+        return f"Cannot compute YoY for {tk} {key}: prior-year value is 0."
+    pct = (cur - prev) / abs(prev) * 100
+    f = lambda v, r: (f"${v:,}" if r["unit"] == "USD" else f"{v:,} {r['unit']}")
+    return (f"{tk} {key} grew {pct:+.1f}% year over year, from {f(prev, rp)} (FY{cur_year - 1}) "
+            f"to {f(cur, rc)} (FY{cur_year}). [sources: 10-K accessions {rp['accession']}, "
+            f"{rc['accession']}, {edgar_url(rc['cik'], rc['accession'])}]")
+
+
 def compute(op: str, a: float, b: float) -> str:
     """Deterministic math on EXACT figures obtained from get_financials. Never do
     arithmetic yourself — call this. op: 'yoy' = percent change from b (prior) to a

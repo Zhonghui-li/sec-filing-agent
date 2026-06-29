@@ -5,6 +5,7 @@ Run locally (from repo root, with OPENAI_API_KEY + DATABASE_URL set):
     uvicorn service.app:app --reload --port 8100
 Then open http://localhost:8100
 """
+import hashlib
 import json
 import os
 import re
@@ -186,6 +187,24 @@ def mydocs(ident: Ident):
         return {"documents": [r[0] for r in cur.fetchall()]}
 
 
+class DocRef(BaseModel):
+    session_id: Optional[str] = None
+    token: Optional[str] = None
+    filename: str
+
+
+@app.post("/mydocs/delete")
+def delete_doc(ref: DocRef):
+    """Remove one of the user's uploaded documents (DB rows + stored original file), then drop
+    their cached agents so the next request rebuilds without it. Deletes by filename, the same
+    key the doc list and selector use (one filename = one document, since re-upload replaces)."""
+    user_id = _user_id(ref.token, ref.session_id)
+    _remove_prior_uploads(user_id, ref.filename)   # same teardown re-upload uses (chunks+facts+file)
+    for k in [k for k in _user_agents if k[0] == user_id]:
+        del _user_agents[k]
+    return {"ok": True}
+
+
 @app.post("/ask")
 def ask(q: Query, request: Request):
     if len(q.question) > MAX_INPUT_CHARS:
@@ -197,10 +216,50 @@ def ask(q: Query, request: Request):
     user_id = _user_id(q.token, q.session_id)
     # sync def -> FastAPI runs it in a threadpool, so the blocking LangGraph/LLM calls
     # don't block the event loop
-    out = run_agent(q.question, agent=_agent_for(user_id, scope_doc=q.doc), history=q.history)
+    try:
+        out = run_agent(q.question, agent=_agent_for(user_id, scope_doc=q.doc), history=q.history)
+    except Exception as e:
+        # public testing: an LLM/timeout error should be a friendly bubble, not a 500
+        print(f"[/ask] agent error: {type(e).__name__}: {e}")
+        return {"answer": "Sorry — I hit an error answering that. Please try again in a moment.",
+                "trace": [], "tools_used": [], "sources": [], "doc_sources": [], "trace_id": None}
     return {"answer": out["answer"], "trace": out["trace"], "tools_used": out["tools_used"],
             "sources": _sources(out["answer"], out["tool_outputs"]),
-            "doc_sources": _private_sources(out["tool_outputs"], user_id)}
+            "doc_sources": _private_sources(out["tool_outputs"], user_id),
+            "trace_id": out.get("trace_id")}
+
+
+class Feedback(BaseModel):
+    session_id: Optional[str] = None
+    token: Optional[str] = None
+    trace_id: str
+    value: int                      # 1 = thumbs up, 0 = thumbs down
+    comment: Optional[str] = None
+    question: Optional[str] = None   # carried so the score row is self-explanatory in the UI
+    answer: Optional[str] = None
+
+
+@app.post("/feedback")
+def feedback(fb: Feedback):
+    """Capture a user's thumbs up/down on an answer as a Langfuse score (name=user_feedback),
+    so community testing yields LABELED eval data, not just unlabeled traces. The question/answer
+    are attached as the score's metadata so a reviewer can read what was rated without opening the
+    trace (and to find the thumbs-down cases worth investigating)."""
+    _user_id(fb.token, fb.session_id)   # gate behind sign-in (raises 401 if required & absent)
+    if not (os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY")):
+        return {"ok": False, "reason": "observability disabled"}
+    try:
+        from langfuse import get_client
+        lf = get_client()
+        meta = {k: v[:500] for k, v in (("question", fb.question), ("answer", fb.answer)) if v}
+        lf.create_score(name="user_feedback", value=float(1 if fb.value >= 1 else 0),
+                        trace_id=fb.trace_id, data_type="NUMERIC",
+                        comment=(fb.comment or None), metadata=(meta or None))
+        lf.flush()
+    except Exception as e:
+        print(f"[/feedback] {type(e).__name__}: {e}")
+        return {"ok": False}
+    return {"ok": True}
 
 
 def _remove_prior_uploads(session_id, filename):
@@ -226,6 +285,51 @@ def _remove_prior_uploads(session_id, filename):
                     pass
 
 
+def _find_duplicate(user_id, sha):
+    """Return (doc_id, filename) of an already-uploaded file with byte-identical content, or None.
+    Compares the SHA-256 of the new upload against this user's stored original files — so an exact
+    re-upload is detected and reused instead of re-parsed (parsing is slow + costs embeddings)."""
+    user_dir = os.path.join(_UPLOAD_DIR, user_id)
+    if not os.path.isdir(user_dir):
+        return None
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+        cur.execute("select distinct doc_id, filename from user_chunks where user_id=%s", (user_id,))
+        names = {d: f for d, f in cur.fetchall()}
+    for fn in os.listdir(user_dir):
+        path = os.path.join(user_dir, fn)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "rb") as fh:
+                if hashlib.sha256(fh.read()).hexdigest() == sha:
+                    did = os.path.splitext(fn)[0]
+                    return did, names.get(did, fn)
+        except OSError:
+            continue
+    return None
+
+
+def _doc_payload(user_id, doc_id, filename):
+    """Read back an ingested document (parsed-text preview + extracted table facts) in the shape
+    the upload UI expects. Shared by a fresh ingest and a dedup hit."""
+    PREVIEW_CHARS = 3000
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+        cur.execute("select chunk_text from user_chunks where user_id=%s and doc_id=%s order by id",
+                    (user_id, doc_id))
+        full = "\n".join(r[0] for r in cur.fetchall())
+        cur.execute("select max(page) from user_chunks where user_id=%s and doc_id=%s",
+                    (user_id, doc_id))
+        n_pages = cur.fetchone()[0]
+        cur.execute("select metric,period,raw,cell,page from user_facts where user_id=%s "
+                    "and doc_id=%s order by id", (user_id, doc_id))
+        facts = [{"metric": m, "period": p, "value": v, "cell": c, "page": pg}
+                 for (m, p, v, c, pg) in cur.fetchall()]
+    return {"filename": filename, "doc_id": doc_id,
+            "parsed_markdown": full[:PREVIEW_CHARS], "truncated": len(full) > PREVIEW_CHARS,
+            "n_chars": len(full), "n_pages": n_pages, "facts": facts, "n_facts": len(facts),
+            "page_cap": _MAX_PAGES}
+
+
 @app.post("/upload")
 async def upload(request: Request, file: UploadFile = File(...),
                  session_id: str = Form(None), token: str = Form(None)):
@@ -238,6 +342,13 @@ async def upload(request: Request, file: UploadFile = File(...),
     data = await file.read()
     if len(data) > _MAX_UPLOAD_BYTES:
         raise HTTPException(400, "File too large (max 10 MB for this demo).")
+    # content dedup: an exact re-upload (byte-identical) reuses the existing parse instead of
+    # re-running docling. A same-NAME but changed file has a different hash, so it falls through
+    # to the replace path below and re-parses (treated as an updated version).
+    dup = _find_duplicate(session_id, hashlib.sha256(data).hexdigest())
+    if dup:
+        return {**_doc_payload(session_id, dup[0], dup[1]),
+                "already_uploaded": True, "parse_quality": None}
     # re-uploading the same filename replaces the prior copy (DB rows + original file on disk),
     # so a user never ends up with stale duplicates of the same document
     _remove_prior_uploads(session_id, file.filename)
@@ -280,25 +391,7 @@ async def upload(request: Request, file: UploadFile = File(...),
         del _user_agents[k]
 
     # read back what was parsed, for a visible preview
-    PREVIEW_CHARS = 3000
-    facts = []
-    with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
-        # full parsed text spans multiple chunks for a long doc; stitch + report totals
-        cur.execute("select chunk_text from user_chunks where user_id=%s and doc_id=%s order by id",
-                    (session_id, doc_id))
-        full = "\n".join(r[0] for r in cur.fetchall())
-        cur.execute("select max(page) from user_chunks where user_id=%s and doc_id=%s",
-                    (session_id, doc_id))
-        n_pages = cur.fetchone()[0]
-        cur.execute("select metric,period,raw,cell,page from user_facts where user_id=%s "
-                    "and doc_id=%s order by id", (session_id, doc_id))
-        facts = [{"metric": m, "period": p, "value": v, "cell": c, "page": pg}
-                 for (m, p, v, c, pg) in cur.fetchall()]
-    preview = full[:PREVIEW_CHARS]
-    return {"filename": file.filename, "doc_id": doc_id,
-            "parsed_markdown": preview, "truncated": len(full) > PREVIEW_CHARS,
-            "n_chars": len(full), "n_pages": n_pages, "facts": facts, "n_facts": len(facts),
-            "page_cap": _MAX_PAGES, "parse_quality": parse_quality}
+    return {**_doc_payload(session_id, doc_id, file.filename), "parse_quality": parse_quality}
 
 
 @app.get("/file/{doc_id}")

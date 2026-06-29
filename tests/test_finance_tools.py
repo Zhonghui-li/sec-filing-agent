@@ -3,7 +3,8 @@
 These gate every PR: they verify the exact-number / abstain / citation-URL logic that
 the agent depends on, using only the committed data (data/financials.json).
 """
-from agents.finance_tools import get_financials, compute, get_ratio, edgar_url, cik_for
+from agents.finance_tools import (get_financials, compute, get_ratio, get_growth,
+                                  edgar_url, cik_for)
 
 
 def test_exact_revenue():
@@ -87,3 +88,21 @@ def test_get_ratio_abstains_when_base_missing():
 
 def test_get_ratio_unknown():
     assert "Unknown ratio" in get_ratio("made_up_ratio", "AAPL", 2024)
+
+
+def test_get_growth_uses_consecutive_years():
+    # YoY must compare a year with its IMMEDIATELY preceding year (the bug was a non-adjacent
+    # baseline mislabeled as YoY). NVDA FY2024 = $60.922B, FY2023 = $26.974B -> +125.9%.
+    out = get_growth("revenue", "NVDA", 2024)
+    assert "FY2024" in out and "FY2023" in out and "+125.9%" in out
+
+
+def test_get_growth_latest_when_year_omitted():
+    out = get_growth("revenue", "NVDA")           # latest = FY2026 vs FY2025
+    assert "FY2026" in out and "FY2025" in out and "year over year" in out
+
+
+def test_get_growth_abstains_when_metric_not_reported():
+    # JPMorgan does not report gross profit -> no YoY to compute, must say so (not fabricate)
+    out = get_growth("gross profit", "JPM")
+    assert "does not report" in out or "Available" in out

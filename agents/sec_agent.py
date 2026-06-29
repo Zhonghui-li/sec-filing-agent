@@ -22,7 +22,7 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.errors import GraphRecursionError
 
 from agents.finance_tools import (get_financials as _get_financials, compute as _compute,
-                                  get_ratio as _get_ratio)
+                                  get_ratio as _get_ratio, get_growth as _get_growth)
 from agents.filings_retrieval import search_filings as _search_filings
 from agents import observability
 
@@ -52,7 +52,7 @@ def abstain(reason: str, detail: str = "") -> str:
     return f"ABSTAIN[{r}] {detail}".strip()
 
 
-TOOLS = [tool(_get_financials), tool(_compute), tool(_get_ratio),
+TOOLS = [tool(_get_financials), tool(_compute), tool(_get_ratio), tool(_get_growth),
          tool(_search_filings), tool(abstain)]
 
 SYSTEM_PROMPT = f"""You are a financial-analysis assistant that answers questions about \
@@ -61,7 +61,11 @@ Map any company name to its ticker before calling tools (e.g. "JPMorgan" -> JPM)
 
 Use the tools; never rely on memory for facts or figures:
 - get_financials: any exact financial number (revenue, net income, assets, EPS, ...).
-- compute: ad-hoc arithmetic — year-over-year change, differences, a one-off ratio.
+- compute: ad-hoc arithmetic — differences, a one-off ratio between two figures you already have.
+- get_growth: year-over-year (YoY) change of a metric. Prefer this for ANY "year over year" / \
+"how did X change" question — it fetches the year AND its immediately preceding year itself, so \
+the comparison is always between consecutive years (do NOT fetch two years and call compute, \
+which lets a wrong baseline slip in).
 - get_ratio: a STANDARD financial ratio (gross/operating/net margin, cogs_pct, roa, roe, \
 current_ratio, quick_ratio, payout_ratio, debt_to_equity). Prefer this over assembling the \
 ratio yourself — the formula and conventions (e.g. ROA uses AVERAGE assets, "debt" means \
@@ -73,7 +77,9 @@ HARD RULES (this is finance — wrong or unsupported numbers are unacceptable):
 1. EVERY financial number must come from get_financials. NEVER state, estimate, or \
 recall a figure yourself, and NEVER read a number out of search_filings text.
 2. EVERY calculation must go through compute. Do NOT do arithmetic in your head.
-3. For comparison/trend questions, call get_financials for each period, THEN compute.
+3. For a year-over-year change of one metric, use get_growth (never pick the two years \
+yourself). For other comparisons (across companies, or two specific figures), call \
+get_financials for each, THEN compute.
 4. CITE your sources: include the filing accession that the tools return for every \
 factual claim (number or quote).
 5. If you cannot answer from the data, call the `abstain` tool with the matching reason \
@@ -258,22 +264,27 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
         # audit trail: which filings were cited + whether/why it abstained
         accns = sorted({a for _, c in tool_outputs
                         for a in re.findall(r"\d{10}-\d{2}-\d{6}", c)})
-        # retrieved passages stored so the offline scorer (eval/score_traces.py) can
-        # grade faithfulness on production traces (the eval <-> observability loop).
+        # what the offline scorer (eval/score_traces.py) grounds faithfulness/domain_judge
+        # against (the eval <-> observability loop). Include BOTH the numeric tool outputs
+        # (get_financials/get_growth/get_ratio/compute) AND the qualitative passages
+        # (search_filings): without the numeric outputs the judge can't see where a figure came
+        # from and wrongly flags a real, tool-sourced number as "fabricated" (a verified false BAD).
         # Keep the full retrieved block: an earlier 1500-char cap dropped most passages, which
         # made faithfulness/domain_judge see "unsupported" claims and emit false BADs (verified:
         # -0.38 mean faithfulness, 9/12 good->bad flips). 8000 holds a full k=5 search result.
-        contexts = [c[:8000] for name, c in tool_outputs if name == "search_filings"][:6]
+        _NUMERIC_TOOLS = {"get_financials", "get_growth", "get_ratio", "compute"}
+        contexts = ([c for name, c in tool_outputs if name in _NUMERIC_TOOLS] +
+                    [c[:8000] for name, c in tool_outputs if name == "search_filings"][:6])
         audit = {"accessions_cited": accns, "abstained": "abstain" in tools_used,
                  "abstain_reason": next((t["args"].get("reason")
                                          for t in trace if t["tool"] == "abstain"), None),
                  "contexts": contexts}
-        record(answer=answer, tools_used=tools_used, usage=usage, audit=audit)
+        trace_id = record(answer=answer, tools_used=tools_used, usage=usage, audit=audit)
     if verbose:
         for step in trace:
             print(f"  🔧 {step['tool']}({step['args']})")
     return {"answer": answer, "trace": trace, "tool_outputs": tool_outputs,
-            "tools_used": tools_used}
+            "tools_used": tools_used, "trace_id": trace_id}
 
 
 if __name__ == "__main__":
