@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -130,6 +131,7 @@ def _client_ip(request: Request) -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _agent
+    _ensure_doc_schema()    # the async-ingestion status table
     _agent = build_agent()  # loads the reranker once, on startup
     yield
 
@@ -274,6 +276,7 @@ def _remove_prior_uploads(session_id, filename):
         for did in old_ids:
             cur.execute("delete from user_chunks where user_id=%s and doc_id=%s", (session_id, did))
             cur.execute("delete from user_facts where user_id=%s and doc_id=%s", (session_id, did))
+            cur.execute("delete from user_documents where user_id=%s and doc_id=%s", (session_id, did))
         conn.commit()
     user_dir = os.path.join(_UPLOAD_DIR, session_id)
     for did in old_ids:
@@ -330,6 +333,57 @@ def _doc_payload(user_id, doc_id, filename):
             "page_cap": _MAX_PAGES}
 
 
+def _ensure_doc_schema():
+    """One status row per uploaded document, so ingestion can run asynchronously and the UI can
+    poll. (Production-grade would back this with a durable queue + a separate worker so jobs
+    survive instance restarts; here a thread + this table is enough for a single-instance demo.)"""
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+        cur.execute("""create table if not exists user_documents (
+                user_id text not null, doc_id text not null, filename text,
+                status text not null default 'processing',  -- processing | ready | failed
+                error text, n_pages int, parse_quality text,
+                created_at timestamptz default now(),
+                primary key (user_id, doc_id))""")
+        conn.commit()
+
+
+def _doc_set_status(user_id, doc_id, status, error=None, parse_quality=None):
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+        cur.execute("update user_documents set status=%s, error=%s, "
+                    "parse_quality=coalesce(%s, parse_quality) where user_id=%s and doc_id=%s",
+                    (status, error, parse_quality, user_id, doc_id))
+        conn.commit()
+
+
+def _doc_get(user_id, doc_id):
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+        cur.execute("select filename, status, error, parse_quality from user_documents "
+                    "where user_id=%s and doc_id=%s", (user_id, doc_id))
+        return cur.fetchone()
+
+
+def _ingest_async(user_id, doc_id, filename, file_path):
+    """Background worker: parse the FULL document (no 15-page cap) and mark it ready/failed.
+    Runs in a thread so /upload returns immediately — the slow docling parse never blocks the
+    request, which is what lets us drop the page cap and accept real (100+ page) filings."""
+    try:
+        proc = subprocess.run(
+            [_INGEST_PY, _INGEST_SCRIPT, "--user", user_id, "--doc-id", doc_id,
+             "--file", file_path, "--name", filename],   # no --max-pages -> parse the whole doc
+            cwd=_ROOT, env={**os.environ}, capture_output=True, text=True, timeout=1200)
+        if proc.returncode != 0:
+            _doc_set_status(user_id, doc_id, "failed", error=(proc.stderr[-400:] or "ingestion failed"))
+            return
+        pq = next((ln[len("PARSE_QUALITY="):] for ln in proc.stdout.splitlines()
+                   if ln.startswith("PARSE_QUALITY=")), None)
+        _doc_set_status(user_id, doc_id, "ready", parse_quality=pq)
+        # doc list changed -> drop cached agents so they rebuild with the new document
+        for k in [k for k in _user_agents if k[0] == user_id]:
+            del _user_agents[k]
+    except Exception as e:
+        _doc_set_status(user_id, doc_id, "failed", error=f"{type(e).__name__}: {e}")
+
+
 @app.post("/upload")
 async def upload(request: Request, file: UploadFile = File(...),
                  session_id: str = Form(None), token: str = Form(None)):
@@ -348,50 +402,49 @@ async def upload(request: Request, file: UploadFile = File(...),
     dup = _find_duplicate(session_id, hashlib.sha256(data).hexdigest())
     if dup:
         return {**_doc_payload(session_id, dup[0], dup[1]),
-                "already_uploaded": True, "parse_quality": None}
+                "already_uploaded": True, "parse_quality": None, "status": "ready"}
     # re-uploading the same filename replaces the prior copy (DB rows + original file on disk),
     # so a user never ends up with stale duplicates of the same document
     _remove_prior_uploads(session_id, file.filename)
     doc_id = uuid.uuid4().hex[:12]
     suffix = os.path.splitext(file.filename or "upload.pdf")[1] or ".pdf"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(data)
-        tmp_path = tmp.name
-    try:
-        proc = subprocess.run(
-            [_INGEST_PY, _INGEST_SCRIPT, "--user", session_id, "--doc-id", doc_id,
-             "--file", tmp_path, "--name", file.filename or "upload.pdf",
-             "--max-pages", str(_MAX_PAGES)],
-            cwd=_ROOT, env={**os.environ}, capture_output=True, text=True, timeout=300)
-        if proc.returncode != 0:
-            os.unlink(tmp_path)
-            raise HTTPException(500, f"Ingestion failed: {proc.stderr[-400:]}")
-    except Exception:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-        raise
-
-    # layer-1 parse-quality signal printed by the ingest job (machine-readable line)
-    parse_quality = None
-    for line in proc.stdout.splitlines():
-        if line.startswith("PARSE_QUALITY="):
-            try:
-                parse_quality = json.loads(line[len("PARSE_QUALITY="):])
-            except Exception:
-                pass
-
-    # keep the original file so its citations can link back to the source page (method 乙)
+    # save the original now (so /file works + the worker reads it), record a 'processing' row,
+    # kick off the docling parse in a thread, and return immediately — the UI polls /docstatus.
+    # No page cap on this path: parsing the full document is exactly what async buys us.
     user_dir = os.path.join(_UPLOAD_DIR, session_id)
     os.makedirs(user_dir, exist_ok=True)
-    os.replace(tmp_path, os.path.join(user_dir, doc_id + suffix))
+    file_path = os.path.join(user_dir, doc_id + suffix)
+    with open(file_path, "wb") as f:
+        f.write(data)
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+        cur.execute("insert into user_documents (user_id, doc_id, filename, status) "
+                    "values (%s, %s, %s, 'processing')", (session_id, doc_id, file.filename))
+        conn.commit()
+    threading.Thread(target=_ingest_async,
+                     args=(session_id, doc_id, file.filename or "upload.pdf", file_path),
+                     daemon=True).start()
+    return {"doc_id": doc_id, "filename": file.filename, "status": "processing"}
 
-    # the user's doc list changed: drop all their cached agents (any scope) so they rebuild
-    # with the new document; _agent_for lazily reconstructs on the next request
-    for k in [k for k in _user_agents if k[0] == session_id]:
-        del _user_agents[k]
 
-    # read back what was parsed, for a visible preview
-    return {**_doc_payload(session_id, doc_id, file.filename), "parse_quality": parse_quality}
+class DocStatusReq(BaseModel):
+    session_id: Optional[str] = None
+    token: Optional[str] = None
+    doc_id: str
+
+
+@app.post("/docstatus")
+def docstatus(req: DocStatusReq):
+    """Poll an async upload: returns 'processing'/'failed', or the full parse preview once 'ready'
+    (facts + markdown), so the UI renders the result when the background parse finishes."""
+    user_id = _user_id(req.token, req.session_id)
+    row = _doc_get(user_id, req.doc_id)
+    if not row:
+        return {"status": "unknown"}
+    filename, status, error, pq = row
+    if status == "ready":
+        return {**_doc_payload(user_id, req.doc_id, filename), "status": "ready",
+                "parse_quality": (json.loads(pq) if pq else None)}
+    return {"doc_id": req.doc_id, "filename": filename, "status": status, "error": error}
 
 
 @app.get("/file/{doc_id}")

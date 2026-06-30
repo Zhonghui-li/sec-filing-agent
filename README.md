@@ -88,8 +88,11 @@ the **same finance bar**, applied to data that has no XBRL.
   in a **separate venv** (`ingest/`) and the agent never imports it; the two decouple through pgvector
   — mirroring the public path. See [`ingest/README.md`](ingest/README.md).
 
-> The demo page-caps long uploads to keep the synchronous parse responsive (Docling's precise
-> parse is ~2s/page on CPU); production would parse the full document asynchronously.
+> Uploads are parsed **asynchronously**: `/upload` saves the file, records a `processing` row,
+> and returns immediately; a background worker runs the full Docling parse (no page cap) and flips
+> the document to `ready`, which the UI polls for. This is what lets it accept real, 100+ page
+> filings without blocking the request. (Production-grade would move the worker behind a durable
+> queue so jobs survive instance restarts; here a thread + a status table suffices.)
 
 ## Evaluation — the part most agent demos skip
 
