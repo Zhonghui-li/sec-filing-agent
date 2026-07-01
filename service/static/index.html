@@ -241,8 +241,12 @@ function renderUploaded(d) {
 
 // poll /docstatus until the background parse finishes (or fails)
 async function pollStatus(docId, filename) {
-  for (let i = 0; i < 120; i++) {                 // ~6 min ceiling (120 × 3s)
-    await new Promise(r => setTimeout(r, 3000));
+  const started = Date.now();
+  const maxMs = 20 * 60 * 1000;                   // whole filings can take many minutes
+  let wait = 3000;                                // gentle backoff: 3s → 10s
+  while (Date.now() - started < maxMs) {
+    await new Promise(r => setTimeout(r, wait));
+    if (wait < 10000) wait += 1000;
     try {
       const r = await fetch('/docstatus', { method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ doc_id: docId, ...idFields() }) });
@@ -258,7 +262,10 @@ async function pollStatus(docId, filename) {
       }
     } catch (e) { /* keep polling */ }
   }
-  upstatus.textContent = 'Still parsing ' + filename + '… (taking longer than usual)';
+  upstatus.textContent = filename + ' — still parsing (large document)';
+  add('bot', '⏳ <b>' + esc(filename) + '</b> is a large filing and is still parsing. You don\'t need to '
+    + 'wait here — it will appear under "Your documents" when it\'s ready (refresh the page to check), '
+    + 'and you can ask about your other documents in the meantime.');
 }
 
 fileInput.addEventListener('change', async () => {
@@ -277,7 +284,7 @@ fileInput.addEventListener('change', async () => {
       renderUploaded(d);
     } else {                                       // processing — parse runs in the background
       upstatus.textContent = '⏳ Parsing ' + d.filename + '…';
-      add('bot', '⏳ Parsing <b>' + esc(d.filename) + '</b> in the background — full documents (whole filings) can take a minute. I\'ll show the result here when it\'s ready.');
+      add('bot', '⏳ Parsing <b>' + esc(d.filename) + '</b> in the background — whole filings can take several minutes. You don\'t have to wait here: I\'ll show the result when it\'s ready, and it will also appear under "Your documents". You can ask about your other documents meanwhile.');
       pollStatus(d.doc_id, d.filename);
     }
   } catch (err) { upstatus.textContent = 'Network error.'; }
