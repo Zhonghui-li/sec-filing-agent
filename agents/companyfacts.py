@@ -12,10 +12,9 @@ Results are cached on disk (per company) so a ticker is fetched from SEC at most
 """
 import json
 import os
+import urllib.request
 from datetime import date, datetime, timezone
 from pathlib import Path
-
-import httpx
 
 # SEC requires a User-Agent that identifies the caller with a contact.
 _UA = {"User-Agent": os.environ.get("SEC_USER_AGENT", "Zhonghui Li lizhonghui923@gmail.com")}
@@ -57,9 +56,9 @@ METRICS = {
 
 
 def _get_json(url, timeout=90):
-    r = httpx.get(url, headers=_UA, timeout=timeout)
-    r.raise_for_status()
-    return r.json()
+    req = urllib.request.Request(url, headers=_UA)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode())
 
 
 # --- ticker -> CIK ---------------------------------------------------------------------------
