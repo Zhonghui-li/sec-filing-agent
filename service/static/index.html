@@ -206,51 +206,80 @@ form.addEventListener('submit', async (e) => {
   send.disabled = false; window.scrollTo(0, document.body.scrollHeight);
 });
 
-// --- document upload (bring-your-own-data) ---
+// --- document upload (bring-your-own-data), parsed asynchronously ---
 const fileInput = document.getElementById('file'), upstatus = document.getElementById('upstatus');
+
+// render the parsed result once a document is ready (fresh parse or a dedup hit)
+function renderUploaded(d) {
+  let factsTable = '';
+  if (d.facts && d.facts.length) {
+    const rows = d.facts.map(x => '<tr><td>' + esc(x.metric) + '</td><td>' + esc(x.period) +
+      '</td><td>' + esc(x.value) + '</td><td>' + esc('p.'+x.page) + '</td></tr>').join('');
+    factsTable = '<div style="margin-top:6px">Extracted table figures (' + d.facts.length +
+      '):</div><table><tr><th>metric</th><th>period</th><th>value</th><th>loc</th></tr>' +
+      rows + '</table>';
+  }
+  const stats = d.n_facts + ' figures · ' + (d.n_chars||0).toLocaleString() + ' chars parsed';
+  let pq = '';
+  if (d.parse_quality) {
+    pq = d.parse_quality.status === 'ok'
+      ? '<div class="sources">✓ parse quality: looks healthy</div>'
+      : '<div class="sources" style="color:#b06a00">⚠ parse quality: please review — ' +
+        esc((d.parse_quality.warnings || []).join('; ')) + '</div>';
+  }
+  const cut = d.truncated ? '\n\n…(preview truncated — parsed text is searchable)' : '';
+  const head = d.already_uploaded
+    ? '↩︎ <b>' + esc(d.filename) + '</b> was already uploaded — reusing the existing copy (' + stats + ').'
+    : '📄 Parsed <b>' + esc(d.filename) + '</b> — full document (' + stats + ').' + pq;
+  add('bot', head + ' You can now ask about it.' +
+      '<details class="parsed"><summary>show what was parsed (docling)</summary>' +
+      (factsTable || '') +
+      '<div style="margin-top:6px">Parsed text' + (d.truncated ? ' (first part)' : '') + ':</div>' +
+      '<pre>' + esc(d.parsed_markdown || '') + esc(cut) + '</pre></details>');
+  loadMyDocs(false);   // refresh the doc-scope selector now that the document is ready
+}
+
+// poll /docstatus until the background parse finishes (or fails)
+async function pollStatus(docId, filename) {
+  for (let i = 0; i < 120; i++) {                 // ~6 min ceiling (120 × 3s)
+    await new Promise(r => setTimeout(r, 3000));
+    try {
+      const r = await fetch('/docstatus', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ doc_id: docId, ...idFields() }) });
+      const d = await r.json();
+      if (d.status === 'ready') {
+        upstatus.textContent = '✓ ' + filename + ' — ' + d.n_facts + ' figures extracted';
+        renderUploaded(d); return;
+      }
+      if (d.status === 'failed') {
+        upstatus.textContent = '✗ ' + filename + ' — parsing failed';
+        add('bot', '⚠ Parsing <b>' + esc(filename) + '</b> failed: ' + esc(d.error || 'unknown error'));
+        return;
+      }
+    } catch (e) { /* keep polling */ }
+  }
+  upstatus.textContent = 'Still parsing ' + filename + '… (taking longer than usual)';
+}
+
 fileInput.addEventListener('change', async () => {
   const f = fileInput.files[0]; if (!f) return;
-  upstatus.textContent = 'Parsing ' + f.name + '…';
+  upstatus.textContent = 'Uploading ' + f.name + '…';
   const fd = new FormData(); fd.append('file', f);
   if (googleToken) fd.append('token', googleToken); else fd.append('session_id', sessionId);
   try {
     const r = await fetch('/upload', { method:'POST', body: fd });
     if (!r.ok) { upstatus.textContent = (r.status===429 ? 'Demo limit reached.' : 'Upload failed.'); return; }
     const d = await r.json();
-    upstatus.textContent = d.already_uploaded
-      ? '↩︎ ' + d.filename + ' — already uploaded (reusing existing copy)'
-      : '✓ ' + d.filename + ' — ' + d.n_facts + ' figures extracted';
-    // show what docling parsed, so the parse is visible (markdown truncated for long docs)
-    let factsTable = '';
-    if (d.facts && d.facts.length) {
-      const rows = d.facts.map(x => '<tr><td>' + esc(x.metric) + '</td><td>' + esc(x.period) +
-        '</td><td>' + esc(x.value) + '</td><td>' + esc('p.'+x.page) + '</td></tr>').join('');
-      factsTable = '<div style="margin-top:6px">Extracted table figures (' + d.facts.length +
-        '):</div><table><tr><th>metric</th><th>period</th><th>value</th><th>loc</th></tr>' +
-        rows + '</table>';
+    if (d.status === 'ready') {                    // dedup hit — already parsed
+      upstatus.textContent = d.already_uploaded
+        ? '↩︎ ' + d.filename + ' — already uploaded (reusing existing copy)'
+        : '✓ ' + d.filename + ' — ' + d.n_facts + ' figures extracted';
+      renderUploaded(d);
+    } else {                                       // processing — parse runs in the background
+      upstatus.textContent = '⏳ Parsing ' + d.filename + '…';
+      add('bot', '⏳ Parsing <b>' + esc(d.filename) + '</b> in the background — full documents (whole filings) can take a minute. I\'ll show the result here when it\'s ready.');
+      pollStatus(d.doc_id, d.filename);
     }
-    const stats = d.n_facts + ' figures · ' + d.n_chars.toLocaleString() + ' chars parsed';
-    const cap = d.page_cap ? ' <span class="hint">(demo parses the first ' + d.page_cap +
-      ' pages; production parses the full document asynchronously)</span>' : '';
-    // layer-1 parse-quality signal
-    let pq = '';
-    if (d.parse_quality) {
-      pq = d.parse_quality.status === 'ok'
-        ? '<div class="sources">✓ parse quality: looks healthy</div>'
-        : '<div class="sources" style="color:#b06a00">⚠ parse quality: please review — ' +
-          esc((d.parse_quality.warnings || []).join('; ')) + '</div>';
-    }
-    const cut = d.truncated ? '\n\n…(preview truncated — parsed text is searchable)' : '';
-    const head = d.already_uploaded
-      ? '↩︎ <b>' + esc(d.filename) + '</b> was already uploaded — reusing the existing copy (' + stats + ').'
-      : '📄 Uploaded <b>' + esc(d.filename) + '</b> (' + stats + ').' + cap + pq;
-    const html = head + ' You can now ask about it.' +
-      '<details class="parsed"><summary>show what was parsed (docling)</summary>' +
-      (factsTable || '') +
-      '<div style="margin-top:6px">Parsed text' + (d.truncated ? ' (first part)' : '') + ':</div>' +
-      '<pre>' + esc(d.parsed_markdown || '') + esc(cut) + '</pre></details>';
-    add('bot', html);
-    loadMyDocs(false);   // refresh the doc-scope selector now that a new document exists
   } catch (err) { upstatus.textContent = 'Network error.'; }
   fileInput.value = '';
 });
