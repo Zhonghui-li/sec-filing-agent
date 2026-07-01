@@ -302,11 +302,13 @@ def _find_duplicate(user_id, sha):
         path = os.path.join(user_dir, fn)
         if not os.path.isfile(path):
             continue
+        did = os.path.splitext(fn)[0]
+        if did not in names:  # only reuse a fully-parsed doc; skip files still processing / failed / orphaned
+            continue
         try:
             with open(path, "rb") as fh:
                 if hashlib.sha256(fh.read()).hexdigest() == sha:
-                    did = os.path.splitext(fn)[0]
-                    return did, names.get(did, fn)
+                    return did, names[did]
         except OSError:
             continue
     return None
