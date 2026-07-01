@@ -48,6 +48,22 @@ def _rows():
     return _ROWS
 
 
+def _rows_for(ticker):
+    """Rows for one ticker: the curated local snapshot if present, else fetched live from SEC
+    XBRL (companyfacts, cached) via the same extraction. Lets get_financials / get_ratio /
+    get_growth answer ANY U.S. public company, while the curated companies keep byte-identical
+    behavior (and the eval baseline). Returns [] if unknown / unreachable -> the caller abstains."""
+    tk = ticker.strip().upper()
+    local = [r for r in _rows() if r["ticker"] == tk]
+    if local:
+        return local
+    try:
+        from agents.companyfacts import company_rows
+        return company_rows(tk)
+    except Exception:
+        return []
+
+
 def edgar_url(cik, accession):
     """Direct link to the filing's index page on SEC EDGAR (uses the company CIK, not
     the accession prefix, which can be a filing agent's)."""
@@ -56,7 +72,7 @@ def edgar_url(cik, accession):
 
 
 def cik_for(ticker):
-    hits = [r for r in _rows() if r["ticker"] == ticker.strip().upper()]
+    hits = _rows_for(ticker)
     return hits[0]["cik"] if hits else None
 
 
@@ -73,16 +89,16 @@ def get_financials(ticker: str, metric: str, fiscal_year: int = None) -> str:
     company doesn't report the metric, this says so (do not fabricate a value)."""
     tk = ticker.strip().upper()
     key = _canon(metric)
-    hits = [r for r in _rows() if r["ticker"] == tk and r["metric"] == key]
+    rows = _rows_for(tk)
+    hits = [r for r in rows if r["metric"] == key]
     if not hits:
-        avail = sorted({r["metric"] for r in _rows() if r["ticker"] == tk})
+        avail = sorted({r["metric"] for r in rows})
         return (f"{tk} does not report '{metric}' (canonical: {key}) in the available "
                 f"XBRL data. Reported metrics for {tk}: {', '.join(avail) or 'none'}.")
     if fiscal_year is not None:
         hits = [r for r in hits if r["fiscal_year"] == int(fiscal_year)]
         if not hits:
-            yrs = sorted({r["fiscal_year"] for r in _rows()
-                          if r["ticker"] == tk and r["metric"] == key})
+            yrs = sorted({r["fiscal_year"] for r in rows if r["metric"] == key})
             return (f"No {key} for {tk} FY{fiscal_year}. Available years: "
                     f"{yrs[0]}–{yrs[-1]}.")
     r = max(hits, key=lambda x: x["period_end"])   # latest if year omitted
@@ -97,7 +113,7 @@ def _value(ticker, metric, year=None):
     """Raw numeric value + the source row, or (None, None) if unavailable. Used internally
     by get_ratio (which needs the number, not the formatted string)."""
     tk, key = ticker.strip().upper(), _canon(metric)
-    hits = [r for r in _rows() if r["ticker"] == tk and r["metric"] == key]
+    hits = [r for r in _rows_for(tk) if r["metric"] == key]
     if year is not None:
         hits = [r for r in hits if r["fiscal_year"] == int(year)]
     if not hits:
