@@ -146,27 +146,34 @@ _RATIO_ALIASES = {
 }
 
 
-def _operand(ticker, spec, year):
-    """Resolve one side of a ratio formula. Supports a base metric, "avg:METRIC" (this year
-    and prior averaged), and "A-B" (difference of two base metrics, for quick ratio)."""
+def _resolve_operand(spec, year, getval):
+    """Resolve one side of a ratio formula using a source-agnostic value getter
+    getval(metric, year) -> (value, src_row). Supports a base metric, "avg:METRIC" (this year
+    and prior averaged), and "A-B" (difference of two base metrics, for quick ratio). Shared by
+    the public XBRL ratio tool and the uploaded-document one — same formulas, different source."""
     if spec.startswith("avg:"):
         m = spec[4:]
-        cur, r = _value(ticker, m, year)
+        cur, r = getval(m, year)
         if cur is None:
             return None, None
-        prev, _ = _value(ticker, m, int(year) - 1) if year else (None, None)
+        prev, _ = getval(m, int(year) - 1) if year else (None, None)
         return ((cur + prev) / 2 if prev is not None else cur), r
     if "-" in spec:
         parts = spec.split("-")
         vals, src = [], None
         for p in parts:
-            v, r = _value(ticker, p, year)
+            v, r = getval(p, year)
             if v is None:
                 return None, None
             vals.append(v)
             src = src or r
         return vals[0] - sum(vals[1:]), src
-    return _value(ticker, spec, year)
+    return getval(spec, year)
+
+
+def _operand(ticker, spec, year):
+    """Public-XBRL operand resolution (reads _rows() by ticker)."""
+    return _resolve_operand(spec, year, lambda m, y: _value(ticker, m, y))
 
 
 def get_ratio(ratio: str, ticker: str, fiscal_year: int = None) -> str:

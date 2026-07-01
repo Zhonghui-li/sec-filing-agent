@@ -9,10 +9,13 @@ Step-1 (minimal): cites filename (+ page when available). Step-2 upgrade: ground
 extracted table cells with cell-level citations (the finance bar on private data).
 """
 import os
+import re
 
 import psycopg
 from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
+
+from agents.finance_tools import RATIOS, _RATIO_ALIASES, _resolve_operand
 
 _EMB_MODEL = os.environ.get("EMB_MODEL", "text-embedding-3-small")
 _RERANK = os.environ.get("RERANK", "1") == "1"
@@ -110,3 +113,99 @@ def get_my_financials(metric: str, user_id: str, period: str = None, doc_filter:
         loc = f"{fn}" + (f" · p.{page}" if page is not None else "") + f" · {cell}"
         out.append(f"{m} ({per}): {raw} (exact value {val:g}). [source: {loc}]")
     return "\n".join(out)
+
+
+# --- Ratios & growth on uploaded documents ---------------------------------------------------
+# The private-data analogues of get_ratio / get_growth. They reuse the SAME fixed formulas
+# (finance_tools.RATIOS) and operand resolver; only the value getter changes — it reads the
+# uploaded table cells (user_facts) instead of the public XBRL rows. So a ratio is still
+# computed deterministically in code (the finance bar), with cell-level citations.
+
+def _year_of(period):
+    """First 4-digit year in a period label (e.g. 'FY2025' -> 2025), or None."""
+    m = re.search(r"(?:19|20)\d{2}", str(period or ""))
+    return int(m.group()) if m else None
+
+
+def _cite(src):
+    return (f"{src['filename']}" + (f" · p.{src['page']}" if src.get("page") is not None else "")
+            + f" · {src['cell']}")
+
+
+def _my_value(metric, user_id, doc_filter=None, year=None):
+    """Private analogue of finance_tools._value: one base metric's numeric value from the user's
+    uploaded tables (user_facts), matched as a row-label substring. Prefers an exact label match,
+    then the shortest label (closest to the base metric, so 'revenue' isn't shadowed by 'cost of
+    revenue'), then the latest fiscal year. Returns (float value, src dict) or (None, None)."""
+    target = re.sub(r"\s+", " ", str(metric).replace("_", " ").strip().lower())
+    clause, dparams = _doc_clause(doc_filter)
+    sql = ("select value, filename, period, cell, page, lower(metric) from user_facts "
+           "where user_id=%s and lower(metric) like %s" + clause)
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+        cur.execute(sql, [user_id, f"%{target}%", *dparams])
+        rows = cur.fetchall()
+    cand = [{"value": float(v), "filename": fn, "period": per, "cell": c, "page": pg,
+             "label": re.sub(r"\s+", " ", lbl.strip()), "fiscal_year": _year_of(per)}
+            for (v, fn, per, c, pg, lbl) in rows]
+    if year is not None:
+        cand = [r for r in cand if r["fiscal_year"] == int(year)]
+    if not cand:
+        return None, None
+    exact = [r for r in cand if r["label"] == target]
+    pool = exact or cand
+    r = min(pool, key=lambda x: (len(x["label"]), -(x["fiscal_year"] or -1)))
+    return r["value"], r
+
+
+def get_my_ratio(ratio: str, user_id: str, period: str = None, doc_filter: str = None) -> str:
+    """Compute a standard financial RATIO from the user's UPLOADED documents deterministically —
+    the private-data analogue of get_ratio, using the SAME fixed formulas. Supports the same set
+    (gross_margin, operating_margin, net_margin, cogs_pct, roa, roe, current_ratio, quick_ratio,
+    payout_ratio, debt_to_equity). It fetches the formula's base figures from the document's table
+    cells and divides in code, returning the value, the formula, and cell-level citations. Use
+    this for ANY ratio about an uploaded file instead of fetching pieces and dividing yourself."""
+    name = _RATIO_ALIASES.get(ratio.strip().lower(), ratio.strip().lower().replace(" ", "_"))
+    if name not in RATIOS:
+        return f"Unknown ratio '{ratio}'. Supported: {', '.join(sorted(RATIOS))}."
+    (num_spec, _op, den_spec), kind, definition = RATIOS[name]
+    getval = lambda m, y: _my_value(m, user_id, doc_filter, y)
+    year = _year_of(period)
+    if year is None:   # pin both operands to the numerator's latest available fiscal year
+        base = num_spec.replace("avg:", "").split("-")[0]
+        _, nsrc = getval(base, None)
+        year = nsrc["fiscal_year"] if nsrc else None
+    num, src = _resolve_operand(num_spec, year, getval)
+    den, _ = _resolve_operand(den_spec, year, getval)
+    if num is None or den is None:
+        missing = num_spec if num is None else den_spec
+        return (f"Cannot compute {name} from your uploaded documents: a required figure "
+                f"('{missing}') isn't in the tables. Abstain rather than guess.")
+    if den == 0:
+        return f"Cannot compute {name}: denominator is 0."
+    raw = num / den
+    out = f"{raw * 100:.1f}%" if kind == "pct" else f"{raw:.2f}"
+    fy = f" for FY{src['fiscal_year']}" if src and src.get("fiscal_year") else ""
+    return f"{name}{fy} = {out} ({definition}). [source: {_cite(src)}]"
+
+
+def get_my_growth(metric: str, user_id: str, period: str = None, doc_filter: str = None) -> str:
+    """Year-over-year change of a metric from the user's UPLOADED documents, deterministic — the
+    private-data analogue of get_growth. Fetches the given/latest fiscal year AND the immediately
+    preceding year from the document's tables, so the two years compared are ALWAYS consecutive;
+    abstains if the prior year isn't in the document rather than using a non-adjacent one."""
+    year = _year_of(period)
+    cur, rc = _my_value(metric, user_id, doc_filter, year)
+    if cur is None:
+        return get_my_financials(metric, user_id, period=period, doc_filter=doc_filter)
+    cy = rc["fiscal_year"]
+    if cy is None:
+        return f"Cannot compute YoY for '{metric}': the document's period label has no year. Abstain."
+    prev, rp = _my_value(metric, user_id, doc_filter, cy - 1)
+    if prev is None:
+        return (f"Cannot compute YoY for '{metric}' FY{cy}: the prior year (FY{cy - 1}) isn't in "
+                f"your uploaded documents, so there's no adjacent year to compare. Abstain.")
+    if prev == 0:
+        return f"Cannot compute YoY for '{metric}': prior-year value is 0."
+    pct = (cur - prev) / abs(prev) * 100
+    return (f"{metric} grew {pct:+.1f}% year over year, from {prev:g} (FY{cy - 1}) to {cur:g} "
+            f"(FY{cy}). [sources: {_cite(rp)}; {_cite(rc)}]")

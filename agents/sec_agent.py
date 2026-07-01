@@ -122,12 +122,22 @@ USER_DOCS_PROMPT = """
 ADDITIONAL TOOLS for the user's OWN uploaded private documents (e.g. an internal financial \
 statement or memo for a company that is NOT one of the 7 public companies above):
 - get_my_financials: EXACT numbers from the document's tables (the analogue of get_financials).
+- get_my_ratio: a standard RATIO from the document, computed in code (the analogue of get_ratio).
+- get_my_growth: year-over-year change of a metric from the document (the analogue of get_growth).
 - search_my_documents: qualitative passages from the document.
 
+Route the uploaded-document tools EXACTLY as you route the public ones: a RATIO (gross margin, \
+ROE, current ratio, ...) -> get_my_ratio; a year-over-year change -> get_my_growth; a single \
+figure -> get_my_financials; narrative -> search_my_documents. NEVER fetch pieces with \
+get_my_financials and divide/compare them yourself when get_my_ratio / get_my_growth applies.
+
 This OVERRIDES Rule 6. A company not in the public list of 7 is NOT automatically out_of_scope — \
-the user may have uploaded documents about it. You MUST NEVER abstain out_of_scope for a company \
-without FIRST calling get_my_financials and/or search_my_documents to check the user's own \
-documents. Only if BOTH return nothing relevant may you abstain (then use not_in_filings).
+the user may have uploaded documents about it. When a question names a company or subject that is \
+NOT one of the 7 public tickers and the user has uploaded documents, treat it as being about those \
+documents and call the get_my_* tools FIRST. You MUST NEVER abstain out_of_scope for a company \
+without FIRST calling the relevant get_my_* tool to check the user's own documents. If the name is \
+ambiguous across several uploaded files, ASK the user which file they mean rather than guessing or \
+abstaining. Only if the tools return nothing relevant may you abstain (then use not_in_filings).
 For ANY number from an uploaded document — including a figure for a specific business segment, \
 division, or line item (e.g. "how much did the railroad earn", "insurance underwriting", "operating \
 earnings") — you MUST use get_my_financials, NOT search_my_documents. These are table figures: \
@@ -146,7 +156,9 @@ def _user_docs_tools(user_id: str, scope_doc: str = None):
     a file/company, to disambiguate when the user hasn't picked one."""
     from langchain_core.tools import tool as _tool
     from agents.user_docs_retrieval import (search_my_documents as _smd,
-                                            get_my_financials as _gmf)
+                                            get_my_financials as _gmf,
+                                            get_my_ratio as _gmr,
+                                            get_my_growth as _gmg)
 
     def _filter(document):
         return scope_doc or document   # explicit UI selection (A) wins over the LLM hint (B)
@@ -169,7 +181,26 @@ def _user_docs_tools(user_id: str, scope_doc: str = None):
         so the figure comes from the right file (important when several files are uploaded)."""
         return _gmf(metric, user_id=user_id, period=period, doc_filter=_filter(document))
 
-    return [search_my_documents, get_my_financials]
+    @_tool
+    def get_my_ratio(ratio: str, document: str = None, period: str = None) -> str:
+        """A standard financial RATIO from the user's uploaded documents (the private-data
+        analogue of get_ratio; same fixed formulas, computed in code). Supports gross_margin,
+        operating_margin, net_margin, cogs_pct, roa, roe, current_ratio, quick_ratio,
+        payout_ratio, debt_to_equity. Use this for ANY ratio about an uploaded file — do NOT
+        fetch the pieces with get_my_financials and divide yourself. Pass the file name (or
+        company) as `document` when several files are uploaded."""
+        return _gmr(ratio, user_id=user_id, period=period, doc_filter=_filter(document))
+
+    @_tool
+    def get_my_growth(metric: str, document: str = None, period: str = None) -> str:
+        """Year-over-year (YoY) change of a metric from the user's uploaded documents (the
+        private-data analogue of get_growth). The tool fetches the year and the immediately
+        preceding year itself, so the compared years are always consecutive. Use this for ANY
+        'year over year' / 'how did X change' question about an uploaded file — never pick the
+        two years yourself. Pass the file name as `document` when several files are uploaded."""
+        return _gmg(metric, user_id=user_id, period=period, doc_filter=_filter(document))
+
+    return [search_my_documents, get_my_financials, get_my_ratio, get_my_growth]
 
 
 def _uploaded_doc_names(user_id: str):
@@ -197,9 +228,11 @@ def build_agent(model: str = None, temperature: float = 0.0, user_id: str = None
                 if names else "")
         if scope_doc:
             have += (f" The user has SELECTED the document '{scope_doc}' and is asking about it. "
-                     f"Treat every financial question as being about this document: use "
-                     f"get_my_financials / search_my_documents for it, and do NOT ask which "
-                     f"company they mean.")
+                     f"Treat EVERY financial question as being about this document, even when no "
+                     f"company is named: use get_my_ratio (ratios), get_my_growth (year-over-year), "
+                     f"get_my_financials (single figures), or search_my_documents (narrative) on "
+                     f"THIS document. Do NOT use the public-company tools, and NEVER ask which "
+                     f"company they mean — this document is the subject.")
         elif len(names) > 1:
             have += (" Several documents are uploaded: when a question is about a specific one, "
                      "pass its name as the `document` argument so figures come from the right file, "
