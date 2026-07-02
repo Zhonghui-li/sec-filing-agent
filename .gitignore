@@ -10,4 +10,8 @@ ingest/sample/
 ingest/uploads/
 eval/labeling/judge_calibration.md
 
-data/cache/            # on-demand companyfacts fetches (runtime cache, refetched on demand)
+# on-demand companyfacts fetches (runtime cache, refetched on demand)
+data/cache/
+# external FinanceBench data (CC-BY-NC, downloaded on run) + local run output
+eval/financebench/_open_cache.jsonl
+eval/financebench/_open_results.json

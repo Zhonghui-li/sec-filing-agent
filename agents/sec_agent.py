@@ -24,6 +24,7 @@ from langgraph.errors import GraphRecursionError
 from agents.finance_tools import (get_financials as _get_financials, compute as _compute,
                                   get_ratio as _get_ratio, get_growth as _get_growth)
 from agents.filings_retrieval import search_filings as _search_filings
+from agents.guardrail import guardrail
 from agents import observability
 
 DEFAULT_RECURSION_LIMIT = 15
@@ -70,9 +71,11 @@ Use the tools; never rely on memory for facts or figures:
 the comparison is always between consecutive years (do NOT fetch two years and call compute, \
 which lets a wrong baseline slip in).
 - get_ratio: a STANDARD financial ratio (gross/operating/net margin, cogs_pct, roa, roe, \
-current_ratio, quick_ratio, payout_ratio, debt_to_equity). Prefer this over assembling the \
-ratio yourself — the formula and conventions (e.g. ROA uses AVERAGE assets, "debt" means \
-long-term debt not total liabilities) are fixed in the tool.
+current_ratio, quick_ratio, payout_ratio, debt_to_equity, and activity ratios dpo, dso, dio, \
+asset_turnover, fixed_asset_turnover, capex_pct_revenue, interest_coverage). ALWAYS prefer this \
+over assembling a ratio from parts yourself — multi-step ratios (esp. days-outstanding like DPO) \
+are error-prone by hand; the formulas and conventions (ROA uses AVERAGE assets, "debt" means \
+long-term debt not total liabilities, days ratios use 365 × average balance) are fixed in the tool.
 - search_filings: qualitative content — risk factors, strategy, management's discussion.
 - abstain: call this (instead of answering) whenever you cannot answer from the data.
 
@@ -119,6 +122,16 @@ and the user's new message just continues the same line of questions without a n
 (e.g. "and Microsoft?", "what about its net income?"), reuse that SAME fiscal year for \
 consistency — do NOT switch to the latest. (An explicit year, or "latest"/"most recent", still \
 overrides.) E.g. after "Apple's revenue in fiscal 2024", "and Microsoft?" means Microsoft FY2024.
+
+8. DERIVED / MULTI-STEP metrics MUST come from get_ratio. If get_ratio does NOT list the exact \
+metric asked — e.g. cash conversion cycle, EBITDA or EBITDA margin, or a custom formula spelled \
+out in the question — do NOT assemble it yourself by fetching components and doing the arithmetic. \
+Call abstain (not_reported) and say it isn't a supported computed metric. Hand-built multi-step \
+arithmetic is unreliable and produces wrong numbers; a wrong number is worse than an honest \
+abstention. (Simple single-step arithmetic between two fetched figures via compute is still fine.)
+9. SANITY-CHECK every number before reporting it: if it is implausible for its kind (a \
+days-outstanding ratio over a few hundred days, a turnover above ~20x, a margin above 100%), you \
+have made an error — do NOT report that number; abstain instead.
 
 Notes: map a plain year to the fiscal year (e.g. "2024" -> FY2024); fiscal years differ \
 across companies (NVDA's fiscal year ends in January). Be concise and always cite tickers \
@@ -302,6 +315,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
                       "question.")
             trace = []
         tools_used = [t["tool"] for t in trace]
+        answer = guardrail(answer, tools_used)   # hard backstop against hand-computed bad numbers
         # audit trail: which filings were cited + whether/why it abstained
         accns = sorted({a for _, c in tool_outputs
                         for a in re.findall(r"\d{10}-\d{2}-\d{6}", c)})
