@@ -4,7 +4,7 @@ These gate every PR: they verify the exact-number / abstain / citation-URL logic
 the agent depends on, using only the committed data (data/financials.json).
 """
 from agents.finance_tools import (get_financials, compute, get_ratio, get_growth,
-                                  edgar_url, cik_for)
+                                  compute_formula, edgar_url, cik_for)
 
 
 def test_exact_revenue():
@@ -106,3 +106,23 @@ def test_get_growth_abstains_when_metric_not_reported():
     # JPMorgan does not report gross profit -> no YoY to compute, must say so (not fabricate)
     out = get_growth("gross profit", "JPM")
     assert "does not report" in out or "Available" in out
+
+
+def test_compute_formula_dpo():
+    # the exact FinanceBench DPO formula on Amazon FY2017 -> 93.86 (the ad-hoc version got 1419):
+    # 365 * average AP / (COGS + change in inventory), evaluated deterministically in code
+    out = compute_formula("365 * avg(accounts_payable) / (cost_of_revenue + delta(inventory))",
+                          "AMZN", 2017)
+    assert "93.86" in out and "accession" in out
+
+
+def test_compute_formula_abstains_on_missing_metric():
+    # a bank has no gross_profit -> the formula must abstain, not fabricate
+    out = compute_formula("gross_profit / revenue", "JPM", 2023)
+    assert "Abstain" in out
+
+
+def test_compute_formula_rejects_unsafe():
+    # only arithmetic + metric names + avg/delta/prev/abs — never arbitrary calls / attributes
+    assert "Abstain" in compute_formula("__import__('os').system('x')", "AAPL", 2024)
+    assert "Abstain" in compute_formula("revenue.__class__", "AAPL", 2024)

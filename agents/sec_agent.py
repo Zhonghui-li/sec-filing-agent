@@ -22,7 +22,8 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.errors import GraphRecursionError
 
 from agents.finance_tools import (get_financials as _get_financials, compute as _compute,
-                                  get_ratio as _get_ratio, get_growth as _get_growth)
+                                  get_ratio as _get_ratio, get_growth as _get_growth,
+                                  compute_formula as _compute_formula)
 from agents.filings_retrieval import search_filings as _search_filings
 from agents.guardrail import guardrail
 from agents import observability
@@ -54,7 +55,7 @@ def abstain(reason: str, detail: str = "") -> str:
 
 
 TOOLS = [tool(_get_financials), tool(_compute), tool(_get_ratio), tool(_get_growth),
-         tool(_search_filings), tool(abstain)]
+         tool(_compute_formula), tool(_search_filings), tool(abstain)]
 
 SYSTEM_PROMPT = f"""You are a financial-analysis assistant that answers questions about \
 public companies' SEC 10-K filings. For NUMBERS (exact figures, ratios, year-over-year growth) \
@@ -123,12 +124,14 @@ and the user's new message just continues the same line of questions without a n
 consistency — do NOT switch to the latest. (An explicit year, or "latest"/"most recent", still \
 overrides.) E.g. after "Apple's revenue in fiscal 2024", "and Microsoft?" means Microsoft FY2024.
 
-8. DERIVED / MULTI-STEP metrics MUST come from get_ratio. If get_ratio does NOT list the exact \
-metric asked — e.g. cash conversion cycle, EBITDA or EBITDA margin, or a custom formula spelled \
-out in the question — do NOT assemble it yourself by fetching components and doing the arithmetic. \
-Call abstain (not_reported) and say it isn't a supported computed metric. Hand-built multi-step \
-arithmetic is unreliable and produces wrong numbers; a wrong number is worse than an honest \
-abstention. (Simple single-step arithmetic between two fetched figures via compute is still fine.)
+8. DERIVED / MULTI-STEP metrics: use get_ratio if it lists the metric. If it does NOT — e.g. cash \
+conversion cycle, EBITDA / EBITDA margin, or a formula spelled out in the question — use \
+compute_formula: write the WHOLE formula ONCE with our metric names as variables plus the helpers \
+avg() / delta() / prev() (it fetches every figure from XBRL and evaluates the whole expression \
+deterministically). Do NOT hand-assemble a metric by fetching parts and chaining several compute \
+calls — that mis-orders operands (e.g. 365 / ratio instead of 365 x, or sum instead of average) \
+and produces wrong numbers. Abstain (not_reported) ONLY if get_ratio/compute_formula reports a \
+required figure isn't available. A wrong number is worse than an honest abstention.
 9. SANITY-CHECK every number before reporting it: if it is implausible for its kind (a \
 days-outstanding ratio over a few hundred days, a turnover above ~20x, a margin above 100%), you \
 have made an error — do NOT report that number; abstain instead.
