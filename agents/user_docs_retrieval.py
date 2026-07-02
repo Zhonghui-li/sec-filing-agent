@@ -15,7 +15,7 @@ import psycopg
 from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
 
-from agents.finance_tools import RATIOS, _RATIO_ALIASES, _resolve_operand
+from agents.finance_tools import RATIOS, _RATIO_ALIASES, _resolve_operand, _fmt_ratio
 
 _EMB_MODEL = os.environ.get("EMB_MODEL", "text-embedding-3-small")
 _RERANK = os.environ.get("RERANK", "1") == "1"
@@ -183,7 +183,7 @@ def get_my_ratio(ratio: str, user_id: str, period: str = None, doc_filter: str =
     if den == 0:
         return f"Cannot compute {name}: denominator is 0."
     raw = num / den
-    out = f"{raw * 100:.1f}%" if kind == "pct" else f"{raw:.2f}"
+    out = _fmt_ratio(raw, kind)
     fy = f" for FY{src['fiscal_year']}" if src and src.get("fiscal_year") else ""
     return f"{name}{fy} = {out} ({definition}). [source: {_cite(src)}]"
 

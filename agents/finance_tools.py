@@ -38,6 +38,18 @@ _ALIASES = {
     "total current liabilities": "current_liabilities",
     "long term debt": "long_term_debt", "long-term debt": "long_term_debt",
     "debt": "long_term_debt",
+    "capex": "capex", "capital expenditure": "capex", "capital expenditures": "capex",
+    "capital spending": "capex",
+    "depreciation and amortization": "depreciation_amortization", "d&a": "depreciation_amortization",
+    "depreciation": "depreciation_amortization", "depreciation & amortization": "depreciation_amortization",
+    "ppe": "ppe_net", "pp&e": "ppe_net", "property plant and equipment": "ppe_net",
+    "property, plant and equipment": "ppe_net", "fixed assets": "ppe_net", "net ppe": "ppe_net",
+    "operating cash flow": "operating_cash_flow", "cash from operations": "operating_cash_flow",
+    "cash flow from operations": "operating_cash_flow", "cfo": "operating_cash_flow",
+    "operating cash flows": "operating_cash_flow",
+    "accounts receivable": "accounts_receivable", "receivables": "accounts_receivable",
+    "trade receivables": "accounts_receivable", "net receivables": "accounts_receivable",
+    "interest expense": "interest_expense",
 }
 
 
@@ -144,7 +156,34 @@ RATIOS = {
     "debt_to_equity":   (("long_term_debt", "/", "stockholders_equity"), "ratio",
                          "long-term debt / shareholders' equity (debt = interest-bearing debt, "
                          "NOT total liabilities)"),
+    # activity ratios added after FinanceBench validation (the ad-hoc versions got miscomputed by
+    # the model — e.g. DPO 365÷ratio instead of ×ratio; baking them in makes them deterministic).
+    # "days" kind returns 365 × (num/den); "turns" returns num/den as a multiple.
+    "dpo":              (("avg:accounts_payable", "/", "cost_of_revenue"), "days",
+                         "365 × average accounts payable / cost of revenue (days payable outstanding)"),
+    "dso":              (("avg:accounts_receivable", "/", "revenue"), "days",
+                         "365 × average accounts receivable / revenue (days sales outstanding)"),
+    "dio":              (("avg:inventory", "/", "cost_of_revenue"), "days",
+                         "365 × average inventory / cost of revenue (days inventory outstanding)"),
+    "asset_turnover":   (("revenue", "/", "avg:total_assets"), "turns",
+                         "revenue / average total assets"),
+    "fixed_asset_turnover": (("revenue", "/", "avg:ppe_net"), "turns",
+                         "revenue / average net PP&E"),
+    "capex_pct_revenue": (("capex", "/", "revenue"), "pct", "capex / revenue"),
+    "interest_coverage": (("operating_income", "/", "interest_expense"), "turns",
+                         "operating income / interest expense (times interest earned)"),
 }
+
+
+def _fmt_ratio(raw, kind):
+    """Format a ratio's raw num/den by output kind (shared by the public and uploaded-doc tools)."""
+    if kind == "pct":
+        return f"{raw * 100:.1f}%"
+    if kind == "days":
+        return f"{raw * 365:.2f} days"
+    if kind == "turns":
+        return f"{raw:.2f}x"
+    return f"{raw:.2f}"
 
 _RATIO_ALIASES = {
     "gross margin": "gross_margin", "gross profit margin": "gross_margin",
@@ -159,6 +198,15 @@ _RATIO_ALIASES = {
     "payout ratio": "payout_ratio", "dividend payout ratio": "payout_ratio",
     "debt to equity": "debt_to_equity", "debt-to-equity": "debt_to_equity",
     "d/e": "debt_to_equity",
+    "dpo": "dpo", "days payable outstanding": "dpo", "days payable": "dpo",
+    "dso": "dso", "days sales outstanding": "dso", "days sales": "dso",
+    "dio": "dio", "days inventory outstanding": "dio", "days inventory": "dio",
+    "days of inventory": "dio",
+    "asset turnover": "asset_turnover", "total asset turnover": "asset_turnover",
+    "fixed asset turnover": "fixed_asset_turnover", "ppe turnover": "fixed_asset_turnover",
+    "capex % of revenue": "capex_pct_revenue", "capex as a % of revenue": "capex_pct_revenue",
+    "capex to revenue": "capex_pct_revenue", "capex margin": "capex_pct_revenue",
+    "interest coverage": "interest_coverage", "times interest earned": "interest_coverage",
 }
 
 
@@ -196,8 +244,9 @@ def get_ratio(ratio: str, ticker: str, fiscal_year: int = None) -> str:
     """Compute a standard financial RATIO deterministically (the formula is fixed in code, so
     the right base metrics and conventions are always used). Supports: gross_margin,
     operating_margin, net_margin, cogs_pct, roa, roe, current_ratio, quick_ratio, payout_ratio,
-    debt_to_equity. Use this for ANY ratio instead of fetching pieces and dividing yourself —
-    it returns the exact value, the formula used, and the source filing."""
+    debt_to_equity, dpo, dso, dio, asset_turnover, fixed_asset_turnover, capex_pct_revenue,
+    interest_coverage. Use this for ANY ratio (incl. days-outstanding and turnover ratios) instead
+    of fetching pieces and dividing yourself — it returns the exact value, the formula, and source."""
     name = _RATIO_ALIASES.get(ratio.strip().lower(), ratio.strip().lower().replace(" ", "_"))
     if name not in RATIOS:
         return (f"Unknown ratio '{ratio}'. Supported: {', '.join(sorted(RATIOS))}.")
@@ -213,7 +262,7 @@ def get_ratio(ratio: str, ticker: str, fiscal_year: int = None) -> str:
         return f"Cannot compute {name} for {tk}: denominator is 0."
     raw = num / den
     fy = src["fiscal_year"] if src else fiscal_year
-    out = f"{raw * 100:.1f}%" if kind == "pct" else f"{raw:.2f}"
+    out = _fmt_ratio(raw, kind)
     return (f"{tk} {name} for FY{fy} = {out} ({definition}). "
             f"[source: 10-K accession {src['accession']}, {edgar_url(src['cik'], src['accession'])}]")
 

@@ -52,6 +52,20 @@ METRICS = {
     "current_assets":      (["AssetsCurrent"], "instant"),
     "current_liabilities": (["LiabilitiesCurrent"], "instant"),
     "long_term_debt":      (["LongTermDebtNoncurrent", "LongTermDebt"], "instant"),
+    # added after FinanceBench validation flagged these as the top missing line items:
+    "capex":               (["PaymentsToAcquirePropertyPlantAndEquipment",
+                             "PaymentsToAcquireProductiveAssets",
+                             "PaymentsForCapitalImprovements"], "duration"),
+    "depreciation_amortization": (["DepreciationDepletionAndAmortization",
+                             "DepreciationAmortizationAndAccretionNet",
+                             "DepreciationAndAmortization"], "duration"),
+    "ppe_net":             (["PropertyPlantAndEquipmentNet"], "instant"),
+    "operating_cash_flow": (["NetCashProvidedByUsedInOperatingActivities",
+                             "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"],
+                            "duration"),
+    "accounts_receivable": (["AccountsReceivableNetCurrent", "ReceivablesNetCurrent"], "instant"),
+    "interest_expense":    (["InterestExpense", "InterestExpenseDebt",
+                             "InterestExpenseNonoperating"], "duration"),
 }
 
 
