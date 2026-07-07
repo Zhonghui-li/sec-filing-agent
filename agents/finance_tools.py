@@ -5,6 +5,7 @@ source filing for citation); compute does deterministic math. The agent is told 
 route every number through these and never recall or do arithmetic itself — this is
 what makes financial answers exact and auditable.
 """
+import ast
 import json
 import os
 from pathlib import Path
@@ -310,6 +311,97 @@ def compute(op: str, a: float, b: float) -> str:
             return "Cannot compute ratio: denominator is 0."
         return f"Ratio (a / b): {a / b:.4f} ({a / b * 100:.2f}%)"
     return f"Unknown op '{op}'. Use 'yoy', 'diff', or 'ratio'."
+
+
+# --- Single-expression formula evaluator (Program-of-Thought) ---------------------------------
+# For a question that SPELLS OUT a formula (or a metric no ratio tool covers). The model writes
+# the WHOLE formula ONCE with our metric names as variables + avg()/delta()/prev() helpers; this
+# fetches every figure from XBRL itself and evaluates the whole expression deterministically. That
+# removes the two failure modes of chained compute() (wrong operand order, sum-vs-average) AND
+# keeps the finance bar (the model never transcribes a number). Only arithmetic + metric names +
+# the whitelisted helpers are allowed (a safe AST walk, never eval()).
+_FORMULA_FUNCS = {"avg", "delta", "prev", "abs"}
+
+
+def _eval_node(node, ticker, year, srcs):
+    if isinstance(node, ast.Expression):
+        return _eval_node(node.body, ticker, year, srcs)
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
+            return float(node.value)
+        raise ValueError(f"non-numeric constant {node.value!r}")
+    if isinstance(node, ast.BinOp):
+        a = _eval_node(node.left, ticker, year, srcs)
+        b = _eval_node(node.right, ticker, year, srcs)
+        for typ, fn in ((ast.Add, lambda: a + b), (ast.Sub, lambda: a - b),
+                        (ast.Mult, lambda: a * b), (ast.Div, lambda: a / b),
+                        (ast.Pow, lambda: a ** b), (ast.Mod, lambda: a % b)):
+            if isinstance(node.op, typ):
+                return fn()
+        raise ValueError("operator not allowed")
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        v = _eval_node(node.operand, ticker, year, srcs)
+        return v if isinstance(node.op, ast.UAdd) else -v
+    if isinstance(node, ast.Name):
+        return _metric_at(node.id, ticker, year, srcs)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        fn = node.func.id
+        if fn not in _FORMULA_FUNCS or len(node.args) != 1:
+            raise ValueError(f"call '{fn}' not allowed")
+        if fn == "abs":
+            return abs(_eval_node(node.args[0], ticker, year, srcs))
+        if not isinstance(node.args[0], ast.Name):
+            raise ValueError(f"{fn}() takes a metric name")
+        m = node.args[0].id
+        cur = _metric_at(m, ticker, year, srcs)
+        prv = _metric_at(m, ticker, year - 1, srcs)
+        return {"avg": (cur + prv) / 2, "delta": cur - prv, "prev": prv}[fn]
+    raise ValueError(f"disallowed expression element: {type(node).__name__}")
+
+
+def _metric_at(name, ticker, year, srcs):
+    v, r = _value(ticker, name, year)
+    if v is None:
+        raise KeyError(f"{_canon(name)} for {ticker} FY{year} not reported")
+    if r:
+        srcs.append(r)
+    return float(v)
+
+
+def compute_formula(expression: str, ticker: str, fiscal_year: int = None) -> str:
+    """Evaluate a custom financial FORMULA deterministically. Use this when the question SPELLS OUT
+    a formula, or asks for a metric get_ratio does not cover. Write the whole formula with our
+    metric names as variables and the helpers avg(), delta() (this year minus prior), prev(), e.g.:
+      DPO = "365 * avg(accounts_payable) / (cost_of_revenue + delta(inventory))"
+      EBITDA margin = "(operating_income + depreciation_amortization) / revenue"
+    The tool fetches each figure from XBRL itself — you NEVER pass or transcribe numbers — and
+    computes the whole expression, so there are no arithmetic mistakes. Pass ticker and fiscal_year.
+    Returns the value and the figures used, or an error (then abstain)."""
+    tk = ticker.strip().upper()
+    try:
+        tree = ast.parse(expression, mode="eval")
+    except SyntaxError:
+        return f"Invalid formula syntax: {expression!r}. Abstain."
+    year = int(fiscal_year) if fiscal_year else None
+    if year is None:
+        for nm in [n.id for n in ast.walk(tree)
+                   if isinstance(n, ast.Name) and n.id not in _FORMULA_FUNCS]:
+            _, r = _value(tk, nm)
+            if r:
+                year = r["fiscal_year"]
+                break
+        if year is None:
+            return "Provide a fiscal_year for the formula. Abstain."
+    srcs = []
+    try:
+        val = _eval_node(tree, tk, year, srcs)
+    except (KeyError, ValueError, ZeroDivisionError) as e:
+        return (f"Cannot evaluate the formula for {tk} FY{year}: {e}. Abstain rather than guess.")
+    accns = sorted({r["accession"] for r in srcs if r})
+    src = srcs[0] if srcs else None
+    cite = (f"[sources: 10-K accessions {', '.join(accns)}, "
+            f"{edgar_url(src['cik'], accns[0])}]" if src and accns else "")
+    return (f"{tk} formula result for FY{year} = {val:,.2f}  (formula: {expression}). {cite}")
 
 
 if __name__ == "__main__":

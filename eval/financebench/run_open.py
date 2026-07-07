@@ -71,6 +71,13 @@ def _gap_category(question):
         return "STRUCTURAL: segment (dimensioned XBRL — hard)"
     if re.search(r"\bq[1-4]\b", q) or "quarter" in q:
         return "STRUCTURAL: quarterly (10-Q — extendable)"
+    # fixable derived metrics — targets for A (add a tool or the expression evaluator)
+    if "cash conversion cycle" in q or re.search(r"\bccc\b", q):
+        return "derived: cash conversion cycle (add tool)"
+    if "ebitda" in q:
+        return "derived: EBITDA / EBITDA margin (add tool)"
+    if "defined as" in q:
+        return "derived: custom formula given (needs expression evaluator)"
     for label, kws in _LINE_ITEMS:
         if any(k in q for k in kws):
             return f"line-item: {label}"
@@ -116,18 +123,28 @@ def report(rows):
     attempted = [r for r in numeric if r["verdict"] in ("correct", "hallucinated")]
     abstained_num = [r for r in numeric if r["verdict"] == "abstain"]
 
+    # split abstains: LEGIT (structural — segment/quarterly data XBRL company-facts can't give,
+    # so abstaining is correct) vs FIXABLE (a metric we could compute with the right tool/mapping —
+    # our design gap). This separates "true deficiency" from "correctly declined".
+    legit_abstain = [r for r in abstained_num if _gap_category(r["q"]).startswith("STRUCTURAL")]
+    fixable_abstain = [r for r in abstained_num if r not in legit_abstain]
+
     n = len(numeric)
+    addressable = n - len(legit_abstain)   # questions we SHOULD be able to answer
     print(f"\nTotal: {len(rows)} | numeric-gold: {n} | narrative-gold: {len(rows)-n}")
-    # Honest breakdown of the numeric questions: correct / abstained / wrong sum to n.
-    # coverage (correct/n) is the PRIMARY metric — it counts abstains AGAINST us, so it can't be
-    # gamed by abstaining. "answered accuracy" excludes abstains from the denominator, so it reads
-    # high precisely BECAUSE we abstain rather than guess — report it only next to the abstain count.
     print(f"\n-- Numeric questions ({n}) --")
-    print(f"  correct   : {len(correct):>3} ({len(correct)/max(n,1):.0%})   <- PRIMARY (coverage; abstains count against this)")
-    print(f"  abstained : {len(abstained_num):>3} ({len(abstained_num)/max(n,1):.0%})   <- safe: no tool / out of coverage (see gap list)")
-    print(f"  wrong     : {len(halluc):>3} ({len(halluc)/max(n,1):.0%})   <- hallucinations (finance bar)")
+    print(f"  correct        : {len(correct):>3} ({len(correct)/max(n,1):.0%})")
+    print(f"  abstain-FIXABLE : {len(fixable_abstain):>3}   <- our design gap (could answer with the right tool)")
+    print(f"  abstain-LEGIT   : {len(legit_abstain):>3}   <- correct: needs segment/quarterly data XBRL can't give")
+    print(f"  wrong           : {len(halluc):>3}   <- hallucinations (finance bar)")
+    # PRIMARY metric: accuracy on what we SHOULD be able to answer (excludes the legitimately-
+    # impossible ones, so it isolates OUR deficiency; still counts fixable-abstains against us so
+    # it can't be gamed by abstaining).
+    print(f"\n  ADDRESSABLE coverage (correct / answerable) : {len(correct)}/{addressable} "
+          f"= {len(correct)/max(addressable,1):.0%}   <- PRIMARY")
+    print(f"  raw coverage         (correct / all numeric): {len(correct)}/{n} = {len(correct)/max(n,1):.0%}")
     print(f"  [conditional] when we answered: {len(correct)}/{len(attempted)} "
-          f"= {len(correct)/max(len(attempted),1):.0%} right — reads high because we abstain, not guess")
+          f"= {len(correct)/max(len(attempted),1):.0%} (reads high because we abstain, not guess)")
     print(f"\n-- Finance bar: hallucinations (wrong number, didn't abstain): {len(halluc)}/{len(rows)} --")
     for r in halluc:
         print(f"      ! {r['company']} — gold {r['gold']} — got: {r['got']}")
