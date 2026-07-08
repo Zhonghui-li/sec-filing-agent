@@ -197,12 +197,15 @@ def extract_rows(gaap, ticker, cik):
         for t in present:
             unit = next(iter(gaap[t]["units"]))     # USD, USD/shares, ...
             vals = annual_values(gaap[t]["units"][unit], kind)
-            # A lower-priority tag that is materially SMALLER than the already-merged (preferred)
-            # value on a shared period is a component/subtotal (e.g. finished-goods vs total
-            # inventory) — don't let it fill gap years. A value that is equal (same line), larger
-            # (a fuller/alternative total, e.g. Block's Revenues vs a partial RevenueFromContract),
-            # or non-overlapping (a clean tag switch, e.g. Nike's inventory) is allowed to fill.
-            if any(end in merged and info["val"] < merged[end]["val"]
+            # A lower-priority tag that is materially SMALLER IN MAGNITUDE than the already-merged
+            # (preferred) value on a shared period is a component/subtotal (e.g. finished-goods vs
+            # total inventory, or continuing-ops vs total cash flow) — don't let it fill gap years.
+            # Magnitude (not signed value) because accounts can be negative (a net loss, negative
+            # operating cash flow): |component| <= |total| holds by the accounting identity, signed
+            # "<" does not. Equal (same line), larger (a fuller/alternative total, e.g. Block's
+            # Revenues vs a partial RevenueFromContract), or non-overlapping (a clean tag switch,
+            # e.g. Nike's inventory) is allowed to fill.
+            if any(end in merged and abs(info["val"]) < abs(merged[end]["val"])
                    and not _close(merged[end]["val"], info["val"])
                    for end, info in vals.items()):
                 continue

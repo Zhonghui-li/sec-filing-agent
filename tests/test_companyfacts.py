@@ -132,6 +132,26 @@ def test_part2_larger_alternative_total_fills():
     assert rev.get(2019) == 4713 and rev.get(2020) == 9497   # the fuller total fills the gaps
 
 
+# Negative accounts (a net loss, negative operating cash flow): the component test must compare
+# MAGNITUDE, not signed value — |continuing-ops| < |total| even when both are negative.
+NEG_GAAP = {
+    "NetCashProvidedByUsedInOperatingActivities": {"units": {"USD": [
+        {"form": "10-K", "start": "2015-01-01", "end": "2015-12-31", "val": -749, "accn": "a15"},  # total
+    ]}},
+    "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations": {"units": {"USD": [
+        {"form": "10-K", "start": "2015-01-01", "end": "2015-12-31", "val": -700, "accn": "a15"},  # component
+        {"form": "10-K", "start": "2016-01-01", "end": "2016-12-31", "val": -650, "accn": "a16"},  # gap year
+    ]}},
+}
+
+
+def test_part2_guard_magnitude_for_negative_accounts():
+    rows = extract_rows(NEG_GAAP, "TEST", "0")
+    ocf = {r["fiscal_year"]: r["value"] for r in rows if r["metric"] == "operating_cash_flow"}
+    assert ocf.get(2015) == -749       # preferred total kept (signed "<" would have mis-picked)
+    assert 2016 not in ocf             # smaller-magnitude component (-700<-749 in abs) must NOT fill
+
+
 @pytest.mark.skipif(not os.environ.get("SEC_LIVE_TEST"), reason="hits the SEC network")
 def test_name_to_cik_delisted_and_renamed():
     from agents.companyfacts import name_to_cik, cik_for
