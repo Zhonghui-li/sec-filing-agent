@@ -17,8 +17,8 @@ GAAP = {
     "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
         {"form": "10-K", "start": "2023-10-01", "end": "2024-09-28", "val": 391000, "accn": "acc-2024"},
         {"form": "10-K", "start": "2024-06-30", "end": "2024-09-28", "val": 90000, "accn": "acc-2024"},   # quarter
-        {"form": "10-K", "start": "2022-10-01", "end": "2023-09-30", "val": 383000, "accn": "acc-2024"},  # restated
-        {"form": "10-K", "start": "2022-10-01", "end": "2023-09-30", "val": 382000, "accn": "acc-2023"},  # superseded
+        {"form": "10-K", "start": "2022-10-01", "end": "2023-09-30", "val": 350000, "accn": "acc-2024", "fy": 2024},  # later re-presentation
+        {"form": "10-K", "start": "2022-10-01", "end": "2023-09-30", "val": 382000, "accn": "acc-2023", "fy": 2023},  # as originally reported
         {"form": "10-Q", "start": "2023-10-01", "end": "2024-09-28", "val": 999, "accn": "q"},            # wrong form
     ]}},
     "Revenues": {"units": {"USD": [
@@ -50,10 +50,13 @@ def test_wrong_form_dropped():
     assert all(r["value"] != 999 for r in _rows())
 
 
-def test_restatement_latest_accession_wins():
+def test_restatement_prefers_as_reported_and_flags():
+    # two accessions for FY2023: the value comes from that year's own FY2023 10-K (as reported),
+    # NOT the later FY2024 re-presentation; the restated figure is surfaced separately.
     rows = [r for r in _rows() if r["metric"] == "revenue" and r["fiscal_year"] == 2023]
     assert len(rows) == 1
-    assert rows[0]["value"] == 383000 and rows[0]["accession"] == "acc-2024"
+    assert rows[0]["value"] == 382000 and rows[0]["accession"] == "acc-2023"
+    assert rows[0]["restated_value"] == 350000 and rows[0]["restated_accession"] == "acc-2024"
 
 
 def test_candidate_tag_gap_fill():
@@ -150,6 +153,34 @@ def test_part2_guard_magnitude_for_negative_accounts():
     ocf = {r["fiscal_year"]: r["value"] for r in rows if r["metric"] == "operating_cash_flow"}
     assert ocf.get(2015) == -749       # preferred total kept (signed "<" would have mis-picked)
     assert 2016 not in ocf             # smaller-magnitude component (-700<-749 in abs) must NOT fill
+
+
+# Restatement: a later filing re-presents a prior year with a different value. as-reported (from
+# the period's own FY10-K) is the primary value; the restated (latest accession) is surfaced too.
+RESTATE_GAAP = {
+    "NetCashProvidedByUsedInOperatingActivities": {"units": {"USD": [
+        {"form": "10-K", "start": "2020-01-01", "end": "2020-12-31", "val": 382, "accn": "0-21-1", "fy": 2020},
+        {"form": "10-K", "start": "2020-01-01", "end": "2020-12-31", "val": 173, "accn": "0-22-9", "fy": 2021},
+        {"form": "10-K", "start": "2021-01-01", "end": "2021-12-31", "val": 500, "accn": "0-22-9", "fy": 2021},
+    ]}},
+}
+
+
+def test_annual_values_reports_original_and_flags_restatement():
+    from agents.companyfacts import annual_values
+    av = annual_values(RESTATE_GAAP["NetCashProvidedByUsedInOperatingActivities"]["units"]["USD"],
+                       "duration")
+    fy2020 = av["2020-12-31"]
+    assert fy2020["val"] == 382                       # as originally reported (its own FY2020 10-K)
+    assert fy2020["restated_val"] == 173              # later re-presentation surfaced
+    assert av["2021-12-31"]["restated_val"] is None   # unrestated year carries no restatement
+
+
+def test_extract_rows_restatement_fields_only_when_present():
+    rows = extract_rows(RESTATE_GAAP, "TEST", "0")
+    by_year = {r["fiscal_year"]: r for r in rows if r["metric"] == "operating_cash_flow"}
+    assert by_year[2020]["value"] == 382 and by_year[2020]["restated_value"] == 173
+    assert "restated_value" not in by_year[2021]      # lean schema: absent when no restatement
 
 
 @pytest.mark.skipif(not os.environ.get("SEC_LIVE_TEST"), reason="hits the SEC network")

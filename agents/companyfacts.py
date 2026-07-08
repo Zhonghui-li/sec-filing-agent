@@ -150,10 +150,17 @@ def cik_for(ticker):
 
 # --- extraction (identical logic to the offline script) --------------------------------------
 def annual_values(units, kind):
-    """{fiscal_year_end -> {val, accn}} for 10-K annual facts. A duration fact must span a full
-    year (350-380 days, dropping quarters/stubs); an instant fact has no start (balance sheet).
-    Restatements resolved by keeping the latest-filed accession per period-end."""
-    out = {}
+    """{fiscal_year_end -> {val, accn, restated_val, restated_accn}} for 10-K annual facts. A
+    duration fact must span a full year (350-380 days, dropping quarters/stubs); an instant fact
+    has no start (balance sheet).
+
+    `val` is the figure AS ORIGINALLY REPORTED — from the filing whose OWN fiscal year is that of
+    the period (its FY10-K, or a 10-K/A for it: the latest accession among same-fiscal-year facts;
+    earliest filing as a fallback). This matches the source filing and keeps a multi-year series on
+    one basis (never mixing an original year with a restated one). If a LATER filing re-presented
+    the period with a materially different value (a restatement / reclassification), that
+    current-basis figure is surfaced as restated_val; otherwise restated_val is None."""
+    facts = {}                       # end -> [(accn, val, filing_fy), ...]
     for u in units:
         if u.get("form") != "10-K":
             continue
@@ -167,9 +174,17 @@ def annual_values(units, kind):
         else:  # instant (balance sheet) — fact has no start
             if "start" in u:
                 continue
-        prev = out.get(end)
-        if prev is None or u.get("accn", "") > prev["accn"]:
-            out[end] = {"val": u["val"], "accn": u.get("accn", "")}
+        facts.setdefault(end, []).append((u.get("accn", ""), u["val"], u.get("fy")))
+    out = {}
+    for end, cands in facts.items():
+        year = int(end[:4])
+        same = [c for c in cands if c[2] == year]          # filed by that period's own FY 10-K(/A)
+        rep = max(same, key=lambda c: c[0]) if same else min(cands, key=lambda c: c[0])
+        latest = max(cands, key=lambda c: c[0])            # most-recent re-presentation (current basis)
+        info = {"val": rep[1], "accn": rep[0], "restated_val": None, "restated_accn": None}
+        if latest[0] != rep[0] and not _close(latest[1], rep[1]):
+            info["restated_val"], info["restated_accn"] = latest[1], latest[0]
+        out[end] = info
     return out
 
 
@@ -211,12 +226,18 @@ def extract_rows(gaap, ticker, cik):
                 continue
             for end, info in vals.items():
                 if end not in merged:
-                    merged[end] = {"val": info["val"], "accn": info["accn"], "tag": t, "unit": unit}
+                    merged[end] = {"val": info["val"], "accn": info["accn"], "tag": t, "unit": unit,
+                                   "restated_val": info["restated_val"],
+                                   "restated_accn": info["restated_accn"]}
         for end, info in merged.items():
-            rows.append({"ticker": ticker, "cik": cik, "metric": metric,
-                         "us_gaap_tag": info["tag"], "period_end": end,
-                         "fiscal_year": int(end[:4]), "value": info["val"],
-                         "unit": info["unit"], "accession": info["accn"]})
+            row = {"ticker": ticker, "cik": cik, "metric": metric,
+                   "us_gaap_tag": info["tag"], "period_end": end,
+                   "fiscal_year": int(end[:4]), "value": info["val"],
+                   "unit": info["unit"], "accession": info["accn"]}
+            if info.get("restated_val") is not None:       # only when a restatement exists
+                row["restated_value"] = info["restated_val"]
+                row["restated_accession"] = info["restated_accn"]
+            rows.append(row)
     return rows
 
 

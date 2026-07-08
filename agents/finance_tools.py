@@ -132,7 +132,7 @@ def get_financials(ticker: str, metric: str, fiscal_year: int = None) -> str:
     val = f"${r['value']:,}" if unit == "USD" else f"{r['value']:,} {unit}"
     return (f"{tk} {key} for FY{r['fiscal_year']} (period ending {r['period_end']}): "
             f"{val}. [source: 10-K accession {r['accession']}, "
-            f"{edgar_url(r['cik'], r['accession'])}]")
+            f"{edgar_url(r['cik'], r['accession'])}]" + _restatement_note([r]))
 
 
 def _value(ticker, metric, year=None):
@@ -146,6 +146,29 @@ def _value(ticker, metric, year=None):
         return None, None
     r = max(hits, key=lambda x: x["period_end"])
     return r["value"], r
+
+
+def _restatement_note(rows):
+    """A one-line caveat when any figure used in the answer was later restated. Values are kept on
+    the AS-REPORTED basis (matches the source filing, and keeps a multi-year answer on one basis);
+    this tells the reader the current-basis value exists — a finance reader may not know a figure
+    was reclassified. Rows without a restatement (the common case) add nothing."""
+    seen, parts = set(), []
+    for r in rows:
+        if not r or r.get("restated_value") is None:
+            continue
+        k = (r["metric"], r["fiscal_year"])
+        if k in seen:
+            continue
+        seen.add(k)
+        usd = r.get("unit") == "USD"
+        orig = f"${r['value']:,}" if usd else f"{r['value']:,}"
+        rest = f"${r['restated_value']:,}" if usd else f"{r['restated_value']:,}"
+        parts.append(f"{r['metric']} FY{r['fiscal_year']} from {orig} to {rest}")
+    if not parts:
+        return ""
+    return (" [NOTE: figures are AS ORIGINALLY REPORTED and computed on that basis; a later filing "
+            "restated " + "; ".join(parts) + " (current basis). Ask for the restated basis if needed.]")
 
 
 # Declarative ratio definitions: name -> (formula spec, output kind, one-line definition).
@@ -271,8 +294,15 @@ def get_ratio(ratio: str, ticker: str, fiscal_year: int = None) -> str:
         return (f"Unknown ratio '{ratio}'. Supported: {', '.join(sorted(RATIOS))}.")
     (num_spec, _op, den_spec), kind, definition = RATIOS[name]
     tk = ticker.strip().upper()
-    num, src = _operand(tk, num_spec, fiscal_year)
-    den, _ = _operand(tk, den_spec, fiscal_year)
+    used = []                                        # every source row touched (incl. avg: prior year)
+
+    def _getval(m, y):
+        v, r = _value(tk, m, y)
+        if r:
+            used.append(r)
+        return v, r
+    num, src = _resolve_operand(num_spec, fiscal_year, _getval)
+    den, _ = _resolve_operand(den_spec, fiscal_year, _getval)
     if num is None or den is None:
         missing = num_spec if num is None else den_spec
         _log_miss(tk, missing.replace("avg:", ""), fiscal_year, f"ratio_base_absent:{name}")
@@ -285,7 +315,8 @@ def get_ratio(ratio: str, ticker: str, fiscal_year: int = None) -> str:
     fy = src["fiscal_year"] if src else fiscal_year
     out = _fmt_ratio(raw, kind)
     return (f"{tk} {name} for FY{fy} = {out} ({definition}). "
-            f"[source: 10-K accession {src['accession']}, {edgar_url(src['cik'], src['accession'])}]")
+            f"[source: 10-K accession {src['accession']}, {edgar_url(src['cik'], src['accession'])}]"
+            + _restatement_note(used))
 
 
 def get_growth(metric: str, ticker: str, fiscal_year: int = None) -> str:
@@ -312,7 +343,7 @@ def get_growth(metric: str, ticker: str, fiscal_year: int = None) -> str:
     f = lambda v, r: (f"${v:,}" if r["unit"] == "USD" else f"{v:,} {r['unit']}")
     return (f"{tk} {key} grew {pct:+.1f}% year over year, from {f(prev, rp)} (FY{cur_year - 1}) "
             f"to {f(cur, rc)} (FY{cur_year}). [sources: 10-K accessions {rp['accession']}, "
-            f"{rc['accession']}, {edgar_url(rc['cik'], rc['accession'])}]")
+            f"{rc['accession']}, {edgar_url(rc['cik'], rc['accession'])}]" + _restatement_note([rc, rp]))
 
 
 def compute(op: str, a: float, b: float) -> str:
@@ -445,7 +476,8 @@ def compute_formula(expression: str, ticker: str, fiscal_year: int = None) -> st
     # Keep precision for small results (ratios / margins / CAGR) — a fixed 2dp would show a
     # 0.4% CAGR or a 5.4% margin as "0.00" / "0.05" and lose the answer.
     shown = f"{val:,.2f}" if abs(val) >= 1 else f"{val:.4g}"
-    return (f"{tk} formula result for FY{year} = {shown}  (formula: {expression}). {cite}")
+    return (f"{tk} formula result for FY{year} = {shown}  (formula: {expression}). {cite}"
+            + _restatement_note(srcs))
 
 
 if __name__ == "__main__":
