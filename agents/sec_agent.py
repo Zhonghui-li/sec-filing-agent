@@ -128,10 +128,14 @@ overrides.) E.g. after "Apple's revenue in fiscal 2024", "and Microsoft?" means 
 conversion cycle, EBITDA / EBITDA margin, or a formula spelled out in the question — use \
 compute_formula: write the WHOLE formula ONCE with our metric names as variables plus the helpers \
 avg() / delta() / prev() (it fetches every figure from XBRL and evaluates the whole expression \
-deterministically). Do NOT hand-assemble a metric by fetching parts and chaining several compute \
-calls — that mis-orders operands (e.g. 365 / ratio instead of 365 x, or sum instead of average) \
-and produces wrong numbers. Abstain (not_reported) ONLY if get_ratio/compute_formula reports a \
-required figure isn't available. A wrong number is worse than an honest abstention.
+deterministically). For a MULTI-YEAR span (an N-year CAGR or an N-year average) the helpers take a \
+years-back argument — prev(metric, n), avg(metric, n) — so use compute_formula for these too (a \
+2-year CAGR to FY2022 is "(revenue / prev(revenue, 2)) ** (1/2) - 1" with fiscal_year=2022); \
+get_growth is adjacent-year only. Do NOT hand-assemble a metric by fetching parts and chaining \
+several compute calls — that mis-orders operands (e.g. 365 / ratio instead of 365 x, or sum \
+instead of average) and produces wrong numbers. Abstain (not_reported) ONLY if \
+get_ratio/compute_formula reports a required figure isn't available. A wrong number is worse than \
+an honest abstention.
 9. SANITY-CHECK every number before reporting it: if it is implausible for its kind (a \
 days-outstanding ratio over a few hundred days, a turnover above ~20x, a margin above 100%), you \
 have made an error — do NOT report that number; abstain instead.

@@ -133,3 +133,25 @@ def test_compute_formula_rejects_unsafe():
     # only arithmetic + metric names + avg/delta/prev/abs — never arbitrary calls / attributes
     assert "Abstain" in compute_formula("__import__('os').system('x')", "AAPL", 2024)
     assert "Abstain" in compute_formula("revenue.__class__", "AAPL", 2024)
+
+
+def test_compute_formula_multiyear_prev():
+    # prev(metric, n) reaches n years back — enables a multi-year CAGR / average
+    from agents.finance_tools import _value
+    rev_2yr_back = _value("AAPL", "revenue", 2022)[0]
+    out = compute_formula("prev(revenue, 2)", "AAPL", 2024)
+    assert f"{rev_2yr_back:,.2f}" in out          # the value two years before FY2024
+
+
+def test_compute_formula_small_result_keeps_precision():
+    # a sub-1 result (margin / CAGR) must not be flattened to "0.00" by 2dp formatting
+    import re
+    out = compute_formula("net_income / prev(revenue, 2)", "AAPL", 2024)
+    m = re.search(r"= ([0-9.]+)", out)
+    assert m and 0 < float(m.group(1)) < 1 and m.group(1) != "0.00"
+
+
+def test_compute_formula_rejects_bad_periods():
+    # years-back must be a positive integer literal, never a metric or 0/negative
+    assert "Abstain" in compute_formula("prev(revenue, 0)", "AAPL", 2024)
+    assert "Abstain" in compute_formula("prev(revenue, revenue)", "AAPL", 2024)

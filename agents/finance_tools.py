@@ -364,16 +364,31 @@ def _eval_node(node, ticker, year, srcs):
         return _metric_at(node.id, ticker, year, srcs)
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
         fn = node.func.id
-        if fn not in _FORMULA_FUNCS or len(node.args) != 1:
+        if fn not in _FORMULA_FUNCS:
             raise ValueError(f"call '{fn}' not allowed")
         if fn == "abs":
+            if len(node.args) != 1:
+                raise ValueError("abs() takes one argument")
             return abs(_eval_node(node.args[0], ticker, year, srcs))
-        if not isinstance(node.args[0], ast.Name):
-            raise ValueError(f"{fn}() takes a metric name")
+        # avg/delta/prev(metric [, n]): optional integer literal n = years back (for multi-year
+        # spans like a 2-year CAGR or a 3-year average). Default preserves the 1-year behavior.
+        if not node.args or not isinstance(node.args[0], ast.Name) or len(node.args) > 2:
+            raise ValueError(f"{fn}() takes a metric name and an optional integer number of years")
         m = node.args[0].id
-        cur = _metric_at(m, ticker, year, srcs)
-        prv = _metric_at(m, ticker, year - 1, srcs)
-        return {"avg": (cur + prv) / 2, "delta": cur - prv, "prev": prv}[fn]
+        n = None
+        if len(node.args) == 2:
+            arg = node.args[1]
+            if not (isinstance(arg, ast.Constant) and isinstance(arg.value, int)
+                    and not isinstance(arg.value, bool) and arg.value >= 1):
+                raise ValueError(f"{fn}() years must be a positive integer literal")
+            n = arg.value
+        if fn == "prev":
+            return _metric_at(m, ticker, year - (n or 1), srcs)
+        if fn == "delta":
+            return _metric_at(m, ticker, year, srcs) - _metric_at(m, ticker, year - (n or 1), srcs)
+        # avg: mean of the last n years (default 2 = this and prior, the original behavior)
+        k = n or 2
+        return sum(_metric_at(m, ticker, year - i, srcs) for i in range(k)) / k
     raise ValueError(f"disallowed expression element: {type(node).__name__}")
 
 
@@ -392,6 +407,12 @@ def compute_formula(expression: str, ticker: str, fiscal_year: int = None) -> st
     metric names as variables and the helpers avg(), delta() (this year minus prior), prev(), e.g.:
       DPO = "365 * avg(accounts_payable) / (cost_of_revenue + delta(inventory))"
       EBITDA margin = "(operating_income + depreciation_amortization) / revenue"
+    For MULTI-YEAR spans, each helper takes an optional number of years back — prev(metric, n),
+    avg(metric, n), delta(metric, n) — so use this (not get_growth, which is adjacent-year only):
+      2-year revenue CAGR (FY2020->FY2022, pass fiscal_year=2022):
+        "(revenue / prev(revenue, 2)) ** (1/2) - 1"
+      3-year average capex % of revenue (FY2017-FY2019, pass fiscal_year=2019):
+        "((capex/revenue) + (prev(capex,1)/prev(revenue,1)) + (prev(capex,2)/prev(revenue,2))) / 3"
     The tool fetches each figure from XBRL itself — you NEVER pass or transcribe numbers — and
     computes the whole expression, so there are no arithmetic mistakes. Pass ticker and fiscal_year.
     Returns the value and the figures used, or an error (then abstain)."""
@@ -419,7 +440,10 @@ def compute_formula(expression: str, ticker: str, fiscal_year: int = None) -> st
     src = srcs[0] if srcs else None
     cite = (f"[sources: 10-K accessions {', '.join(accns)}, "
             f"{edgar_url(src['cik'], accns[0])}]" if src and accns else "")
-    return (f"{tk} formula result for FY{year} = {val:,.2f}  (formula: {expression}). {cite}")
+    # Keep precision for small results (ratios / margins / CAGR) — a fixed 2dp would show a
+    # 0.4% CAGR or a 5.4% margin as "0.00" / "0.05" and lose the answer.
+    shown = f"{val:,.2f}" if abs(val) >= 1 else f"{val:.4g}"
+    return (f"{tk} formula result for FY{year} = {shown}  (formula: {expression}). {cite}")
 
 
 if __name__ == "__main__":
