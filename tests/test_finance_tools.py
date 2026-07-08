@@ -80,6 +80,13 @@ def test_get_ratio_debt_is_not_total_liabilities():
     assert "long-term debt" in out.lower() and "total liabilities" in out.lower()
 
 
+def test_get_ratio_inventory_turnover():
+    # cost_of_revenue / average inventory; alias "inventory turnover" resolves; turns format
+    out = get_ratio("inventory turnover", "AAPL", 2024)
+    assert "inventory_turnover" in out and "x" in out and "average inventory" in out.lower()
+    assert "accession" in out
+
+
 def test_get_ratio_abstains_when_base_missing():
     # a bank has no current_assets -> can't compute current_ratio, must say so (not fabricate)
     out = get_ratio("current_ratio", "JPM", 2024)

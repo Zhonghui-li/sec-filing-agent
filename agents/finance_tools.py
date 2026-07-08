@@ -94,6 +94,16 @@ def _canon(metric: str) -> str:
     return _ALIASES.get(m, metric.strip().lower().replace(" ", "_"))
 
 
+def _log_miss(ticker, metric, fiscal_year, reason):
+    """Part 3: record a requested-but-unavailable metric (drives data-driven METRICS expansion).
+    Lazy import so the curated-only path has no hard dependency; never breaks a request."""
+    try:
+        from agents.companyfacts import log_miss
+        log_miss(ticker, metric, fiscal_year, reason)
+    except Exception:
+        pass
+
+
 def get_financials(ticker: str, metric: str, fiscal_year: int = None) -> str:
     """Return an EXACT financial figure for a company from SEC XBRL data, with its
     source filing. Use this for ANY financial number (revenue, net income, total assets,
@@ -105,6 +115,7 @@ def get_financials(ticker: str, metric: str, fiscal_year: int = None) -> str:
     rows = _rows_for(tk)
     hits = [r for r in rows if r["metric"] == key]
     if not hits:
+        _log_miss(tk, key, fiscal_year, "metric_absent")
         avail = sorted({r["metric"] for r in rows})
         return (f"{tk} does not report '{metric}' (canonical: {key}) in the available "
                 f"XBRL data. Reported metrics for {tk}: {', '.join(avail) or 'none'}.")
@@ -170,6 +181,8 @@ RATIOS = {
                          "revenue / average total assets"),
     "fixed_asset_turnover": (("revenue", "/", "avg:ppe_net"), "turns",
                          "revenue / average net PP&E"),
+    "inventory_turnover": (("cost_of_revenue", "/", "avg:inventory"), "turns",
+                         "cost of revenue / average inventory (avg of this and prior year)"),
     "capex_pct_revenue": (("capex", "/", "revenue"), "pct", "capex / revenue"),
     "interest_coverage": (("operating_income", "/", "interest_expense"), "turns",
                          "operating income / interest expense (times interest earned)"),
@@ -205,6 +218,8 @@ _RATIO_ALIASES = {
     "days of inventory": "dio",
     "asset turnover": "asset_turnover", "total asset turnover": "asset_turnover",
     "fixed asset turnover": "fixed_asset_turnover", "ppe turnover": "fixed_asset_turnover",
+    "inventory turnover": "inventory_turnover", "inventory turnover ratio": "inventory_turnover",
+    "stock turnover": "inventory_turnover",
     "capex % of revenue": "capex_pct_revenue", "capex as a % of revenue": "capex_pct_revenue",
     "capex to revenue": "capex_pct_revenue", "capex margin": "capex_pct_revenue",
     "interest coverage": "interest_coverage", "times interest earned": "interest_coverage",
@@ -245,8 +260,9 @@ def get_ratio(ratio: str, ticker: str, fiscal_year: int = None) -> str:
     """Compute a standard financial RATIO deterministically (the formula is fixed in code, so
     the right base metrics and conventions are always used). Supports: gross_margin,
     operating_margin, net_margin, cogs_pct, roa, roe, current_ratio, quick_ratio, payout_ratio,
-    debt_to_equity, dpo, dso, dio, asset_turnover, fixed_asset_turnover, capex_pct_revenue,
-    interest_coverage. Use this for ANY ratio (incl. days-outstanding and turnover ratios) instead
+    debt_to_equity, dpo, dso, dio, asset_turnover, fixed_asset_turnover, inventory_turnover,
+    capex_pct_revenue, interest_coverage. Use this for ANY ratio (incl. days-outstanding and
+    turnover ratios) instead
     of fetching pieces and dividing yourself — it returns the exact value, the formula, and source."""
     name = _RATIO_ALIASES.get(ratio.strip().lower(), ratio.strip().lower().replace(" ", "_"))
     if name not in RATIOS:
@@ -256,9 +272,11 @@ def get_ratio(ratio: str, ticker: str, fiscal_year: int = None) -> str:
     num, src = _operand(tk, num_spec, fiscal_year)
     den, _ = _operand(tk, den_spec, fiscal_year)
     if num is None or den is None:
+        missing = num_spec if num is None else den_spec
+        _log_miss(tk, missing.replace("avg:", ""), fiscal_year, f"ratio_base_absent:{name}")
         return (f"Cannot compute {name} for {tk}"
                 f"{(' FY' + str(fiscal_year)) if fiscal_year else ''}: a required figure "
-                f"({num_spec if num is None else den_spec}) isn't in the data. Abstain.")
+                f"({missing}) isn't in the data. Abstain.")
     if den == 0:
         return f"Cannot compute {name} for {tk}: denominator is 0."
     raw = num / den

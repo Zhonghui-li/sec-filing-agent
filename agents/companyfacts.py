@@ -48,7 +48,7 @@ METRICS = {
                             "duration"),
     "dividends_paid":      (["PaymentsOfDividendsCommonStock", "PaymentsOfDividends"], "duration"),
     "accounts_payable":    (["AccountsPayableCurrent", "AccountsPayableTradeCurrent"], "instant"),
-    "inventory":           (["InventoryNet"], "instant"),
+    "inventory":           (["InventoryNet", "InventoryFinishedGoodsNetOfReserves"], "instant"),
     "current_assets":      (["AssetsCurrent"], "instant"),
     "current_liabilities": (["LiabilitiesCurrent"], "instant"),
     "long_term_debt":      (["LongTermDebtNoncurrent", "LongTermDebt"], "instant"),
@@ -117,6 +117,13 @@ def annual_values(units, kind):
     return out
 
 
+def _close(a, b, tol=0.01):
+    """Two figures are the 'same' line item if they agree within a relative tolerance (allows
+    minor restatement rounding; a component vs its total won't agree, so it's rejected)."""
+    hi = max(abs(a), abs(b))
+    return hi == 0 or abs(a - b) <= tol * hi
+
+
 def extract_rows(gaap, ticker, cik):
     """Turn a company's us-gaap facts dict into rows matching data/financials.json's schema."""
     rows = []
@@ -124,11 +131,20 @@ def extract_rows(gaap, ticker, cik):
         present = [t for t in tags if t in gaap]   # candidate tags, in preference order
         if not present:
             continue
-        # merge across tags: preferred tag wins for a period; lower-priority tags fill gap years
+        # merge across tags: preferred tag wins for a period; lower-priority tags fill gap years.
+        # Part-2 guard: a lower-priority tag may fill gaps only if, on period-ends it SHARES with
+        # the already-merged higher-priority tags, its values agree — otherwise it's a different
+        # line (a component, not the same total, e.g. a segment or finished-goods subtotal) and
+        # must not fill years. A clean tag switch (no shared periods) passes through, vetted by a
+        # human when the tag was added to METRICS.
         merged = {}
         for t in present:
             unit = next(iter(gaap[t]["units"]))     # USD, USD/shares, ...
-            for end, info in annual_values(gaap[t]["units"][unit], kind).items():
+            vals = annual_values(gaap[t]["units"][unit], kind)
+            if any(end in merged and not _close(merged[end]["val"], info["val"])
+                   for end, info in vals.items()):
+                continue                            # conflicts with a higher-priority tag -> skip
+            for end, info in vals.items():
                 if end not in merged:
                     merged[end] = {"val": info["val"], "accn": info["accn"], "tag": t, "unit": unit}
         for end, info in merged.items():
@@ -170,6 +186,24 @@ def _save_disk(ticker, rows):
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
     _disk_path(ticker).write_text(json.dumps(
         {"fetched": datetime.now(timezone.utc).isoformat(), "rows": rows}))
+
+
+# --- Part 3: demand-driven miss log ----------------------------------------------------------
+# When a REQUESTED metric comes back empty, append it here. This queue (not the fixed FinanceBench
+# set) is what drives data-driven METRICS expansion — the long tail is surfaced by real traffic.
+_MISS_LOG = _CACHE_DIR.parent / "metric_misses.jsonl"
+
+
+def log_miss(ticker, metric, fiscal_year=None, reason="metric_absent"):
+    """Best-effort append of a 'requested metric unavailable' event; never breaks a request."""
+    try:
+        _MISS_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with _MISS_LOG.open("a") as f:
+            f.write(json.dumps({"ts": datetime.now(timezone.utc).isoformat(),
+                                "ticker": ticker.strip().upper(), "metric": metric,
+                                "fiscal_year": fiscal_year, "reason": reason}) + "\n")
+    except Exception:
+        pass
 
 
 def company_rows(ticker):

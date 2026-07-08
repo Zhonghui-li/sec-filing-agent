@@ -75,6 +75,42 @@ def test_annual_values_duration_rejects_short_span():
     assert all(v["val"] != 90000 for v in got.values())  # ~90 days dropped
 
 
+# Part-2 guard: a lower-priority tag that is a *component* (conflicts on shared years) must not
+# fill gap years; a clean tag switch (no shared years) must fill them.
+GUARD_GAAP = {
+    "InventoryNet": {"units": {"USD": [                                   # total (preferred)
+        {"form": "10-K", "end": "2023-12-31", "val": 1000, "accn": "a23"},
+        {"form": "10-K", "end": "2024-12-31", "val": 1100, "accn": "a24"},
+    ]}},
+    "InventoryFinishedGoodsNetOfReserves": {"units": {"USD": [            # finished-goods component
+        {"form": "10-K", "end": "2024-12-31", "val": 600, "accn": "a24"},  # overlaps 2024, disagrees
+        {"form": "10-K", "end": "2025-12-31", "val": 650, "accn": "a25"},  # a gap year (2025)
+    ]}},
+}
+
+SWITCH_GAAP = {
+    "InventoryNet": {"units": {"USD": [
+        {"form": "10-K", "end": "2011-05-31", "val": 2715, "accn": "a11"},  # old tag, ends 2011
+    ]}},
+    "InventoryFinishedGoodsNetOfReserves": {"units": {"USD": [
+        {"form": "10-K", "end": "2021-05-31", "val": 6854, "accn": "a21"},  # new tag, no overlap
+    ]}},
+}
+
+
+def test_part2_guard_rejects_conflicting_component():
+    rows = extract_rows(GUARD_GAAP, "TEST", "0")
+    inv = {r["fiscal_year"]: r["value"] for r in rows if r["metric"] == "inventory"}
+    assert inv.get(2024) == 1100           # kept the total, not the 600 component
+    assert 2025 not in inv                 # component must NOT fill the gap year (it conflicts)
+
+
+def test_part2_clean_switch_fills():
+    rows = extract_rows(SWITCH_GAAP, "TEST", "0")
+    inv = {r["fiscal_year"]: r["value"] for r in rows if r["metric"] == "inventory"}
+    assert inv.get(2011) == 2715 and inv.get(2021) == 6854   # no overlap -> new tag fills
+
+
 @pytest.mark.skipif(not os.environ.get("SEC_LIVE_TEST"), reason="hits the SEC network")
 def test_live_uncovered_company():
     from agents.companyfacts import company_rows
