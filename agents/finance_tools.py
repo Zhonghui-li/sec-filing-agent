@@ -108,8 +108,10 @@ def get_financials(ticker: str, metric: str, fiscal_year: int = None) -> str:
     """Return an EXACT financial figure for a company from SEC XBRL data, with its
     source filing. Use this for ANY financial number (revenue, net income, total assets,
     gross profit, EPS, cash, equity, ...) — never recall or estimate a number yourself.
-    Pass fiscal_year (e.g. 2024) for a specific year, or omit it for the latest. If the
-    company doesn't report the metric, this says so (do not fabricate a value)."""
+    Pass fiscal_year (e.g. 2024) for a specific year, or omit it for the latest. For a delisted
+    or renamed company whose ticker no longer trades (e.g. Activision, or Square/Block), pass the
+    company NAME as `ticker` instead. If the company doesn't report the metric, this says so (do
+    not fabricate a value)."""
     tk = ticker.strip().upper()
     key = _canon(metric)
     rows = _rows_for(tk)

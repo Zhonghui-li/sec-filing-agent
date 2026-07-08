@@ -111,6 +111,36 @@ def test_part2_clean_switch_fills():
     assert inv.get(2011) == 2715 and inv.get(2021) == 6854   # no overlap -> new tag fills
 
 
+# A lower-priority tag LARGER than the preferred on the shared year is a fuller/alternative total
+# (Block's Revenues vs a partial RevenueFromContract), not a component -> it must fill gap years.
+ALT_TOTAL_GAAP = {
+    "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
+        {"form": "10-K", "start": "2018-01-01", "end": "2018-12-31", "val": 3205, "accn": "a18"},
+    ]}},
+    "Revenues": {"units": {"USD": [
+        {"form": "10-K", "start": "2018-01-01", "end": "2018-12-31", "val": 3298, "accn": "a18"},  # larger
+        {"form": "10-K", "start": "2019-01-01", "end": "2019-12-31", "val": 4713, "accn": "a19"},  # gap
+        {"form": "10-K", "start": "2020-01-01", "end": "2020-12-31", "val": 9497, "accn": "a20"},  # gap
+    ]}},
+}
+
+
+def test_part2_larger_alternative_total_fills():
+    rows = extract_rows(ALT_TOTAL_GAAP, "TEST", "0")
+    rev = {r["fiscal_year"]: r["value"] for r in rows if r["metric"] == "revenue"}
+    assert rev.get(2018) == 3205                       # preferred still wins the shared year
+    assert rev.get(2019) == 4713 and rev.get(2020) == 9497   # the fuller total fills the gaps
+
+
+@pytest.mark.skipif(not os.environ.get("SEC_LIVE_TEST"), reason="hits the SEC network")
+def test_name_to_cik_delisted_and_renamed():
+    from agents.companyfacts import name_to_cik, cik_for
+    assert name_to_cik("Activision Blizzard") == "0000718877"   # delisted (ATVI no longer trades)
+    assert name_to_cik("Block") == "0001512673"                 # renamed from Square
+    assert cik_for("Activision Blizzard") == "0000718877"       # name falls through ticker miss
+    assert name_to_cik("Square") is None                        # ambiguous name -> abstain
+
+
 @pytest.mark.skipif(not os.environ.get("SEC_LIVE_TEST"), reason="hits the SEC network")
 def test_live_uncovered_company():
     from agents.companyfacts import company_rows

@@ -12,6 +12,7 @@ Results are cached on disk (per company) so a ticker is fetched from SEC at most
 """
 import json
 import os
+import re
 import urllib.request
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -88,8 +89,63 @@ def ticker_to_cik_map():
     return _ticker_map
 
 
+# --- name -> CIK (delisted / renamed issuers) --------------------------------------------------
+# company_tickers.json only lists CURRENT issuers, so a delisted ticker (Activision's ATVI) or a
+# stale one (Square's SQ, now Block/XYZ) doesn't resolve. A CIK never changes across a rename or
+# delisting, so we fall back to SEC's cik-lookup-data.txt, which maps every company NAME — including
+# FORMER names — to its CIK. The agent passes the company name when the ticker isn't a live listing.
+_CIK_LOOKUP_URL = "https://www.sec.gov/Archives/edgar/cik-lookup-data.txt"
+_CIK_LOOKUP_TTL_DAYS = 30
+_SUFFIX_RE = re.compile(r"\b(INC|CORP|CORPORATION|CO|COMPANY|LTD|LLC|LP|PLC|HOLDINGS|GROUP|THE)\b")
+
+
+def _normalize_name(s):
+    s = _SUFFIX_RE.sub(" ", re.sub(r"[.,]", " ", s.strip().upper()))
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _cik_lookup_file():
+    p = _CACHE_DIR.parent / "cik-lookup-data.txt"
+    fresh = p.exists() and (datetime.now(timezone.utc)
+                            - datetime.fromtimestamp(p.stat().st_mtime, timezone.utc)
+                            ).days <= _CIK_LOOKUP_TTL_DAYS
+    if not fresh:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        req = urllib.request.Request(_CIK_LOOKUP_URL, headers=_UA)
+        p.write_bytes(urllib.request.urlopen(req, timeout=120).read())
+    return p
+
+
+def name_to_cik(name):
+    """Resolve a company NAME (incl. former names of renamed/delisted issuers) to a 10-digit CIK
+    via SEC's cik-lookup-data.txt. Returns the CIK for a UNIQUE normalized match, else None (an
+    ambiguous or unknown name abstains rather than guessing)."""
+    target = _normalize_name(name)
+    if not target:
+        return None
+    key = target.split(" ")[0]                      # cheap prefilter (the file is uppercase)
+    try:
+        path = _cik_lookup_file()
+    except Exception:
+        return None
+    found = set()
+    with open(path, encoding="latin-1") as f:
+        for line in f:
+            if key not in line:
+                continue
+            parts = line.rstrip("\n").split(":")
+            if len(parts) >= 2 and parts[1] and _normalize_name(parts[0]) == target:
+                found.add(parts[1].zfill(10))
+                if len(found) > 1:
+                    return None                     # ambiguous -> abstain
+    return next(iter(found)) if found else None
+
+
 def cik_for(ticker):
-    return ticker_to_cik_map().get(ticker.strip().upper())
+    """Resolve to a CIK. Tries the current-issuer ticker map first, then a name lookup that also
+    covers delisted/renamed issuers (former names) — so the caller may pass a ticker OR a name."""
+    q = ticker.strip()
+    return ticker_to_cik_map().get(q.upper()) or name_to_cik(q)
 
 
 # --- extraction (identical logic to the offline script) --------------------------------------
@@ -141,9 +197,15 @@ def extract_rows(gaap, ticker, cik):
         for t in present:
             unit = next(iter(gaap[t]["units"]))     # USD, USD/shares, ...
             vals = annual_values(gaap[t]["units"][unit], kind)
-            if any(end in merged and not _close(merged[end]["val"], info["val"])
+            # A lower-priority tag that is materially SMALLER than the already-merged (preferred)
+            # value on a shared period is a component/subtotal (e.g. finished-goods vs total
+            # inventory) — don't let it fill gap years. A value that is equal (same line), larger
+            # (a fuller/alternative total, e.g. Block's Revenues vs a partial RevenueFromContract),
+            # or non-overlapping (a clean tag switch, e.g. Nike's inventory) is allowed to fill.
+            if any(end in merged and info["val"] < merged[end]["val"]
+                   and not _close(merged[end]["val"], info["val"])
                    for end, info in vals.items()):
-                continue                            # conflicts with a higher-priority tag -> skip
+                continue
             for end, info in vals.items():
                 if end not in merged:
                     merged[end] = {"val": info["val"], "accn": info["accn"], "tag": t, "unit": unit}
