@@ -69,6 +69,11 @@ METRICS = {
                              "InterestExpenseNonoperating"], "duration"),
 }
 
+# Per-share metrics where a later filing's RETROACTIVE STOCK-SPLIT adjustment is the standard,
+# comparable basis (not a restatement to warn about). For these we use the current/split-adjusted
+# value, not the as-originally-reported (pre-split) one. Everything else defaults to as-reported.
+_SPLIT_ADJUSTED_METRICS = {"eps_diluted"}
+
 
 def _get_json(url, timeout=90):
     req = urllib.request.Request(url, headers=_UA)
@@ -230,13 +235,19 @@ def extract_rows(gaap, ticker, cik):
                                    "restated_val": info["restated_val"],
                                    "restated_accn": info["restated_accn"]}
         for end, info in merged.items():
+            val, accn = info["val"], info["accn"]
+            restated_val, restated_accn = info.get("restated_val"), info.get("restated_accn")
+            # per-share: the split-adjusted (later) figure is the standard basis, use it and don't
+            # flag (a stock split isn't a restatement).
+            if metric in _SPLIT_ADJUSTED_METRICS and restated_val is not None:
+                val, accn, restated_val, restated_accn = restated_val, restated_accn, None, None
             row = {"ticker": ticker, "cik": cik, "metric": metric,
                    "us_gaap_tag": info["tag"], "period_end": end,
-                   "fiscal_year": int(end[:4]), "value": info["val"],
-                   "unit": info["unit"], "accession": info["accn"]}
-            if info.get("restated_val") is not None:       # only when a restatement exists
-                row["restated_value"] = info["restated_val"]
-                row["restated_accession"] = info["restated_accn"]
+                   "fiscal_year": int(end[:4]), "value": val,
+                   "unit": info["unit"], "accession": accn}
+            if restated_val is not None:                   # only when a real restatement exists
+                row["restated_value"] = restated_val
+                row["restated_accession"] = restated_accn
             rows.append(row)
     return rows
 
