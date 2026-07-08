@@ -6,6 +6,7 @@ route every number through these and never recall or do arithmetic itself — th
 what makes financial answers exact and auditable.
 """
 import ast
+import difflib
 import json
 import os
 from pathlib import Path
@@ -115,6 +116,10 @@ def get_financials(ticker: str, metric: str, fiscal_year: int = None) -> str:
     tk = ticker.strip().upper()
     key = _canon(metric)
     rows = _rows_for(tk)
+    if not rows:                                   # ticker didn't resolve to any filer at all
+        return (f"No company found for '{ticker}'. If it is delisted or renamed (its ticker no "
+                f"longer trades — e.g. Activision, or Square/Block), retry with the full COMPANY "
+                f"NAME instead of a ticker.")
     hits = [r for r in rows if r["metric"] == key]
     if not hits:
         _log_miss(tk, key, fiscal_year, "metric_absent")
@@ -304,6 +309,9 @@ def get_ratio(ratio: str, ticker: str, fiscal_year: int = None) -> str:
     num, src = _resolve_operand(num_spec, fiscal_year, _getval)
     den, _ = _resolve_operand(den_spec, fiscal_year, _getval)
     if num is None or den is None:
+        if not _rows_for(tk):                      # ticker didn't resolve to any filer at all
+            return (f"No company found for '{ticker}'. If it is delisted or renamed, retry with "
+                    f"the full COMPANY NAME instead of a ticker.")
         missing = num_spec if num is None else den_spec
         _log_miss(tk, missing.replace("avg:", ""), fiscal_year, f"ratio_base_absent:{name}")
         return (f"Cannot compute {name} for {tk}"
@@ -454,6 +462,18 @@ def compute_formula(expression: str, ticker: str, fiscal_year: int = None) -> st
         tree = ast.parse(expression, mode="eval")
     except SyntaxError:
         return f"Invalid formula syntax: {expression!r}. Abstain."
+    # catch a mistyped metric name and suggest the right one, so the model can self-correct
+    # (e.g. "ppne" -> "ppe_net") instead of abstaining as if the figure were unavailable.
+    known = set(_ALIASES.values())
+    unknown = {n.id for n in ast.walk(tree)
+               if isinstance(n, ast.Name) and n.id not in _FORMULA_FUNCS and _canon(n.id) not in known}
+    if unknown:
+        hints = []
+        for u in sorted(unknown):
+            near = difflib.get_close_matches(_canon(u), known, n=1, cutoff=0.5)
+            hints.append(f"'{u}'" + (f" (did you mean '{near[0]}'?)" if near else ""))
+        return (f"Unknown metric name(s): {', '.join(hints)}. Use exact metric names "
+                f"(ppe_net, revenue, cost_of_revenue, ...). Retry with the correct name.")
     year = int(fiscal_year) if fiscal_year else None
     if year is None:
         for nm in [n.id for n in ast.walk(tree)

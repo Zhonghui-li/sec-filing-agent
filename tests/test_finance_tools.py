@@ -30,7 +30,9 @@ def test_abstain_year_unavailable():
 
 
 def test_unknown_company():
-    assert "does not report" in get_financials("ZZZZ", "revenue").lower()
+    # an unresolved ticker nudges toward the company name (covers delisted/renamed), not a metric msg
+    out = get_financials("ZZZZ", "revenue").lower()
+    assert "no company found" in out and "company name" in out
 
 
 def test_compute_yoy():
@@ -130,9 +132,10 @@ def test_compute_formula_abstains_on_missing_metric():
 
 
 def test_compute_formula_rejects_unsafe():
-    # only arithmetic + metric names + avg/delta/prev/abs — never arbitrary calls / attributes
-    assert "Abstain" in compute_formula("__import__('os').system('x')", "AAPL", 2024)
-    assert "Abstain" in compute_formula("revenue.__class__", "AAPL", 2024)
+    # only arithmetic + metric names + avg/delta/prev/abs — arbitrary calls / attributes are
+    # rejected (caught either as an unknown name or by the AST walk), never evaluated
+    for bad in ["__import__('os').system('x')", "revenue.__class__"]:
+        assert "formula result" not in compute_formula(bad, "AAPL", 2024)
 
 
 def test_compute_formula_multiyear_prev():
