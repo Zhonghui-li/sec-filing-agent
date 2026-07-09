@@ -154,6 +154,16 @@ def test_compute_formula_small_result_keeps_precision():
     assert m and 0 < float(m.group(1)) < 1 and m.group(1) != "0.00"
 
 
+def test_financial_table_csv():
+    from agents.finance_tools import financial_table_csv
+    csv = financial_table_csv("AAPL", ["revenue", "gross_margin", "made_up_metric"], [2023, 2024])
+    lines = csv.strip().splitlines()
+    assert lines[0] == "metric,FY2023,FY2024"
+    assert lines[1] == "revenue,383285000000,391035000000"   # base metric -> raw Excel-friendly USD
+    assert lines[2].startswith("gross_margin (%),")           # ratio -> value with unit in the label
+    assert lines[3] == "made_up_metric,,"                     # unknown metric -> blank cells, no crash
+
+
 def test_compute_formula_rejects_bad_periods():
     # years-back must be a positive integer literal, never a metric or 0/negative
     assert "Abstain" in compute_formula("prev(revenue, 0)", "AAPL", 2024)

@@ -334,6 +334,44 @@ def get_ratio(ratio: str, ticker: str, fiscal_year: int = None) -> str:
             + _restatement_note(used))
 
 
+# --- deterministic CSV export (no LLM in the loop; values straight from the XBRL tools) ---------
+def _cell_value(name, ticker, year):
+    """Excel-friendly value of a base metric OR a ratio for one fiscal year, with a unit label.
+    Returns (value_or_None, unit)."""
+    tk = ticker.strip().upper()
+    rname = _RATIO_ALIASES.get(name.strip().lower(), name.strip().lower().replace(" ", "_"))
+    if rname in RATIOS:
+        (num_spec, _op, den_spec), kind, _def = RATIOS[rname]
+        num, _ = _operand(tk, num_spec, year)
+        den, _ = _operand(tk, den_spec, year)
+        unit = {"pct": "%", "days": "days", "turns": "x"}.get(kind, "")
+        if num is None or not den:
+            return None, unit
+        raw = num / den
+        return round({"pct": raw * 100, "days": raw * 365, "turns": raw, "ratio": raw}[kind], 4), unit
+    v, r = _value(tk, name, year)
+    return (v, r["unit"]) if v is not None else (None, "")
+
+
+def financial_table_csv(ticker, metrics, years):
+    """Build a metrics × fiscal-years grid as CSV, computed deterministically from the XBRL tools
+    (no model in the loop, so the export is exact). Each row is a base metric or a ratio (ratio
+    units are noted in the row label); missing cells are blank."""
+    tk = ticker.strip().upper()
+    years = sorted({int(y) for y in years})
+    lines = ["metric," + ",".join(f"FY{y}" for y in years)]
+    for m in metrics:
+        m = m.strip()
+        if not m:
+            continue
+        cells = [_cell_value(m, tk, y) for y in years]
+        unit = next((u for v, u in cells if v is not None), "")
+        label = m if unit in ("", "USD") else f"{m} ({unit})"
+        row = ",".join("" if v is None else str(v) for v, _ in cells)
+        lines.append(f"{label},{row}")
+    return "\n".join(lines) + "\n"
+
+
 def get_growth(metric: str, ticker: str, fiscal_year: int = None) -> str:
     """Compute year-over-year (YoY) change of a metric DETERMINISTICALLY. The tool itself
     fetches the given fiscal year (or the latest) AND the immediately preceding fiscal year,

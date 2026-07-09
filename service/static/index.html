@@ -41,6 +41,16 @@
   #uploadbar label { background:#eef1f4; color:#0b2239; padding:7px 12px; border-radius:8px;
                      cursor:pointer; font-weight:600; }
   #uploadbar label:hover { background:#e3e6ea; }
+  #exportbar { max-width:780px; margin:0 auto; padding:2px 18px 0; }
+  #exptoggle { background:#eef1f4; color:#0b2239; padding:7px 12px; border-radius:8px;
+    font-size:13px; font-weight:400; }
+  #exptoggle:hover { background:#e3e6ea; }
+  #expform { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:8px; }
+  #expform input { flex:0 1 auto; padding:7px 10px; font-size:13px; }
+  #expticker { width:150px; } #expmetrics { flex:1 1 240px; min-width:200px; }
+  #expfrom, #expto { width:74px; }
+  #expdl { padding:8px 14px; font-size:13px; }
+  #experr { font-size:12.5px; color:#b3452e; }
   #deldoc { display:inline-flex; align-items:center; gap:4px; white-space:nowrap;
             background:#fff; color:#c0392b; border:1px solid #e6c3c0; border-radius:8px;
             padding:7px 11px; font-size:13px; font-weight:600; line-height:1; cursor:pointer; }
@@ -110,6 +120,16 @@ You can also upload your own document (PDF) — an internal statement or a priva
       <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
     </svg>Delete</button>
   <span id="upstatus"></span>
+</div>
+<div id="exportbar">
+  <button id="exptoggle" type="button">📊 Export figures to CSV</button>
+  <div id="expform" style="display:none">
+    <input id="expticker" autocomplete="off" placeholder="Ticker or company" />
+    <input id="expmetrics" autocomplete="off" placeholder="revenue, net_income, gross_margin, roe" />
+    <input id="expfrom" type="number" placeholder="2020" /><span>–</span><input id="expto" type="number" placeholder="2024" />
+    <button id="expdl" type="button">Download</button>
+    <span id="experr"></span>
+  </div>
 </div>
 <form id="f">
   <input id="q" autocomplete="off" placeholder="Ask about a company's 10-K, or your uploaded file…" />
@@ -371,6 +391,31 @@ function onGoogle(resp){
   };
   init();
 })();
+
+// --- CSV export (deterministic /export endpoint; no LLM) ---
+document.getElementById('exptoggle').addEventListener('click', () => {
+  const ef = document.getElementById('expform');
+  ef.style.display = ef.style.display === 'none' ? 'flex' : 'none';
+});
+document.getElementById('expdl').addEventListener('click', async () => {
+  const t = document.getElementById('expticker').value.trim();
+  const m = document.getElementById('expmetrics').value.trim();
+  const a = document.getElementById('expfrom').value, b = document.getElementById('expto').value;
+  const err = document.getElementById('experr');
+  if (!t || !m || !a || !b) { err.textContent = 'Fill in ticker, metrics, and both years.'; return; }
+  err.textContent = 'Building…';
+  const url = '/export?ticker=' + encodeURIComponent(t) + '&metrics=' + encodeURIComponent(m) +
+              '&start=' + a + '&end=' + b;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) { err.textContent = (await r.json().catch(() => ({}))).detail || 'Export failed.'; return; }
+    const blob = await r.blob();
+    const name = ((r.headers.get('content-disposition') || '').match(/filename="(.+)"/) || [])[1] || 'export.csv';
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob); link.download = name; link.click();
+    URL.revokeObjectURL(link.href); err.textContent = '';
+  } catch (e) { err.textContent = 'Export failed — please try again.'; }
+});
 </script>
 </body>
 </html>

@@ -19,7 +19,7 @@ from contextlib import asynccontextmanager
 from typing import List, Optional
 
 import psycopg
-from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -229,6 +229,27 @@ def ask(q: Query, request: Request):
             "sources": _sources(out["answer"], out["tool_outputs"]),
             "doc_sources": _private_sources(out["tool_outputs"], user_id),
             "trace_id": out.get("trace_id")}
+
+
+@app.get("/export")
+def export_table(request: Request, ticker: str, metrics: str, start: int, end: int):
+    """Deterministic CSV of metrics/ratios × fiscal years, straight from the XBRL tools (no LLM in
+    the loop, so the export is exact). Public data -> no auth; light rate limit."""
+    if not check_rate_limit(_client_ip(request)):
+        raise HTTPException(429, "Too many requests — please wait a minute and try again.")
+    ticker = (ticker or "").strip()
+    mlist = [m for m in (metrics or "").split(",") if m.strip()]
+    if not ticker or not mlist:
+        raise HTTPException(400, "Provide a ticker (or company name) and at least one metric.")
+    if not (1990 <= start <= end <= 2100) or end - start > 30:
+        raise HTTPException(400, "Provide a sensible fiscal-year range (start ≤ end, ≤ 30 years).")
+    from agents.finance_tools import financial_table_csv, _rows_for
+    if not _rows_for(ticker):
+        raise HTTPException(404, f"No company found for '{ticker}'. If delisted/renamed, use its full name.")
+    csv = financial_table_csv(ticker, mlist, list(range(start, end + 1)))
+    fname = f"{ticker.upper().replace(' ', '_')}_{start}-{end}.csv"
+    return Response(csv, media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
 class Feedback(BaseModel):
