@@ -124,6 +124,13 @@ def get_financials(ticker: str, metric: str, fiscal_year: int = None) -> str:
     if not hits:
         _log_miss(tk, key, fiscal_year, "metric_absent")
         avail = sorted({r["metric"] for r in rows})
+        # an unrecognized metric NAME (not a known metric, not reported) -> suggest the closest,
+        # so the model self-corrects (e.g. "accounts_receivable_net" -> accounts_receivable)
+        if key not in set(_ALIASES.values()) and key not in avail:
+            near = difflib.get_close_matches(key, set(_ALIASES.values()) | set(avail), n=1, cutoff=0.6)
+            hint = f" Did you mean '{near[0]}'?" if near else ""
+            return (f"'{metric}' isn't a recognized metric.{hint} "
+                    f"Reported metrics for {tk}: {', '.join(avail) or 'none'}.")
         return (f"{tk} does not report '{metric}' (canonical: {key}) in the available "
                 f"XBRL data. Reported metrics for {tk}: {', '.join(avail) or 'none'}.")
     if fiscal_year is not None:
