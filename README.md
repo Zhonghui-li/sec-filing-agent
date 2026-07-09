@@ -1,239 +1,139 @@
-# SEC Filing Agent — a finance-grade tool-calling agent over SEC filings (and your own documents)
+# SEC Filing Agent
+*A finance-grade tool-calling agent over SEC filings — and your own documents.*
 
 [![Eval](https://github.com/Zhonghui-li/sec-filing-agent/actions/workflows/eval.yml/badge.svg)](https://github.com/Zhonghui-li/sec-filing-agent/actions/workflows/eval.yml)
 
-A LangGraph ReAct agent that answers questions about public companies' SEC 10-K filings —
-financials, risk factors, MD&A — built to the **finance bar**, where a wrong or
-unsupported number is unacceptable:
+Answers financial questions about **any U.S. public company** from its SEC 10-K filings — built to
+the **finance bar**, where a wrong or unsupported number is unacceptable.
 
-- **Every number comes from structured XBRL data (a tool), never from the LLM** doing
-  arithmetic or reading a figure out of prose — so financial figures are exact and auditable.
-- **Every claim is cited** to the source filing, with a **clickable EDGAR link** to the 10-K.
-- The agent **abstains** (a structured, machine-readable signal) when it can't answer —
-  metric not reported, company out of scope, off-topic — instead of fabricating.
-- The same finance bar extends to **your own uploaded documents** (a private financial
-  statement, a non-public company): numbers come from **structured table extraction** (Docling),
-  cited to the cell and **deep-linked to the source page** — never read from prose.
-- All of it is **evaluated by a 12-metric suite in CI** (9 deterministic metrics gate; 3 LLM-judge metrics monitor-only).
+> **Validated on FinanceBench** (an external benchmark we didn't write): **addressable coverage
+> 44% → 87% across five data-driven iterations, hallucination rate ≈ 0.**
+> → [full brief](eval/financebench/REPORT.md)
 
-> Reuses the retrieval + eval engineering from [Slug Advisor](https://github.com/Zhonghui-li/Agentic-RAG)
-> (hybrid retrieval, CrossEncoder reranker, eval-in-CI), re-pointed from course advising to
-> financial-document analysis and raised to the finance bar.
+## The finance bar
+
+| Rule | How |
+|---|---|
+| **Numbers only from tools** | every figure from structured XBRL, never LLM arithmetic — exact & auditable |
+| **Every claim cited** | a clickable EDGAR link to the source 10-K |
+| **Abstains, never fabricates** | a structured signal when a metric isn't reported / is out of scope |
+| **Same bar for your docs** | uploaded statements → structured table extraction, cell-level citations |
+
+## Coverage at a glance
+
+- **Any U.S. public company** — figures fetched live from SEC XBRL; delisted/renamed firms resolve
+  by **name** (Activision, Square→Block), not a dead ticker.
+- **23 statement line-items + 18 ratios**, plus any spelled-out formula via a Program-of-Thought evaluator.
+- **As-reported basis** — returns the figure as originally filed and *flags* later restatements
+  (never mixes bases across years).
+- **Export to CSV** — pull metrics × years into Excel, straight from the tools (no LLM → exact).
 
 ## Example
 
 ```
 Q: How did NVIDIA's revenue change year over year, and what does management attribute it to?
+A: +65.5% YoY, from $130.5B (FY2025) to $215.9B (FY2026), driven by data-center AI demand.
+   🔧 get_growth(revenue, NVDA) · search_filings(NVDA)   [source: 10-K 0001045810-26-000021 → sec.gov/…]
 
-A: NVIDIA's revenue grew +65.5% year over year, from $130.5B (FY2025) to $215.9B (FY2026),
-   driven by data-center / accelerated-computing demand for AI.
-   🔧 get_growth(revenue, NVDA) · search_filings(NVDA)
-   [source: 10-K accession 0001045810-26-000021 → https://www.sec.gov/Archives/edgar/data/1045810/...]
+Q: What is Activision's FY2019 fixed-asset turnover?
+A: 24.26x (revenue / average net PP&E).   🔧 get_ratio(fixed_asset_turnover, "Activision Blizzard", 2019)
+   (delisted — resolved by name, not the retired ATVI ticker)
 
 Q: What is JPMorgan's gross profit?
 A: 🔧 get_financials(JPM, gross_profit) → not reported · abstain(not_reported)
-   JPMorgan doesn't report gross profit (banks have no cost-of-goods line). I can't provide it.
+   JPMorgan doesn't report gross profit (banks have no cost-of-goods line).
 ```
 
-The agent **decides which tools to call**: exact figures via `get_financials` (XBRL), math
-via `compute`, qualitative context via `search_filings`, and `abstain` when it shouldn't answer.
+## How it works — text vs numbers
 
-## How it works
+Unstructured narrative (risk factors, MD&A) goes through **retrieval**; exact figures go through
+**deterministic tools** over XBRL. The LLM never does arithmetic on financials and never reads a
+number out of prose.
 
-**Design principle — text vs numbers.** Unstructured narrative (risk factors, MD&A) goes
-through **retrieval** (`search_filings`, pgvector + reranker); exact figures go through
-**tools** that read **XBRL** (`get_financials`), a deterministic `compute` (diffs), `get_growth`
-for year-over-year change, and `get_ratio` for standard ratios. The LLM never does arithmetic on
-financials, and never reads a number out of filing prose.
+| Tool | What it does |
+|---|---|
+| `get_financials` | an exact figure from XBRL — any public company, fetched live |
+| `get_ratio` | 18 standard ratios from fixed formulas (the right base metric baked in) |
+| `get_growth` | YoY change, always consecutive years — no multi-year span mislabeled as YoY |
+| `compute_formula` | a spelled-out formula, **Program-of-Thought**: the model writes it once, code fetches every figure and evaluates — the model never transcribes a number |
+| `search_filings` | qualitative context (pgvector + CrossEncoder reranker) |
+| `abstain(reason)` | a structured, machine-readable refusal |
 
-**Ratios and growth are computed, not assembled.** LLMs reliably pick the *wrong base metric* for a
-ratio (total liabilities for "debt", period-end vs average assets for ROA — both surfaced by
-FinanceBench). So `get_ratio` computes 10 standard ratios (margins, ROA/ROE, current/quick,
-payout, debt-to-equity) from **fixed formulas with the conventions baked in** (ROA uses *average*
-assets; "debt" means long-term debt) and returns the value, the formula, and the citation.
-Likewise `get_growth` fetches a metric's year **and its immediately-preceding year itself**, so a
-year-over-year question always compares consecutive years — the model can't slip in a non-adjacent
-baseline (a real failure the live eval caught: a 3-year span mislabeled as YoY). The finance bar
-extended from "numbers only from tools" to "ratios and growth only from tools."
-
-**Tools:** `get_financials` · `compute` · `get_growth` · `get_ratio` · `search_filings` · `abstain(reason)` —
-orchestrated by `create_react_agent` (LangGraph), with a system prompt enforcing the finance-bar rules.
-
-## Bring your own data (private documents)
-
-A second retrieval path runs alongside the public SEC data: a user uploads their own document
-(an internal statement, a non-public company's financials) and the agent answers from it — with
-the **same finance bar**, applied to data that has no XBRL.
-
-- **Structured extraction, not prose.** [Docling](https://github.com/docling-project/docling)
-  parses the upload (tables preserved) into a per-user fact table; `get_my_financials` reads exact
-  figures from those **table cells** (the private-data analogue of XBRL), so a number is never read
-  out of narrative. Qualitative questions use `search_my_documents`.
-- **Cell-level, click-to-source citations.** Each figure cites `filename · page · row/col`, and the
-  page **deep-links to the original PDF** (`/file/{doc_id}#page=N`) — the auditable trail a regulated
-  domain needs (mirrors FinChat's "click a number, see the page").
-- **Per-user isolation, with optional Google sign-in.** A user only ever retrieves, and can only
-  open, their own documents. Set `GOOGLE_CLIENT_ID` to require sign-in (the user_id becomes the
-  verified email, so documents persist across sessions); unset, the demo stays open with an
-  anonymous browser session.
-- **Multi-document scoping** (the *indistinguishable-multi-documents problem*: standard RAG mixes
-  chunks across files, which in finance means attributing one file's number to another). Solved
-  with **metadata filtering**: a UI document selector hard-scopes lookups to one file, the agent
-  can also pass a `document` hint inferred from the question, and across-all answers tag every
-  figure with its source file — so figures never get cross-attributed.
-- **Parse-quality self-checks.** Deterministic, no-ground-truth signals (text-density / coverage,
-  and an extraction-hallucination check that every figure's digits appear in the parsed text) flag
-  a parse for review — the production pattern of knowing when to trust an extraction.
-- **Dependency-isolated ingestion.** Docling pulls heavyweight, conflicting deps, so ingestion runs
-  in a **separate venv** (`ingest/`) and the agent never imports it; the two decouple through pgvector
-  — mirroring the public path. See [`ingest/README.md`](ingest/README.md).
-
-> Uploads are parsed **asynchronously**: `/upload` saves the file, records a `processing` row,
-> and returns immediately; a background worker runs the full Docling parse (no page cap) and flips
-> the document to `ready`, which the UI polls for. This is what lets it accept real, 100+ page
-> filings without blocking the request. (Production-grade would move the worker behind a durable
-> queue so jobs survive instance restarts; here a thread + a status table suffices.)
+*Ratios and growth are computed, not assembled.* LLMs reliably pick the **wrong base metric** —
+total liabilities for "debt", period-end vs average assets for ROA (both surfaced by FinanceBench).
+Baking the conventions into fixed formulas removes that whole class of error.
 
 ## Evaluation — the part most agent demos skip
 
-A **self-grounded** test set (answers derived from the real XBRL + filings, so they're correct
-by construction), organized as a **capability × robustness matrix** (lookup / compute /
-qualitative / combined × happy / edge / adversarial), scored by a **complementary suite** —
-each metric catches a failure the others miss:
+**1 · Internal test set (CI gate).** 69 self-grounded cases (answers derived from the XBRL, correct
+by construction) over 7 curated companies, scored by a **complementary suite** — `numerical`,
+`grounded` (a number traceable to a tool), `citation`, `tool` (trajectory), `abstain`, `context_recall`,
+`forbid` (injection). The **9 deterministic** metrics gate CI; 3 LLM-judge metrics monitor only
+(they're systematically biased against the honest hedging a regulated domain *should* use).
 
-| metric | type | catches |
-|---|---|---|
-| **numerical** | deterministic | wrong number (2.5% tolerance, FinanceBench-style) |
-| **citation** | deterministic | wrong/missing source filing |
-| **grounded** | deterministic | a number not traceable to a tool (invented / read from prose) |
-| **tool** | deterministic | wrong tool trajectory (e.g. mental math instead of `compute`) |
-| **abstain** | deterministic | answering when it should refuse, or vice-versa |
-| **reason** | deterministic | wrong abstain category (out_of_scope / not_reported / …) |
-| **facts** | deterministic | qualitative answer missing the key points |
-| **context_recall** | deterministic | retrieval missed the evidence passage (incl. exact-term recall — the BM25 check) |
-| **forbid** | deterministic | prompt-injection / planted false claim |
-| **faithfulness** | LLM-judged (Ragas) · *monitor* | qualitative narrative not grounded in the cited text |
-| **answer_relevancy** | LLM-judged (Ragas) · *monitor* | off-topic answers (systematically under-scores honest "remains uncertain / see the filing" hedging — see Gate vs monitor) |
-| **context_precision** | LLM-judged (Ragas) · *monitor* | retriever ranked the supporting chunks low (rank-aware precision@k; the deterministic `context_recall` only checks the evidence was retrieved *at all*) |
+**2 · Calibrated domain judge.** A rubric judge that scores honest hedging / appropriate abstention
+as *good*, calibrated to human labels — **Cohen's κ = 0.95**. Fixes the generic metric's bias
+(JPMorgan capital answer: generic relevancy `0.0` vs domain judge `1.0`). Runs on live traces too.
 
-**Eval-in-CI (two layers):**
-- **L1** — deterministic unit tests for the tools + scorer logic (no LLM, no DB, no secrets);
-  runs on **every push/PR**, seconds, free.
-- **L2** — the full agent + Ragas eval, gated against a committed baseline (per-metric
-  tolerance, exits non-zero on regression); runs **on demand** (so the shared key isn't run
-  unattended in a public repo).
+**3 · External benchmark — [FinanceBench](https://github.com/patronus-ai/financebench) (Patronus AI).**
+150 questions / 32 companies we did *not* write. **Addressable coverage 44% → 87% across five
+iterations, hallucination ≈ 0.** Reproducible harness with a tracked runs log.
+→ [`eval/financebench/`](eval/financebench/) · [REPORT.md](eval/financebench/REPORT.md)
 
-**Gate vs monitor:** only the **9 deterministic** metrics gate CI. The three Ragas (LLM-judge)
-metrics are **monitor-only** — reported every run but never block — because they're noisy and
-systematically biased in a regulated domain (`answer_relevancy`'s noncommittal classifier
-penalizes the honest "this remains uncertain — see the filing" hedging that compliant answers
-*should* use). Hard gates need low-noise, unbiased signals, so they live on the deterministic
-set; LLM-judge quality is watched, with low scores sampled for human review. The same two
-metrics also run reference-free on live traces (`eval/score_traces.py` → Langfuse Scores).
+> Built eval-driven: the eval surfaced the failures that drove the agent — it once *guessed* fiscal
+> years, *substituted revenue as a proxy for gross profit*, *over-refused* answerable questions, and
+> mislabeled a 3-year span as YoY. Several "failures" were scorer bugs, not agent bugs — telling the
+> two apart is the core skill.
 
-To fix the `answer_relevancy` bias rather than just tolerate it, `eval/judge.py` is a
-domain-tuned judge (G-Eval style: rubric that treats honest hedging / appropriate abstention
-as *good*, + chain-of-thought) calibrated against human labels — **Cohen's κ = 0.95** on a
-52-case set (39 good / 13 bad, incl. 12 synthetic hallucinations), with **zero false positives
-on the hedged/abstaining answers** the generic metric misfires on. It now runs on every live
-trace too (`score_traces.py` → a `domain_judge` score), so a trace shows both signals
-side by side — e.g. JPMorgan: `answer_relevancy` 0.0 (the generic metric's bias) vs
-`domain_judge` 1.0 (correct).
+## Bring your own data (private documents)
 
-Current baseline (65-case set): deterministic metrics **100%**, faithfulness **0.94**,
-answer_relevancy **0.86**. (Retrieval is dense pgvector + a CrossEncoder reranker; BM25 was
-deliberately left out and `context_recall` — including exact-term cases like "Stress Capital
-Buffer" — confirms it isn't needed.)
+Upload a statement (an internal report, a non-public company) and the agent answers from it — the
+**same finance bar, applied to data with no XBRL**:
 
-> Built eval-driven: the failures the eval surfaced drove the agent — e.g. it once *guessed*
-> fiscal years, *substituted revenue as a "proxy" for gross profit*, and (after a structured
-> `abstain` tool was added) *over-refused* questions it could answer. Each was caught by the
-> eval and fixed; several "failures" were scorer bugs, not agent bugs — distinguishing the two
-> is the core skill.
-
-**External validation — FinanceBench (Patronus AI).** Beyond the self-authored set, the agent
-is checked against [FinanceBench](https://github.com/patronus-ai/financebench), a benchmark we
-did *not* write (`eval/financebench/`). It covers ~40 companies / many years vs. our 7 latest, so
-two tracks:
-- **Abstain calibration** — the 13 real FinanceBench questions on our companies. Most ask for
-  metrics/years outside our coverage, so the correct behavior is to abstain, not guess:
-  **12/13 handled safely** (correct answer or correct abstention).
-- **In-coverage accuracy** — FinanceBench-style derived metrics (COGS %, ROA, current ratio,
-  payout ratio) on companies/years we cover, with gold computed from our XBRL data: **22/22**.
-
-Supporting this extended the XBRL extractor with 7 base metrics (cost of revenue, dividends,
-payables, inventory, current assets/liabilities, debt) so the ratios compute — a
-**benchmark-driven coverage fix**, not a one-off.
-
-## Observability (audit trail)
-
-Optional Langfuse tracing (`agents/observability.py`, key-gated — a no-op without keys).
-In a regulated domain the trace *is* the audit trail: every run logs the question, answer,
-latency, and token cost, plus **which tools were called, which filings (accessions) were
-cited, and whether/why it abstained** — so any answer traces back to its sources.
-
-**User feedback as labeled data.** Each answer carries a 👍/👎 in the UI that writes a
-`user_feedback` score (with the question/answer in metadata) onto its Langfuse trace via
-`/feedback` — turning live traffic into *labeled* evaluation data. The offline scorer then
-adds the model-judge metrics, so a trace shows the human signal and the automated ones side by
-side (and a 👎 surfaces exactly the cases worth investigating).
+- **Structured extraction** ([Docling](https://github.com/docling-project/docling)) → figures read
+  from **table cells**, never prose; `get_my_financials` is the private-data analogue of XBRL.
+- **Cell-level citations** — `filename · page · row/col`, deep-linked to the source PDF page.
+- **Per-user isolation** (optional Google sign-in) + **multi-document scoping** (metadata filtering,
+  so a number never gets attributed to the wrong file).
+- **Async ingestion** in an isolated venv (Docling's heavy deps never touch the agent). See
+  [`ingest/README.md`](ingest/README.md).
 
 ## Serving
 
-A FastAPI service (`service/`) exposes the agent over HTTP, with in-memory abuse controls
-(rate limit, daily quota, input cap) sized for a cheap single-instance demo:
+FastAPI service + a static chat UI, with in-memory rate/quota controls for a cheap single-instance demo.
 
-- **`/ask`** + a static chat UI (`service/static/`) — renders the answer, the **clickable
-  EDGAR citations**, and a collapsible **audit trail** of the tool calls.
-- **Optional Google sign-in** (`GOOGLE_CLIENT_ID`) keeps our own UI (audit trail, sources, upload
-  preview, click-to-source) while adding accounts: documents are isolated per email and persist
-  across logins. Off by default (anonymous session), so the demo stays open.
-- **`/upload`** + **`/file/{doc_id}`** — upload a document (parsed in the isolated ingest venv),
-  see what Docling extracted, then ask about it; citations deep-link back to the source page.
-- **Multi-turn memory** — the client sends the prior conversation each turn and the agent
-  consumes it (trimmed to the recent turns); the agent itself stays stateless.
-- **`/v1/chat/completions`** (+ `/v1/models`, streaming) — an **OpenAI-compatible** endpoint,
-  so the same agent drops into a multi-user chat shell like **open-webui** or **LibreChat**
-  (which bring login, per-user history, and data isolation for free) without a rewrite; cited
-  filings are appended as markdown links so they stay clickable there.
+- **`/ask`** — the answer + clickable EDGAR citations + a collapsible **audit trail** of tool calls.
+- **`/export`** — deterministic CSV of metrics × years for any company (no LLM → exact).
+- **`/upload`** + **`/file/{doc_id}`** — upload, see what Docling extracted, then ask; citations deep-link to the page.
+- **`/v1/chat/completions`** — an **OpenAI-compatible** endpoint, so the agent drops into open-webui / LibreChat.
+- Default model: **o4-mini** (reasoning) — deliberate tool-call planning reduces routing/naming slips.
 
 ```bash
-# run the demo locally
-DATABASE_URL=... OPENAI_API_KEY=... uvicorn service.app:app --port 8100   # http://localhost:8100
+DATABASE_URL=… OPENAI_API_KEY=… uvicorn service.app:app --port 8100   # http://localhost:8100
 ```
 Deployed on Cloud Run with `max-instances=1`, so the in-memory daily quota is an exact global cap.
 
-## Data (public SEC EDGAR — no PII / compliance scope)
-- **Numbers**: SEC `companyfacts` XBRL API → exact annual financials (`data/financials.json`).
-- **Text**: 10-K Business / Risk Factors / MD&A via `edgartools` → chunked into **pgvector**
-  with provenance.
-- Companies: AAPL, MSFT, NVDA, AMZN, JPM, TSLA, KO (latest 2 fiscal years).
-
 ## Run
+
 ```bash
 pip install -r requirements.txt
 
-# build the data layer (once)
-python scripts/fetch_financials.py                          # XBRL exact numbers
-python scripts/fetch_filings.py                             # 10-K sections
-DATABASE_URL=... OPENAI_API_KEY=... python scripts/build_filings_store.py   # -> pgvector
-
-# ask the agent
-DATABASE_URL=... OPENAI_API_KEY=... python -m agents.sec_agent "How did NVIDIA's revenue change YoY?"
-
-# (optional) ingest a private document — runs in its own venv (see ingest/README.md)
-DATABASE_URL=... OPENAI_API_KEY=... ingest/.venv/bin/python ingest/ingest.py --user me --file report.pdf
-
-# eval
-python -m pytest tests/                                     # L1 (deterministic, no keys)
-DATABASE_URL=... OPENAI_API_KEY=... python -m eval.score --quality   # L2 (full agent + Ragas)
+python -m pytest tests/                                                    # deterministic tests (no keys)
+GEN_LLM_MODEL=o4-mini OPENAI_API_KEY=… python -m eval.financebench.run_open   # external benchmark
+DATABASE_URL=… OPENAI_API_KEY=… python -m agents.sec_agent "How did NVIDIA's revenue change YoY?"
 ```
 
-## Known data-quality notes (real-world filing messiness)
-- JPM (a bank) reports no gross profit / operating income / R&D, and its MD&A isn't under the
-  standard section — surfaced as "not reported" (feeds the abstain behavior); numbers stay exact.
-- A company can migrate the same metric across XBRL tags between years (e.g. NVDA revenue →
-  `Revenues`); the extractor merges across candidate tags to avoid gaps.
-- Numbers cite the **most recent filing that reports them** (restatement-aware): a
-  historical-year figure may therefore link to a later 10-K that carries it as a comparative
-  column. Year-specific narrative is a separate concern, handled by retrieval (`search_filings`).
+## Data & real-world messiness
+
+- **Numbers**: SEC `companyfacts` XBRL — live for any company; 7 companies cached in
+  `data/financials.json` as the deterministic eval baseline.
+- **Text**: 10-K Business / Risk / MD&A via `edgartools` → **pgvector** (indexed for the curated set).
+- **Tag drift** — a company migrates the same line to a different XBRL tag across years; the extractor
+  merges candidate tags (a footnote component can never substitute for the total line).
+- **As-reported vs restated** — returns the figure as originally filed (matching the source & the
+  benchmark) and flags a later restatement; one consistent basis, never mixed across years.
+- **Banks** — JPM reports no gross profit / COGS → surfaced as "not reported" (feeds abstain); numbers stay exact.
+
+> Reuses retrieval + eval engineering from [Slug Advisor](https://github.com/Zhonghui-li/Agentic-RAG)
+> (hybrid retrieval, reranker, eval-in-CI), re-pointed from course advising to financial-document
+> analysis and raised to the finance bar.
