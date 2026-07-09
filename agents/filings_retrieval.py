@@ -48,6 +48,9 @@ def search_filings(query: str, ticker: str = None, k: int = 5) -> str:
     Pass `ticker` (e.g. "AAPL") to restrict to one company. Returns passages, each
     tagged [ticker · FY · section · accession] so you can cite the source. This does
     NOT return exact financial figures — use get_financials for any number."""
+    if not os.environ.get("DATABASE_URL"):        # no filings index available -> abstain, don't crash
+        return (f"No indexed filing narrative available for '{query}'"
+                + (f" ({ticker})." if ticker else ".") + " (narrative search is not configured.)")
     qv = _embed(query)
     kk = max(k * 3, k)
     if ticker:
