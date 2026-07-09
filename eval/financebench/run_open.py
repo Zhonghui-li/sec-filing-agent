@@ -14,7 +14,7 @@ doesn't cover. So the RIGHT behavior on those is to ABSTAIN, not guess. We score
 
 Dataset is downloaded on first run (external data, not committed).
 
-Usage: DATABASE_URL=... OPENAI_API_KEY=... GEN_LLM_MODEL=gpt-4o python -m eval.financebench.run_open [--limit N]
+Usage: DATABASE_URL=... OPENAI_API_KEY=... GEN_LLM_MODEL=o4-mini python -m eval.financebench.run_open [--limit N]
 """
 import argparse
 import json

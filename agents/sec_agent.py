@@ -248,7 +248,7 @@ def _uploaded_doc_names(user_id: str):
 
 def build_agent(model: str = None, temperature: float = 0.0, user_id: str = None,
                 scope_doc: str = None):
-    model = model or os.environ.get("GEN_LLM_MODEL", "gpt-4o-mini")
+    model = model or os.environ.get("GEN_LLM_MODEL", "o4-mini")
     # o-series reasoning models (o1/o3/o4-...) reject a non-default temperature and instead take a
     # reasoning_effort knob; only the chat models (gpt-4o, ...) get a temperature.
     if re.match(r"^o\d", model):
