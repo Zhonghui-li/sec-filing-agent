@@ -30,7 +30,9 @@ def test_abstain_year_unavailable():
 
 
 def test_unknown_company():
-    assert "does not report" in get_financials("ZZZZ", "revenue").lower()
+    # an unresolved ticker nudges toward the company name (covers delisted/renamed), not a metric msg
+    out = get_financials("ZZZZ", "revenue").lower()
+    assert "no company found" in out and "company name" in out
 
 
 def test_compute_yoy():
@@ -80,6 +82,13 @@ def test_get_ratio_debt_is_not_total_liabilities():
     assert "long-term debt" in out.lower() and "total liabilities" in out.lower()
 
 
+def test_get_ratio_inventory_turnover():
+    # cost_of_revenue / average inventory; alias "inventory turnover" resolves; turns format
+    out = get_ratio("inventory turnover", "AAPL", 2024)
+    assert "inventory_turnover" in out and "x" in out and "average inventory" in out.lower()
+    assert "accession" in out
+
+
 def test_get_ratio_abstains_when_base_missing():
     # a bank has no current_assets -> can't compute current_ratio, must say so (not fabricate)
     out = get_ratio("current_ratio", "JPM", 2024)
@@ -123,6 +132,29 @@ def test_compute_formula_abstains_on_missing_metric():
 
 
 def test_compute_formula_rejects_unsafe():
-    # only arithmetic + metric names + avg/delta/prev/abs — never arbitrary calls / attributes
-    assert "Abstain" in compute_formula("__import__('os').system('x')", "AAPL", 2024)
-    assert "Abstain" in compute_formula("revenue.__class__", "AAPL", 2024)
+    # only arithmetic + metric names + avg/delta/prev/abs — arbitrary calls / attributes are
+    # rejected (caught either as an unknown name or by the AST walk), never evaluated
+    for bad in ["__import__('os').system('x')", "revenue.__class__"]:
+        assert "formula result" not in compute_formula(bad, "AAPL", 2024)
+
+
+def test_compute_formula_multiyear_prev():
+    # prev(metric, n) reaches n years back — enables a multi-year CAGR / average
+    from agents.finance_tools import _value
+    rev_2yr_back = _value("AAPL", "revenue", 2022)[0]
+    out = compute_formula("prev(revenue, 2)", "AAPL", 2024)
+    assert f"{rev_2yr_back:,.2f}" in out          # the value two years before FY2024
+
+
+def test_compute_formula_small_result_keeps_precision():
+    # a sub-1 result (margin / CAGR) must not be flattened to "0.00" by 2dp formatting
+    import re
+    out = compute_formula("net_income / prev(revenue, 2)", "AAPL", 2024)
+    m = re.search(r"= ([0-9.]+)", out)
+    assert m and 0 < float(m.group(1)) < 1 and m.group(1) != "0.00"
+
+
+def test_compute_formula_rejects_bad_periods():
+    # years-back must be a positive integer literal, never a metric or 0/negative
+    assert "Abstain" in compute_formula("prev(revenue, 0)", "AAPL", 2024)
+    assert "Abstain" in compute_formula("prev(revenue, revenue)", "AAPL", 2024)

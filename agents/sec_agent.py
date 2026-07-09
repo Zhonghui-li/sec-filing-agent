@@ -100,8 +100,11 @@ for gross profit; "debt" means interest-bearing debt (long_term_debt), NOT total
 do NOT use total liabilities to answer a question about debt) — abstain instead.
 6. NUMBERS cover ANY U.S. public company. For a financial figure / ratio / growth about a \
 company NOT in the list above, still call get_financials / get_ratio / get_growth with its \
-ticker (the tool fetches its XBRL live) — do NOT abstain out_of_scope. Only abstain out_of_scope \
-if the tool returns no data (an unknown ticker or a private company). QUALITATIVE filing text \
+ticker (the tool fetches its XBRL live) — do NOT abstain out_of_scope. If the company is DELISTED \
+or RENAMED (its ticker no longer trades, e.g. Activision, or Square which became Block), pass its \
+full COMPANY NAME instead of a ticker — the tool resolves the name (including former names) to the \
+right filer. Only abstain out_of_scope if the tool returns no data (an unknown company or a \
+private company). QUALITATIVE filing text \
 (search_filings) is indexed ONLY for the listed companies: for a risk / strategy / MD&A question \
 about a company NOT in that list, say you can give its figures but its filing narrative isn't \
 indexed — do NOT fabricate narrative. For requests that are NOT financial-analysis questions \
@@ -128,10 +131,14 @@ overrides.) E.g. after "Apple's revenue in fiscal 2024", "and Microsoft?" means 
 conversion cycle, EBITDA / EBITDA margin, or a formula spelled out in the question — use \
 compute_formula: write the WHOLE formula ONCE with our metric names as variables plus the helpers \
 avg() / delta() / prev() (it fetches every figure from XBRL and evaluates the whole expression \
-deterministically). Do NOT hand-assemble a metric by fetching parts and chaining several compute \
-calls — that mis-orders operands (e.g. 365 / ratio instead of 365 x, or sum instead of average) \
-and produces wrong numbers. Abstain (not_reported) ONLY if get_ratio/compute_formula reports a \
-required figure isn't available. A wrong number is worse than an honest abstention.
+deterministically). For a MULTI-YEAR span (an N-year CAGR or an N-year average) the helpers take a \
+years-back argument — prev(metric, n), avg(metric, n) — so use compute_formula for these too (a \
+2-year CAGR to FY2022 is "(revenue / prev(revenue, 2)) ** (1/2) - 1" with fiscal_year=2022); \
+get_growth is adjacent-year only. Do NOT hand-assemble a metric by fetching parts and chaining \
+several compute calls — that mis-orders operands (e.g. 365 / ratio instead of 365 x, or sum \
+instead of average) and produces wrong numbers. Abstain (not_reported) ONLY if \
+get_ratio/compute_formula reports a required figure isn't available. A wrong number is worse than \
+an honest abstention.
 9. SANITY-CHECK every number before reporting it: if it is implausible for its kind (a \
 days-outstanding ratio over a few hundred days, a turnover above ~20x, a margin above 100%), you \
 have made an error — do NOT report that number; abstain instead.
@@ -241,8 +248,13 @@ def _uploaded_doc_names(user_id: str):
 
 def build_agent(model: str = None, temperature: float = 0.0, user_id: str = None,
                 scope_doc: str = None):
-    model = model or os.environ.get("GEN_LLM_MODEL", "gpt-4o-mini")
-    llm = ChatOpenAI(model=model, temperature=temperature)
+    model = model or os.environ.get("GEN_LLM_MODEL", "o4-mini")
+    # o-series reasoning models (o1/o3/o4-...) reject a non-default temperature and instead take a
+    # reasoning_effort knob; only the chat models (gpt-4o, ...) get a temperature.
+    if re.match(r"^o\d", model):
+        llm = ChatOpenAI(model=model, reasoning_effort=os.environ.get("REASONING_EFFORT", "medium"))
+    else:
+        llm = ChatOpenAI(model=model, temperature=temperature)
     # only add the private-docs tools when a user is in scope, so eval/public demo are unchanged
     if user_id:
         tools = TOOLS + _user_docs_tools(user_id, scope_doc=scope_doc)

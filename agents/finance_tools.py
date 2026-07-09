@@ -6,6 +6,7 @@ route every number through these and never recall or do arithmetic itself — th
 what makes financial answers exact and auditable.
 """
 import ast
+import difflib
 import json
 import os
 from pathlib import Path
@@ -94,18 +95,42 @@ def _canon(metric: str) -> str:
     return _ALIASES.get(m, metric.strip().lower().replace(" ", "_"))
 
 
+def _log_miss(ticker, metric, fiscal_year, reason):
+    """Part 3: record a requested-but-unavailable metric (drives data-driven METRICS expansion).
+    Lazy import so the curated-only path has no hard dependency; never breaks a request."""
+    try:
+        from agents.companyfacts import log_miss
+        log_miss(ticker, metric, fiscal_year, reason)
+    except Exception:
+        pass
+
+
 def get_financials(ticker: str, metric: str, fiscal_year: int = None) -> str:
     """Return an EXACT financial figure for a company from SEC XBRL data, with its
     source filing. Use this for ANY financial number (revenue, net income, total assets,
     gross profit, EPS, cash, equity, ...) — never recall or estimate a number yourself.
-    Pass fiscal_year (e.g. 2024) for a specific year, or omit it for the latest. If the
-    company doesn't report the metric, this says so (do not fabricate a value)."""
+    Pass fiscal_year (e.g. 2024) for a specific year, or omit it for the latest. For a delisted
+    or renamed company whose ticker no longer trades (e.g. Activision, or Square/Block), pass the
+    company NAME as `ticker` instead. If the company doesn't report the metric, this says so (do
+    not fabricate a value)."""
     tk = ticker.strip().upper()
     key = _canon(metric)
     rows = _rows_for(tk)
+    if not rows:                                   # ticker didn't resolve to any filer at all
+        return (f"No company found for '{ticker}'. If it is delisted or renamed (its ticker no "
+                f"longer trades — e.g. Activision, or Square/Block), retry with the full COMPANY "
+                f"NAME instead of a ticker.")
     hits = [r for r in rows if r["metric"] == key]
     if not hits:
+        _log_miss(tk, key, fiscal_year, "metric_absent")
         avail = sorted({r["metric"] for r in rows})
+        # an unrecognized metric NAME (not a known metric, not reported) -> suggest the closest,
+        # so the model self-corrects (e.g. "accounts_receivable_net" -> accounts_receivable)
+        if key not in set(_ALIASES.values()) and key not in avail:
+            near = difflib.get_close_matches(key, set(_ALIASES.values()) | set(avail), n=1, cutoff=0.6)
+            hint = f" Did you mean '{near[0]}'?" if near else ""
+            return (f"'{metric}' isn't a recognized metric.{hint} "
+                    f"Reported metrics for {tk}: {', '.join(avail) or 'none'}.")
         return (f"{tk} does not report '{metric}' (canonical: {key}) in the available "
                 f"XBRL data. Reported metrics for {tk}: {', '.join(avail) or 'none'}.")
     if fiscal_year is not None:
@@ -119,7 +144,7 @@ def get_financials(ticker: str, metric: str, fiscal_year: int = None) -> str:
     val = f"${r['value']:,}" if unit == "USD" else f"{r['value']:,} {unit}"
     return (f"{tk} {key} for FY{r['fiscal_year']} (period ending {r['period_end']}): "
             f"{val}. [source: 10-K accession {r['accession']}, "
-            f"{edgar_url(r['cik'], r['accession'])}]")
+            f"{edgar_url(r['cik'], r['accession'])}]" + _restatement_note([r]))
 
 
 def _value(ticker, metric, year=None):
@@ -133,6 +158,29 @@ def _value(ticker, metric, year=None):
         return None, None
     r = max(hits, key=lambda x: x["period_end"])
     return r["value"], r
+
+
+def _restatement_note(rows):
+    """A one-line caveat when any figure used in the answer was later restated. Values are kept on
+    the AS-REPORTED basis (matches the source filing, and keeps a multi-year answer on one basis);
+    this tells the reader the current-basis value exists — a finance reader may not know a figure
+    was reclassified. Rows without a restatement (the common case) add nothing."""
+    seen, parts = set(), []
+    for r in rows:
+        if not r or r.get("restated_value") is None:
+            continue
+        k = (r["metric"], r["fiscal_year"])
+        if k in seen:
+            continue
+        seen.add(k)
+        usd = r.get("unit") == "USD"
+        orig = f"${r['value']:,}" if usd else f"{r['value']:,}"
+        rest = f"${r['restated_value']:,}" if usd else f"{r['restated_value']:,}"
+        parts.append(f"{r['metric']} FY{r['fiscal_year']} from {orig} to {rest}")
+    if not parts:
+        return ""
+    return (" [NOTE: figures are AS ORIGINALLY REPORTED and computed on that basis; a later filing "
+            "restated " + "; ".join(parts) + " (current basis). Ask for the restated basis if needed.]")
 
 
 # Declarative ratio definitions: name -> (formula spec, output kind, one-line definition).
@@ -170,6 +218,8 @@ RATIOS = {
                          "revenue / average total assets"),
     "fixed_asset_turnover": (("revenue", "/", "avg:ppe_net"), "turns",
                          "revenue / average net PP&E"),
+    "inventory_turnover": (("cost_of_revenue", "/", "avg:inventory"), "turns",
+                         "cost of revenue / average inventory (avg of this and prior year)"),
     "capex_pct_revenue": (("capex", "/", "revenue"), "pct", "capex / revenue"),
     "interest_coverage": (("operating_income", "/", "interest_expense"), "turns",
                          "operating income / interest expense (times interest earned)"),
@@ -205,6 +255,8 @@ _RATIO_ALIASES = {
     "days of inventory": "dio",
     "asset turnover": "asset_turnover", "total asset turnover": "asset_turnover",
     "fixed asset turnover": "fixed_asset_turnover", "ppe turnover": "fixed_asset_turnover",
+    "inventory turnover": "inventory_turnover", "inventory turnover ratio": "inventory_turnover",
+    "stock turnover": "inventory_turnover",
     "capex % of revenue": "capex_pct_revenue", "capex as a % of revenue": "capex_pct_revenue",
     "capex to revenue": "capex_pct_revenue", "capex margin": "capex_pct_revenue",
     "interest coverage": "interest_coverage", "times interest earned": "interest_coverage",
@@ -245,27 +297,41 @@ def get_ratio(ratio: str, ticker: str, fiscal_year: int = None) -> str:
     """Compute a standard financial RATIO deterministically (the formula is fixed in code, so
     the right base metrics and conventions are always used). Supports: gross_margin,
     operating_margin, net_margin, cogs_pct, roa, roe, current_ratio, quick_ratio, payout_ratio,
-    debt_to_equity, dpo, dso, dio, asset_turnover, fixed_asset_turnover, capex_pct_revenue,
-    interest_coverage. Use this for ANY ratio (incl. days-outstanding and turnover ratios) instead
+    debt_to_equity, dpo, dso, dio, asset_turnover, fixed_asset_turnover, inventory_turnover,
+    capex_pct_revenue, interest_coverage. Use this for ANY ratio (incl. days-outstanding and
+    turnover ratios) instead
     of fetching pieces and dividing yourself — it returns the exact value, the formula, and source."""
     name = _RATIO_ALIASES.get(ratio.strip().lower(), ratio.strip().lower().replace(" ", "_"))
     if name not in RATIOS:
         return (f"Unknown ratio '{ratio}'. Supported: {', '.join(sorted(RATIOS))}.")
     (num_spec, _op, den_spec), kind, definition = RATIOS[name]
     tk = ticker.strip().upper()
-    num, src = _operand(tk, num_spec, fiscal_year)
-    den, _ = _operand(tk, den_spec, fiscal_year)
+    used = []                                        # every source row touched (incl. avg: prior year)
+
+    def _getval(m, y):
+        v, r = _value(tk, m, y)
+        if r:
+            used.append(r)
+        return v, r
+    num, src = _resolve_operand(num_spec, fiscal_year, _getval)
+    den, _ = _resolve_operand(den_spec, fiscal_year, _getval)
     if num is None or den is None:
+        if not _rows_for(tk):                      # ticker didn't resolve to any filer at all
+            return (f"No company found for '{ticker}'. If it is delisted or renamed, retry with "
+                    f"the full COMPANY NAME instead of a ticker.")
+        missing = num_spec if num is None else den_spec
+        _log_miss(tk, missing.replace("avg:", ""), fiscal_year, f"ratio_base_absent:{name}")
         return (f"Cannot compute {name} for {tk}"
                 f"{(' FY' + str(fiscal_year)) if fiscal_year else ''}: a required figure "
-                f"({num_spec if num is None else den_spec}) isn't in the data. Abstain.")
+                f"({missing}) isn't in the data. Abstain.")
     if den == 0:
         return f"Cannot compute {name} for {tk}: denominator is 0."
     raw = num / den
     fy = src["fiscal_year"] if src else fiscal_year
     out = _fmt_ratio(raw, kind)
     return (f"{tk} {name} for FY{fy} = {out} ({definition}). "
-            f"[source: 10-K accession {src['accession']}, {edgar_url(src['cik'], src['accession'])}]")
+            f"[source: 10-K accession {src['accession']}, {edgar_url(src['cik'], src['accession'])}]"
+            + _restatement_note(used))
 
 
 def get_growth(metric: str, ticker: str, fiscal_year: int = None) -> str:
@@ -292,7 +358,7 @@ def get_growth(metric: str, ticker: str, fiscal_year: int = None) -> str:
     f = lambda v, r: (f"${v:,}" if r["unit"] == "USD" else f"{v:,} {r['unit']}")
     return (f"{tk} {key} grew {pct:+.1f}% year over year, from {f(prev, rp)} (FY{cur_year - 1}) "
             f"to {f(cur, rc)} (FY{cur_year}). [sources: 10-K accessions {rp['accession']}, "
-            f"{rc['accession']}, {edgar_url(rc['cik'], rc['accession'])}]")
+            f"{rc['accession']}, {edgar_url(rc['cik'], rc['accession'])}]" + _restatement_note([rc, rp]))
 
 
 def compute(op: str, a: float, b: float) -> str:
@@ -346,16 +412,31 @@ def _eval_node(node, ticker, year, srcs):
         return _metric_at(node.id, ticker, year, srcs)
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
         fn = node.func.id
-        if fn not in _FORMULA_FUNCS or len(node.args) != 1:
+        if fn not in _FORMULA_FUNCS:
             raise ValueError(f"call '{fn}' not allowed")
         if fn == "abs":
+            if len(node.args) != 1:
+                raise ValueError("abs() takes one argument")
             return abs(_eval_node(node.args[0], ticker, year, srcs))
-        if not isinstance(node.args[0], ast.Name):
-            raise ValueError(f"{fn}() takes a metric name")
+        # avg/delta/prev(metric [, n]): optional integer literal n = years back (for multi-year
+        # spans like a 2-year CAGR or a 3-year average). Default preserves the 1-year behavior.
+        if not node.args or not isinstance(node.args[0], ast.Name) or len(node.args) > 2:
+            raise ValueError(f"{fn}() takes a metric name and an optional integer number of years")
         m = node.args[0].id
-        cur = _metric_at(m, ticker, year, srcs)
-        prv = _metric_at(m, ticker, year - 1, srcs)
-        return {"avg": (cur + prv) / 2, "delta": cur - prv, "prev": prv}[fn]
+        n = None
+        if len(node.args) == 2:
+            arg = node.args[1]
+            if not (isinstance(arg, ast.Constant) and isinstance(arg.value, int)
+                    and not isinstance(arg.value, bool) and arg.value >= 1):
+                raise ValueError(f"{fn}() years must be a positive integer literal")
+            n = arg.value
+        if fn == "prev":
+            return _metric_at(m, ticker, year - (n or 1), srcs)
+        if fn == "delta":
+            return _metric_at(m, ticker, year, srcs) - _metric_at(m, ticker, year - (n or 1), srcs)
+        # avg: mean of the last n years (default 2 = this and prior, the original behavior)
+        k = n or 2
+        return sum(_metric_at(m, ticker, year - i, srcs) for i in range(k)) / k
     raise ValueError(f"disallowed expression element: {type(node).__name__}")
 
 
@@ -374,6 +455,12 @@ def compute_formula(expression: str, ticker: str, fiscal_year: int = None) -> st
     metric names as variables and the helpers avg(), delta() (this year minus prior), prev(), e.g.:
       DPO = "365 * avg(accounts_payable) / (cost_of_revenue + delta(inventory))"
       EBITDA margin = "(operating_income + depreciation_amortization) / revenue"
+    For MULTI-YEAR spans, each helper takes an optional number of years back — prev(metric, n),
+    avg(metric, n), delta(metric, n) — so use this (not get_growth, which is adjacent-year only):
+      2-year revenue CAGR (FY2020->FY2022, pass fiscal_year=2022):
+        "(revenue / prev(revenue, 2)) ** (1/2) - 1"
+      3-year average capex % of revenue (FY2017-FY2019, pass fiscal_year=2019):
+        "((capex/revenue) + (prev(capex,1)/prev(revenue,1)) + (prev(capex,2)/prev(revenue,2))) / 3"
     The tool fetches each figure from XBRL itself — you NEVER pass or transcribe numbers — and
     computes the whole expression, so there are no arithmetic mistakes. Pass ticker and fiscal_year.
     Returns the value and the figures used, or an error (then abstain)."""
@@ -382,6 +469,18 @@ def compute_formula(expression: str, ticker: str, fiscal_year: int = None) -> st
         tree = ast.parse(expression, mode="eval")
     except SyntaxError:
         return f"Invalid formula syntax: {expression!r}. Abstain."
+    # catch a mistyped metric name and suggest the right one, so the model can self-correct
+    # (e.g. "ppne" -> "ppe_net") instead of abstaining as if the figure were unavailable.
+    known = set(_ALIASES.values())
+    unknown = {n.id for n in ast.walk(tree)
+               if isinstance(n, ast.Name) and n.id not in _FORMULA_FUNCS and _canon(n.id) not in known}
+    if unknown:
+        hints = []
+        for u in sorted(unknown):
+            near = difflib.get_close_matches(_canon(u), known, n=1, cutoff=0.5)
+            hints.append(f"'{u}'" + (f" (did you mean '{near[0]}'?)" if near else ""))
+        return (f"Unknown metric name(s): {', '.join(hints)}. Use exact metric names "
+                f"(ppe_net, revenue, cost_of_revenue, ...). Retry with the correct name.")
     year = int(fiscal_year) if fiscal_year else None
     if year is None:
         for nm in [n.id for n in ast.walk(tree)
@@ -401,7 +500,11 @@ def compute_formula(expression: str, ticker: str, fiscal_year: int = None) -> st
     src = srcs[0] if srcs else None
     cite = (f"[sources: 10-K accessions {', '.join(accns)}, "
             f"{edgar_url(src['cik'], accns[0])}]" if src and accns else "")
-    return (f"{tk} formula result for FY{year} = {val:,.2f}  (formula: {expression}). {cite}")
+    # Keep precision for small results (ratios / margins / CAGR) — a fixed 2dp would show a
+    # 0.4% CAGR or a 5.4% margin as "0.00" / "0.05" and lose the answer.
+    shown = f"{val:,.2f}" if abs(val) >= 1 else f"{val:.4g}"
+    return (f"{tk} formula result for FY{year} = {shown}  (formula: {expression}). {cite}"
+            + _restatement_note(srcs))
 
 
 if __name__ == "__main__":

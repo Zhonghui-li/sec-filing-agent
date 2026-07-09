@@ -12,7 +12,7 @@ from contextlib import contextmanager
 
 LANGFUSE_ENABLED = bool(
     os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"))
-_MODEL = os.environ.get("GEN_LLM_MODEL", "gpt-4o-mini")
+_MODEL = os.environ.get("GEN_LLM_MODEL", "o4-mini")
 
 
 def sum_usage(messages):

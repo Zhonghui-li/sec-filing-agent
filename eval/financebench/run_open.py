@@ -14,13 +14,15 @@ doesn't cover. So the RIGHT behavior on those is to ABSTAIN, not guess. We score
 
 Dataset is downloaded on first run (external data, not committed).
 
-Usage: DATABASE_URL=... OPENAI_API_KEY=... GEN_LLM_MODEL=gpt-4o python -m eval.financebench.run_open [--limit N]
+Usage: DATABASE_URL=... OPENAI_API_KEY=... GEN_LLM_MODEL=o4-mini python -m eval.financebench.run_open [--limit N]
 """
 import argparse
 import json
+import os
 import re
 import urllib.request
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 
 from eval.financebench.run import _nums, _has_number_match, _abstained
@@ -158,6 +160,10 @@ def report(rows):
     gaps = Counter(_gap_category(r["q"]) for r in abstained_num)
     for cat, n in gaps.most_common():
         print(f"  {n:>3}  {cat}")
+    return {"numeric": len(numeric), "correct": len(correct), "hallucinated": len(halluc),
+            "addressable": addressable,
+            "addressable_coverage": round(len(correct) / max(addressable, 1), 4),
+            "raw_coverage": round(len(correct) / max(len(numeric), 1), 4)}
 
 
 def main():
@@ -167,9 +173,17 @@ def main():
     from agents.sec_agent import build_agent, run_agent
     agent = build_agent()
     rows = score(run_agent, agent, limit=args.limit)
-    report(rows)
+    summary = report(rows)
     (HERE / "_open_results.json").write_text(json.dumps(rows, indent=2))
     print(f"\nwrote {HERE/'_open_results.json'}")
+    # append this run to the history log -> the coverage progression is tracked and reproducible
+    record = {"ts": datetime.now(timezone.utc).isoformat(),
+              "model": os.environ.get("GEN_LLM_MODEL", "gpt-4o-mini"),
+              "reasoning_effort": os.environ.get("REASONING_EFFORT"),
+              "limit": args.limit, "db": bool(os.environ.get("DATABASE_URL")), **summary}
+    with (HERE / "runs_log.jsonl").open("a") as f:
+        f.write(json.dumps(record) + "\n")
+    print(f"logged run -> {HERE/'runs_log.jsonl'} (addressable coverage {summary['addressable_coverage']:.0%})")
     return 0
 
 
