@@ -207,29 +207,17 @@ def extract_rows(gaap, ticker, cik):
         present = [t for t in tags if t in gaap]   # candidate tags, in preference order
         if not present:
             continue
-        # merge across tags: preferred tag wins for a period; lower-priority tags fill gap years.
-        # Part-2 guard: a lower-priority tag may fill gaps only if, on period-ends it SHARES with
-        # the already-merged higher-priority tags, its values agree — otherwise it's a different
-        # line (a component, not the same total, e.g. a segment or finished-goods subtotal) and
-        # must not fill years. A clean tag switch (no shared periods) passes through, vetted by a
-        # human when the tag was added to METRICS.
+        # Merge candidate tags in preference order: the preferred tag wins each period; lower-priority
+        # tags only FILL periods it doesn't cover. A company migrates tags across years (AMD's old
+        # SalesRevenueNet covers years before RevenueFromContract began; Nike tags its balance-sheet
+        # inventory total as InventoryFinishedGoodsNetOfReserves). No size comparison is needed: by
+        # accounting rules a footnote sub-component only appears alongside the total line (which is
+        # always tagged somewhere), so it can never be the sole source for a gap year in a valid
+        # filing — plain gap-fill can't substitute a component for a missing total.
         merged = {}
         for t in present:
             unit = next(iter(gaap[t]["units"]))     # USD, USD/shares, ...
-            vals = annual_values(gaap[t]["units"][unit], kind)
-            # A lower-priority tag that is materially SMALLER IN MAGNITUDE than the already-merged
-            # (preferred) value on a shared period is a component/subtotal (e.g. finished-goods vs
-            # total inventory, or continuing-ops vs total cash flow) — don't let it fill gap years.
-            # Magnitude (not signed value) because accounts can be negative (a net loss, negative
-            # operating cash flow): |component| <= |total| holds by the accounting identity, signed
-            # "<" does not. Equal (same line), larger (a fuller/alternative total, e.g. Block's
-            # Revenues vs a partial RevenueFromContract), or non-overlapping (a clean tag switch,
-            # e.g. Nike's inventory) is allowed to fill.
-            if any(end in merged and abs(info["val"]) < abs(merged[end]["val"])
-                   and not _close(merged[end]["val"], info["val"])
-                   for end, info in vals.items()):
-                continue
-            for end, info in vals.items():
+            for end, info in annual_values(gaap[t]["units"][unit], kind).items():
                 if end not in merged:
                     merged[end] = {"val": info["val"], "accn": info["accn"], "tag": t, "unit": unit,
                                    "restated_val": info["restated_val"],

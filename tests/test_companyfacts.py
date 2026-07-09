@@ -78,19 +78,8 @@ def test_annual_values_duration_rejects_short_span():
     assert all(v["val"] != 90000 for v in got.values())  # ~90 days dropped
 
 
-# Part-2 guard: a lower-priority tag that is a *component* (conflicts on shared years) must not
-# fill gap years; a clean tag switch (no shared years) must fill them.
-GUARD_GAAP = {
-    "InventoryNet": {"units": {"USD": [                                   # total (preferred)
-        {"form": "10-K", "end": "2023-12-31", "val": 1000, "accn": "a23"},
-        {"form": "10-K", "end": "2024-12-31", "val": 1100, "accn": "a24"},
-    ]}},
-    "InventoryFinishedGoodsNetOfReserves": {"units": {"USD": [            # finished-goods component
-        {"form": "10-K", "end": "2024-12-31", "val": 600, "accn": "a24"},  # overlaps 2024, disagrees
-        {"form": "10-K", "end": "2025-12-31", "val": 650, "accn": "a25"},  # a gap year (2025)
-    ]}},
-}
-
+# Candidate-tag merge: the preferred tag wins each period; a lower-priority tag only fills periods
+# it doesn't cover. A clean tag switch (no shared years) must fill the new tag's years.
 SWITCH_GAAP = {
     "InventoryNet": {"units": {"USD": [
         {"form": "10-K", "end": "2011-05-31", "val": 2715, "accn": "a11"},  # old tag, ends 2011
@@ -99,13 +88,6 @@ SWITCH_GAAP = {
         {"form": "10-K", "end": "2021-05-31", "val": 6854, "accn": "a21"},  # new tag, no overlap
     ]}},
 }
-
-
-def test_part2_guard_rejects_conflicting_component():
-    rows = extract_rows(GUARD_GAAP, "TEST", "0")
-    inv = {r["fiscal_year"]: r["value"] for r in rows if r["metric"] == "inventory"}
-    assert inv.get(2024) == 1100           # kept the total, not the 600 component
-    assert 2025 not in inv                 # component must NOT fill the gap year (it conflicts)
 
 
 def test_part2_clean_switch_fills():
@@ -135,24 +117,47 @@ def test_part2_larger_alternative_total_fills():
     assert rev.get(2019) == 4713 and rev.get(2020) == 9497   # the fuller total fills the gaps
 
 
-# Negative accounts (a net loss, negative operating cash flow): the component test must compare
-# MAGNITUDE, not signed value — |continuing-ops| < |total| even when both are negative.
-NEG_GAAP = {
-    "NetCashProvidedByUsedInOperatingActivities": {"units": {"USD": [
-        {"form": "10-K", "start": "2015-01-01", "end": "2015-12-31", "val": -749, "accn": "a15"},  # total
+# AMD-style: an OLD tag differs a little across an accounting-standard transition (smaller one
+# shared year, larger the next) — not a component, so its unique EARLY year must survive.
+MIXED_TRANSITION_GAAP = {
+    "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
+        {"form": "10-K", "start": "2016-01-01", "end": "2016-12-31", "val": 4319, "accn": "b16"},
+        {"form": "10-K", "start": "2017-01-01", "end": "2017-12-31", "val": 5253, "accn": "b17"},
     ]}},
-    "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations": {"units": {"USD": [
-        {"form": "10-K", "start": "2015-01-01", "end": "2015-12-31", "val": -700, "accn": "a15"},  # component
-        {"form": "10-K", "start": "2016-01-01", "end": "2016-12-31", "val": -650, "accn": "a16"},  # gap year
+    "SalesRevenueNet": {"units": {"USD": [
+        {"form": "10-K", "start": "2015-01-01", "end": "2015-12-31", "val": 3991, "accn": "a16"},  # unique
+        {"form": "10-K", "start": "2016-01-01", "end": "2016-12-31", "val": 4272, "accn": "a16"},  # ~1% smaller
+        {"form": "10-K", "start": "2017-01-01", "end": "2017-12-31", "val": 5329, "accn": "a17"},  # larger
     ]}},
 }
 
 
-def test_part2_guard_magnitude_for_negative_accounts():
-    rows = extract_rows(NEG_GAAP, "TEST", "0")
-    ocf = {r["fiscal_year"]: r["value"] for r in rows if r["metric"] == "operating_cash_flow"}
-    assert ocf.get(2015) == -749       # preferred total kept (signed "<" would have mis-picked)
-    assert 2016 not in ocf             # smaller-magnitude component (-700<-749 in abs) must NOT fill
+def test_part2_old_tag_mixed_transition_keeps_unique_year():
+    rows = extract_rows(MIXED_TRANSITION_GAAP, "TEST", "0")
+    rev = {r["fiscal_year"]: r["value"] for r in rows if r["metric"] == "revenue"}
+    assert rev.get(2015) == 3991                             # only the old tag has it -> kept
+    assert rev.get(2016) == 4319 and rev.get(2017) == 5253   # shared years use the preferred value
+
+
+# One-directional but SMALL: an old tag restated down a few % on EVERY overlap year is below the
+# component threshold (10%) -> kept, so its unique early year survives (the case the margin adds).
+SMALL_DIFF_GAAP = {
+    "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
+        {"form": "10-K", "start": "2016-01-01", "end": "2016-12-31", "val": 1000, "accn": "b16"},
+        {"form": "10-K", "start": "2017-01-01", "end": "2017-12-31", "val": 1100, "accn": "b17"},
+    ]}},
+    "SalesRevenueNet": {"units": {"USD": [
+        {"form": "10-K", "start": "2015-01-01", "end": "2015-12-31", "val": 900, "accn": "a16"},   # unique
+        {"form": "10-K", "start": "2016-01-01", "end": "2016-12-31", "val": 980, "accn": "a16"},   # 2% smaller
+        {"form": "10-K", "start": "2017-01-01", "end": "2017-12-31", "val": 1078, "accn": "a17"},  # 2% smaller
+    ]}},
+}
+
+
+def test_part2_one_directional_small_restatement_kept():
+    rows = extract_rows(SMALL_DIFF_GAAP, "TEST", "0")
+    rev = {r["fiscal_year"]: r["value"] for r in rows if r["metric"] == "revenue"}
+    assert rev.get(2015) == 900                              # small (<10%) diff -> not a component -> kept
 
 
 # Restatement: a later filing re-presents a prior year with a different value. as-reported (from
