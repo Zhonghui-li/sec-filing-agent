@@ -204,3 +204,28 @@ def test_live_uncovered_company():
     rev = [r for r in rows if r["metric"] == "revenue" and r["fiscal_year"] == 2024]
     assert rev and rev[0]["value"] > 300e9        # Alphabet FY2024 revenue ~ $350B
     assert company_rows("ZZZZZ") == []             # unknown ticker -> abstain path
+
+
+# Targeted dynamic-path assertions on real, NON-curated companies — each exercises one edge of the
+# live fetch. Network-gated (SEC_LIVE_TEST) so the fast/offline suite stays deterministic; run these
+# on demand or in a separate live job when touching the dynamic code.
+@pytest.mark.skipif(not os.environ.get("SEC_LIVE_TEST"), reason="hits the SEC network")
+def test_live_delisted_resolves_by_name():
+    # a delisted issuer (Activision, ticker ATVI gone) must resolve via its NAME -> CIK
+    from agents.finance_tools import get_financials
+    assert "6,489" in get_financials("Activision Blizzard", "revenue", 2019)   # FY2019 revenue $6,489M
+
+
+@pytest.mark.skipif(not os.environ.get("SEC_LIVE_TEST"), reason="hits the SEC network")
+def test_live_bank_has_revenue_but_abstains_on_inventory():
+    # a bank reports revenue but has no inventory -> must give the figure, then abstain (not fabricate)
+    from agents.finance_tools import get_financials
+    assert "$" in get_financials("WFC", "revenue", 2023)
+    assert "does not report" in get_financials("WFC", "inventory", 2023).lower()
+
+
+@pytest.mark.skipif(not os.environ.get("SEC_LIVE_TEST"), reason="hits the SEC network")
+def test_live_off_calendar_fiscal_year():
+    # Walmart's fiscal year ends late January -> FY2023 must map to a January-2023 period end
+    from agents.finance_tools import get_financials
+    assert "2023-01" in get_financials("WMT", "revenue", 2023)
