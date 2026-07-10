@@ -270,6 +270,25 @@ _RATIO_ALIASES = {
 }
 
 
+def _spec_metrics(spec):
+    """The base metric names in a ratio operand spec ("avg:ppe_net" -> {ppe_net}; "a-b" -> {a,b})."""
+    return {p.strip() for p in spec.replace("avg:", "").split("-") if p.strip()}
+
+
+# base-metric SET -> named ratio, ONLY for raw-scale ratios (turns/ratio, so a compute_formula's
+# a/b is on the same scale as our value) and ONLY unambiguous sets — lets compute_formula cross-check
+# a hand-written formula against our standard convention without false comparisons.
+_RATIO_BY_METRICS, _amb = {}, set()
+for _rn, ((_ns, _op2, _ds), _k, _d) in RATIOS.items():
+    if _k not in ("turns", "ratio"):
+        continue
+    _key = frozenset(_spec_metrics(_ns) | _spec_metrics(_ds))
+    if _key in _RATIO_BY_METRICS or _key in _amb:
+        _amb.add(_key); _RATIO_BY_METRICS.pop(_key, None)
+    else:
+        _RATIO_BY_METRICS[_key] = _rn
+
+
 def _resolve_operand(spec, year, getval):
     """Resolve one side of a ratio formula using a source-agnostic value getter
     getval(metric, year) -> (value, src_row). Supports a base metric, "avg:METRIC" (this year
@@ -547,9 +566,25 @@ def compute_formula(expression: str, ticker: str, fiscal_year: int = None) -> st
             f"{edgar_url(src['cik'], accns[0])}]" if src and accns else "")
     # Keep precision for small results (ratios / margins / CAGR) — a fixed 2dp would show a
     # 0.4% CAGR or a 5.4% margin as "0.00" / "0.05" and lose the answer.
+    # defense-in-depth cross-check: if the formula's metrics match a named RAW ratio and the value
+    # diverges materially from our standard convention (same ballpark, >2%), note both and let the
+    # reader judge — do NOT override, since a question may spell out a different convention (e.g.
+    # ending vs average PP&E). Catches the model hand-computing a named ratio the wrong way.
+    xcheck = ""
+    names = frozenset(_canon(n.id) for n in ast.walk(tree)
+                      if isinstance(n, ast.Name) and n.id not in _FORMULA_FUNCS)
+    rn = _RATIO_BY_METRICS.get(names)
+    if rn and year:
+        (ns, _o, ds), _k, defn = RATIOS[rn]
+        onum, _ = _operand(tk, ns, year)
+        oden, _ = _operand(tk, ds, year)
+        ours = onum / oden if (onum is not None and oden) else None
+        if ours and val and (1 / 3) < abs(val) / abs(ours) < 3 and abs(val - ours) > 0.02 * abs(ours):
+            xcheck = (f" [CHECK: this matches the '{rn}' ratio; on our standard convention ({defn}) "
+                      f"it is {ours:,.2f}. If the question defines it differently, use that value.]")
     shown = f"{val:,.2f}" if abs(val) >= 1 else f"{val:.4g}"
     return (f"{_entity(src, ticker)} formula result for FY{year} = {shown}  (formula: {expression}). {cite}"
-            + _restatement_note(srcs))
+            + _restatement_note(srcs) + xcheck)
 
 
 if __name__ == "__main__":
