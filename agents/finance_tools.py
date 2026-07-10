@@ -107,8 +107,13 @@ def cik_for(ticker):
 
 
 def _canon(metric: str) -> str:
-    m = metric.strip().lower().replace("_", " ")
-    return _ALIASES.get(m, metric.strip().lower().replace(" ", "_"))
+    # normalize punctuation/spacing (commas, hyphens, underscores -> spaces) so surface-form
+    # variants of one name collapse before the alias lookup — one general rule, not per-variant
+    # aliases; keep & (pp&e, r&d, d&a). Names it still can't resolve fall to the tool's abstain/
+    # self-correction, which is the real backstop.
+    m = re.sub(r"[^a-z0-9& ]+", " ", metric.lower())
+    m = re.sub(r"\s+", " ", m).strip()
+    return _ALIASES.get(m, m.replace(" ", "_"))
 
 
 def _log_miss(ticker, metric, fiscal_year, reason):

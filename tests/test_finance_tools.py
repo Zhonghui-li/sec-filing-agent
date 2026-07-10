@@ -169,6 +169,8 @@ def test_xbrl_tag_name_resolves_to_slug():
     from agents.finance_tools import _canon
     assert _canon("property_plant_and_equipment_net") == "ppe_net"   # PropertyPlantAndEquipmentNet
     assert _canon("net_income_loss") == "net_income"                 # NetIncomeLoss
+    assert _canon("property, plant and equipment, net") == "ppe_net"  # punctuation variant collapses
+    assert _canon("PP&E") == "ppe_net" and _canon("R&D") == "rd_expense"   # & preserved
     # and it flows through compute_formula instead of erroring as an unknown metric
     out = compute_formula("revenue / property_plant_and_equipment_net", "AAPL", 2024)
     assert "Unknown metric" not in out and "formula result" in out
