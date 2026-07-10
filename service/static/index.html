@@ -26,6 +26,11 @@
   .trace[open] summary { margin-bottom:6px; }
   .trace-body { padding-left:2px; line-height:1.8; }
   .trace code { background:#eef1f4; padding:1px 5px; border-radius:4px; }
+  .trace-step { margin-bottom:6px; }
+  .trace-out { padding-left:16px; color:#6b7885; white-space:pre-wrap;
+               word-break:break-word; line-height:1.5; }
+  .trace-check { display:inline; color:#8a5a00; background:#fdf3e0;
+                 padding:1px 5px; border-radius:4px; }
   .bubble a { color:var(--accent); }
   .sources { margin-top:8px; font-size:12px; color:#5a6b7b; }
   .sources a { color:var(--accent); text-decoration:none; }
@@ -200,8 +205,17 @@ form.addEventListener('submit', async (e) => {
       html += '<div class="sources">📎 From your document: ' + items + '</div>';
     }
     if (d.trace && d.trace.length) {
-      const steps = d.trace.map(s => '🔧 <code>' + esc(s.tool) + '</code>(' +
-                    esc(JSON.stringify(s.args)) + ')').join('<br>');
+      const fmtOut = o => {
+        if (!o) return '';
+        // highlight the [CHECK: …] convention note so it stands out from the raw figure
+        const body = o.split(/(\[CHECK:[^\]]*\])/g).map(p =>
+          p.startsWith('[CHECK:') ? '<span class="trace-check">⚠ ' + esc(p) + '</span>'
+                                   : esc(p)).join('');
+        return '<div class="trace-out">↳ ' + body + '</div>';
+      };
+      const steps = d.trace.map(s => '<div class="trace-step">🔧 <code>' + esc(s.tool) +
+                    '</code>(' + esc(JSON.stringify(s.args)) + ')' + fmtOut(s.output) +
+                    '</div>').join('');
       html += '<details class="trace"><summary>' + d.trace.length +
               ' tool call' + (d.trace.length>1?'s':'') + ' · show audit trail</summary>' +
               '<div class="trace-body">' + steps + '</div></details>';
