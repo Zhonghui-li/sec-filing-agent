@@ -240,9 +240,16 @@ def extract_rows(gaap, ticker, cik):
     return rows
 
 
+def fetch_company(cik):
+    """(entityName, us-gaap facts) for a CIK — the entityName is SEC's official company name,
+    used to echo which company a ticker/name actually resolved to."""
+    d = _get_json(_FACTS_URL.format(cik=cik))
+    return d.get("entityName", ""), d["facts"].get("us-gaap", {})
+
+
 def fetch_facts(cik):
     """The raw us-gaap facts dict for a CIK (used by the offline build too)."""
-    return _get_json(_FACTS_URL.format(cik=cik))["facts"].get("us-gaap", {})
+    return fetch_company(cik)[1]
 
 
 # --- on-demand, cached -----------------------------------------------------------------------
@@ -307,10 +314,12 @@ def company_rows(ticker):
         _rows_mem[tk] = []
         return []
     try:
-        gaap = fetch_facts(cik)
+        entity, gaap = fetch_company(cik)
     except Exception:
         return []                      # transient failure — don't cache
     rows = extract_rows(gaap, tk, cik)
+    for r in rows:                     # stamp the resolved company name so tools can echo it
+        r["entity_name"] = entity
     if rows:
         _save_disk(tk, rows)
     _rows_mem[tk] = rows

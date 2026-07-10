@@ -229,3 +229,12 @@ def test_live_off_calendar_fiscal_year():
     # Walmart's fiscal year ends late January -> FY2023 must map to a January-2023 period end
     from agents.finance_tools import get_financials
     assert "2023-01" in get_financials("WMT", "revenue", 2023)
+
+
+@pytest.mark.skipif(not os.environ.get("SEC_LIVE_TEST"), reason="hits the SEC network")
+def test_live_tool_echoes_resolved_company_name():
+    # a wrong-ticker guess must be VISIBLE: "BBBY" resolves to Bed Bath & Beyond, not Best Buy,
+    # so the tool echoes the RESOLVED name — the mismatch can be caught instead of silently wrong
+    from agents.finance_tools import get_financials
+    assert "BED BATH" in get_financials("BBBY", "net income", 2016).upper()
+    assert "BEST BUY" in get_financials("Best Buy", "net income", 2016).upper()
