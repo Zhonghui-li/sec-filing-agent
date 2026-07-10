@@ -164,6 +164,16 @@ def test_financial_table_csv():
     assert lines[3] == "made_up_metric,,"                     # unknown metric -> blank cells, no crash
 
 
+def test_xbrl_tag_name_resolves_to_slug():
+    # a model that emits the real us-gaap tag name (not our shorthand) must still resolve
+    from agents.finance_tools import _canon
+    assert _canon("property_plant_and_equipment_net") == "ppe_net"   # PropertyPlantAndEquipmentNet
+    assert _canon("net_income_loss") == "net_income"                 # NetIncomeLoss
+    # and it flows through compute_formula instead of erroring as an unknown metric
+    out = compute_formula("revenue / property_plant_and_equipment_net", "AAPL", 2024)
+    assert "Unknown metric" not in out and "formula result" in out
+
+
 def test_compute_formula_crosschecks_named_ratio_convention():
     # model hand-computes fixed-asset turnover with ENDING PP&E (wrong convention); the cross-check
     # flags our standard (average PP&E) value without overriding the model's result.

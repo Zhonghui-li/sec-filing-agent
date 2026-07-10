@@ -9,6 +9,7 @@ import ast
 import difflib
 import json
 import os
+import re
 from pathlib import Path
 
 _DATA = Path(__file__).resolve().parent.parent / "data" / "financials.json"
@@ -53,6 +54,21 @@ _ALIASES = {
     "trade receivables": "accounts_receivable", "net receivables": "accounts_receivable",
     "interest expense": "interest_expense",
 }
+
+# Auto-derive aliases from the us-gaap tags each metric is built from (companyfacts.METRICS), so a
+# model that expands a shorthand to the real XBRL concept name — e.g. "PP&E" -> the tag
+# "property_plant_and_equipment_net" — resolves to our slug "ppe_net" instead of missing. Bounded
+# (a finite tag set we already maintain) and self-maintaining (a new metric's tags come free), not
+# hand-typed variants. Skips any tag whose normalized form already maps to a different metric.
+try:
+    from agents.companyfacts import METRICS as _METRICS
+    for _slug, _spec in _METRICS.items():
+        for _tag in (_spec[0] if isinstance(_spec[0], (list, tuple)) else ()):
+            _k = re.sub(r"(?<!^)(?=[A-Z])", " ", _tag).lower()   # CamelCase -> space-separated
+            if _ALIASES.get(_k, _slug) == _slug:
+                _ALIASES[_k] = _slug
+except Exception:
+    pass
 
 
 def _rows():
