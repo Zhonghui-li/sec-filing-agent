@@ -142,7 +142,7 @@ def get_financials(ticker: str, metric: str, fiscal_year: int = None) -> str:
     r = max(hits, key=lambda x: x["period_end"])   # latest if year omitted
     unit = r["unit"]
     val = f"${r['value']:,}" if unit == "USD" else f"{r['value']:,} {unit}"
-    return (f"{tk} {key} for FY{r['fiscal_year']} (period ending {r['period_end']}): "
+    return (f"{_entity(r, ticker)} {key} for FY{r['fiscal_year']} (period ending {r['period_end']}): "
             f"{val}. [source: 10-K accession {r['accession']}, "
             f"{edgar_url(r['cik'], r['accession'])}]" + _restatement_note([r]))
 
@@ -158,6 +158,13 @@ def _value(ticker, metric, year=None):
         return None, None
     r = max(hits, key=lambda x: x["period_end"])
     return r["value"], r
+
+
+def _entity(row, ticker):
+    """The RESOLVED company name (SEC's entityName) to echo back, so a wrong-ticker guess is visible
+    (e.g. "BBBY" → "BED BATH & BEYOND", not silently reported as Best Buy). Falls back to the
+    ticker/name the caller passed (curated rows carry no entity_name; those tickers are unambiguous)."""
+    return (row.get("entity_name") if row else None) or ticker.strip().upper()
 
 
 def _restatement_note(rows):
@@ -329,7 +336,7 @@ def get_ratio(ratio: str, ticker: str, fiscal_year: int = None) -> str:
     raw = num / den
     fy = src["fiscal_year"] if src else fiscal_year
     out = _fmt_ratio(raw, kind)
-    return (f"{tk} {name} for FY{fy} = {out} ({definition}). "
+    return (f"{_entity(src, ticker)} {name} for FY{fy} = {out} ({definition}). "
             f"[source: 10-K accession {src['accession']}, {edgar_url(src['cik'], src['accession'])}]"
             + _restatement_note(used))
 
@@ -394,7 +401,7 @@ def get_growth(metric: str, ticker: str, fiscal_year: int = None) -> str:
         return f"Cannot compute YoY for {tk} {key}: prior-year value is 0."
     pct = (cur - prev) / abs(prev) * 100
     f = lambda v, r: (f"${v:,}" if r["unit"] == "USD" else f"{v:,} {r['unit']}")
-    return (f"{tk} {key} grew {pct:+.1f}% year over year, from {f(prev, rp)} (FY{cur_year - 1}) "
+    return (f"{_entity(rc, ticker)} {key} grew {pct:+.1f}% year over year, from {f(prev, rp)} (FY{cur_year - 1}) "
             f"to {f(cur, rc)} (FY{cur_year}). [sources: 10-K accessions {rp['accession']}, "
             f"{rc['accession']}, {edgar_url(rc['cik'], rc['accession'])}]" + _restatement_note([rc, rp]))
 
@@ -541,7 +548,7 @@ def compute_formula(expression: str, ticker: str, fiscal_year: int = None) -> st
     # Keep precision for small results (ratios / margins / CAGR) — a fixed 2dp would show a
     # 0.4% CAGR or a 5.4% margin as "0.00" / "0.05" and lose the answer.
     shown = f"{val:,.2f}" if abs(val) >= 1 else f"{val:.4g}"
-    return (f"{tk} formula result for FY{year} = {shown}  (formula: {expression}). {cite}"
+    return (f"{_entity(src, ticker)} formula result for FY{year} = {shown}  (formula: {expression}). {cite}"
             + _restatement_note(srcs))
 
 
