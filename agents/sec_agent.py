@@ -337,7 +337,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
                       "question.")
             trace = []
         tools_used = [t["tool"] for t in trace]
-        answer = guardrail(answer, tools_used)   # hard backstop against hand-computed bad numbers
+        answer = guardrail(answer, tools_used, trace)   # hard backstop against hand-computed bad numbers
         # audit trail: which filings were cited + whether/why it abstained
         accns = sorted({a for _, c in tool_outputs
                         for a in re.findall(r"\d{10}-\d{2}-\d{6}", c)})
