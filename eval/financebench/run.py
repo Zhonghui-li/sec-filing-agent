@@ -24,8 +24,11 @@ TOL = 0.05  # 5% relative tolerance on a numeric answer
 
 
 def _nums(s):
+    # a Unicode dash used as a NEGATIVE SIGN (–3.70, −5) — but not a range (2019–2020) — must be
+    # read as minus, else a correctly-signed negative answer scores as a sign-flipped mismatch.
+    s = re.sub(r"(?<!\d)[‒–—−](?=\d)", "-", s or "")
     out = []
-    for x in re.findall(r"-?[\d,]+(?:\.\d+)?", s or ""):
+    for x in re.findall(r"-?[\d,]+(?:\.\d+)?", s):
         x = x.replace(",", "")
         if x not in ("", "-", "."):
             try:
