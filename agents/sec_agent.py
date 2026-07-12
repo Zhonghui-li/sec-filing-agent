@@ -280,10 +280,17 @@ def build_agent(model: str = None, temperature: float = 0.0, user_id: str = None
 
 
 def _extract_trace(messages) -> List[Dict]:
+    # pair each tool call with the output it produced (by tool_call_id) so the audit trail can show
+    # what a tool RETURNED — the cited figure, the abstain, the [CHECK] convention note — not just
+    # how it was called. Long retrieval prose is trimmed for the UI.
+    outputs = {getattr(m, "tool_call_id", None): m.content
+               for m in messages if isinstance(m, ToolMessage)}
     trace = []
     for m in messages:
         for tc in getattr(m, "tool_calls", None) or []:
-            trace.append({"tool": tc["name"], "args": tc["args"]})
+            out = outputs.get(tc.get("id"))
+            out = str(out)[:600] if out is not None else None
+            trace.append({"tool": tc["name"], "args": tc["args"], "output": out})
     return trace
 
 
@@ -330,7 +337,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
                       "question.")
             trace = []
         tools_used = [t["tool"] for t in trace]
-        answer = guardrail(answer, tools_used)   # hard backstop against hand-computed bad numbers
+        answer = guardrail(answer, tools_used, trace)   # hard backstop against hand-computed bad numbers
         # audit trail: which filings were cited + whether/why it abstained
         accns = sorted({a for _, c in tool_outputs
                         for a in re.findall(r"\d{10}-\d{2}-\d{6}", c)})

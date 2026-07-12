@@ -50,3 +50,48 @@ def test_pass_dollar_with_data_tool():
 def test_pass_abstention_untouched():
     ans = "I can't answer; that company isn't covered."
     assert guardrail(ans, ["abstain"]) == ans
+
+
+# --- (c) compute operand provenance: a compute operand must trace to a fetched figure ---
+def _gf(out):
+    return {"tool": "get_financials", "args": {}, "output": out}
+
+
+def _comp(a, b, op="ratio"):
+    return {"tool": "compute", "args": {"op": op, "a": a, "b": b}, "output": ""}
+
+
+_REV = _gf("AAPL revenue for FY2024: $391,035,000,000.")
+_PPE = _gf("AAPL ppe_net for FY2024: $45,680,000,000.")
+
+
+def test_pass_compute_operands_traceable():
+    trace = [_REV, _PPE, _comp(391035000000, 45680000000)]
+    assert guardrail("Fixed-asset turnover 8.56x.", ["get_financials", "compute"], trace) != _SAFE
+
+
+def test_block_compute_operand_not_fetched():
+    # a hand-typed operand that appears in no tool output -> laundered into a fresh ratio
+    trace = [_REV, _PPE, _comp(500000000000, 45680000000)]
+    assert guardrail("Turnover 10.9x.", ["get_financials", "compute"], trace) == _SAFE
+
+
+def test_block_compute_dropped_zero():
+    # a dropped a zero (39,103,500,000 vs 391,035,000,000) -> scaled inconsistently with b
+    trace = [_REV, _PPE, _comp(39103500000, 45680000000)]
+    assert guardrail("Turnover 0.86x.", ["get_financials", "compute"], trace) == _SAFE
+
+
+def test_pass_compute_consistent_units():
+    # both operands in millions (units cancel in the ratio) -> legitimate, not a dropped zero
+    trace = [_REV, _PPE, _comp(391035, 45680)]
+    assert guardrail("Turnover 8.56x.", ["get_financials", "compute"], trace) != _SAFE
+
+
+def test_pass_compute_cross_company():
+    # compute's real niche: two DIFFERENT tickers, both figures fetched
+    trace = [_gf("AAPL revenue FY2024: $391,035,000,000."),
+             _gf("MSFT revenue FY2024: $245,122,000,000."),
+             _comp(391035000000, 245122000000, op="diff")]
+    assert guardrail("Apple's revenue is $145,913,000,000 higher.",
+                     ["get_financials", "compute"], trace) != _SAFE

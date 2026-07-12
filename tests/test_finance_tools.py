@@ -164,6 +164,29 @@ def test_financial_table_csv():
     assert lines[3] == "made_up_metric,,"                     # unknown metric -> blank cells, no crash
 
 
+def test_xbrl_tag_name_resolves_to_slug():
+    # a model that emits the real us-gaap tag name (not our shorthand) must still resolve
+    from agents.finance_tools import _canon
+    assert _canon("property_plant_and_equipment_net") == "ppe_net"   # PropertyPlantAndEquipmentNet
+    assert _canon("net_income_loss") == "net_income"                 # NetIncomeLoss
+    assert _canon("property, plant and equipment, net") == "ppe_net"  # punctuation variant collapses
+    assert _canon("PP&E") == "ppe_net" and _canon("R&D") == "rd_expense"   # & preserved
+    # and it flows through compute_formula instead of erroring as an unknown metric
+    out = compute_formula("revenue / property_plant_and_equipment_net", "AAPL", 2024)
+    assert "Unknown metric" not in out and "formula result" in out
+
+
+def test_compute_formula_crosschecks_named_ratio_convention():
+    # model hand-computes fixed-asset turnover with ENDING PP&E (wrong convention); the cross-check
+    # flags our standard (average PP&E) value without overriding the model's result.
+    out = compute_formula("revenue / ppe_net", "AAPL", 2024)
+    assert "fixed_asset_turnover" in out and "our standard convention" in out
+    # the correct-convention form (average) must NOT be flagged
+    assert "[CHECK" not in compute_formula("revenue / avg(ppe_net)", "AAPL", 2024)
+    # same metrics but a different-magnitude formula (inverse) is a different quantity -> no false flag
+    assert "[CHECK" not in compute_formula("ppe_net / revenue", "AAPL", 2024)
+
+
 def test_compute_formula_rejects_bad_periods():
     # years-back must be a positive integer literal, never a metric or 0/negative
     assert "Abstain" in compute_formula("prev(revenue, 0)", "AAPL", 2024)

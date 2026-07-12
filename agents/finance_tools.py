@@ -9,6 +9,7 @@ import ast
 import difflib
 import json
 import os
+import re
 from pathlib import Path
 
 _DATA = Path(__file__).resolve().parent.parent / "data" / "financials.json"
@@ -54,6 +55,21 @@ _ALIASES = {
     "interest expense": "interest_expense",
 }
 
+# Auto-derive aliases from the us-gaap tags each metric is built from (companyfacts.METRICS), so a
+# model that expands a shorthand to the real XBRL concept name — e.g. "PP&E" -> the tag
+# "property_plant_and_equipment_net" — resolves to our slug "ppe_net" instead of missing. Bounded
+# (a finite tag set we already maintain) and self-maintaining (a new metric's tags come free), not
+# hand-typed variants. Skips any tag whose normalized form already maps to a different metric.
+try:
+    from agents.companyfacts import METRICS as _METRICS
+    for _slug, _spec in _METRICS.items():
+        for _tag in (_spec[0] if isinstance(_spec[0], (list, tuple)) else ()):
+            _k = re.sub(r"(?<!^)(?=[A-Z])", " ", _tag).lower()   # CamelCase -> space-separated
+            if _ALIASES.get(_k, _slug) == _slug:
+                _ALIASES[_k] = _slug
+except Exception:
+    pass
+
 
 def _rows():
     global _ROWS
@@ -91,8 +107,13 @@ def cik_for(ticker):
 
 
 def _canon(metric: str) -> str:
-    m = metric.strip().lower().replace("_", " ")
-    return _ALIASES.get(m, metric.strip().lower().replace(" ", "_"))
+    # normalize punctuation/spacing (commas, hyphens, underscores -> spaces) so surface-form
+    # variants of one name collapse before the alias lookup — one general rule, not per-variant
+    # aliases; keep & (pp&e, r&d, d&a). Names it still can't resolve fall to the tool's abstain/
+    # self-correction, which is the real backstop.
+    m = re.sub(r"[^a-z0-9& ]+", " ", metric.lower())
+    m = re.sub(r"\s+", " ", m).strip()
+    return _ALIASES.get(m, m.replace(" ", "_"))
 
 
 def _log_miss(ticker, metric, fiscal_year, reason):
@@ -268,6 +289,25 @@ _RATIO_ALIASES = {
     "capex to revenue": "capex_pct_revenue", "capex margin": "capex_pct_revenue",
     "interest coverage": "interest_coverage", "times interest earned": "interest_coverage",
 }
+
+
+def _spec_metrics(spec):
+    """The base metric names in a ratio operand spec ("avg:ppe_net" -> {ppe_net}; "a-b" -> {a,b})."""
+    return {p.strip() for p in spec.replace("avg:", "").split("-") if p.strip()}
+
+
+# base-metric SET -> named ratio, ONLY for raw-scale ratios (turns/ratio, so a compute_formula's
+# a/b is on the same scale as our value) and ONLY unambiguous sets — lets compute_formula cross-check
+# a hand-written formula against our standard convention without false comparisons.
+_RATIO_BY_METRICS, _amb = {}, set()
+for _rn, ((_ns, _op2, _ds), _k, _d) in RATIOS.items():
+    if _k not in ("turns", "ratio"):
+        continue
+    _key = frozenset(_spec_metrics(_ns) | _spec_metrics(_ds))
+    if _key in _RATIO_BY_METRICS or _key in _amb:
+        _amb.add(_key); _RATIO_BY_METRICS.pop(_key, None)
+    else:
+        _RATIO_BY_METRICS[_key] = _rn
 
 
 def _resolve_operand(spec, year, getval):
@@ -547,9 +587,25 @@ def compute_formula(expression: str, ticker: str, fiscal_year: int = None) -> st
             f"{edgar_url(src['cik'], accns[0])}]" if src and accns else "")
     # Keep precision for small results (ratios / margins / CAGR) — a fixed 2dp would show a
     # 0.4% CAGR or a 5.4% margin as "0.00" / "0.05" and lose the answer.
+    # defense-in-depth cross-check: if the formula's metrics match a named RAW ratio and the value
+    # diverges materially from our standard convention (same ballpark, >2%), note both and let the
+    # reader judge — do NOT override, since a question may spell out a different convention (e.g.
+    # ending vs average PP&E). Catches the model hand-computing a named ratio the wrong way.
+    xcheck = ""
+    names = frozenset(_canon(n.id) for n in ast.walk(tree)
+                      if isinstance(n, ast.Name) and n.id not in _FORMULA_FUNCS)
+    rn = _RATIO_BY_METRICS.get(names)
+    if rn and year:
+        (ns, _o, ds), _k, defn = RATIOS[rn]
+        onum, _ = _operand(tk, ns, year)
+        oden, _ = _operand(tk, ds, year)
+        ours = onum / oden if (onum is not None and oden) else None
+        if ours and val and (1 / 3) < abs(val) / abs(ours) < 3 and abs(val - ours) > 0.02 * abs(ours):
+            xcheck = (f" [CHECK: this matches the '{rn}' ratio; on our standard convention ({defn}) "
+                      f"it is {ours:,.2f}. If the question defines it differently, use that value.]")
     shown = f"{val:,.2f}" if abs(val) >= 1 else f"{val:.4g}"
     return (f"{_entity(src, ticker)} formula result for FY{year} = {shown}  (formula: {expression}). {cite}"
-            + _restatement_note(srcs))
+            + _restatement_note(srcs) + xcheck)
 
 
 if __name__ == "__main__":
