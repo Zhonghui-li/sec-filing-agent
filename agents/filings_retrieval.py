@@ -67,6 +67,13 @@ def search_filings(query: str, ticker: str = None, k: int = 5) -> str:
         cur.execute(sql, params)
         rows = cur.fetchall()
 
+    if not rows and ticker:                 # company not indexed yet -> fetch & cache it live,
+        from agents.filings_ingest import ingest_ticker   # so narrative is "any company" too
+        if ingest_ticker(ticker):
+            with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+
     docs = [Document(page_content=r[4],
                      metadata={"ticker": r[0], "fiscal_year": r[1],
                                "section": r[2], "accession": r[3]})
