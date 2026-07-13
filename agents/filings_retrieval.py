@@ -1,13 +1,16 @@
 """search_filings: RAG over 10-K narrative sections (pgvector).
 
-Returns passages each tagged with its source (ticker · fiscal year · section ·
-accession) so the agent can CITE them. Dense pgvector (cosine) search + a CrossEncoder
-reranker (reused from the Slug Advisor stack). An optional ticker filter keeps a
-company's question on its own filings.
+Returns passages each tagged with its source (ticker · fiscal year · section · accession) so the
+agent can CITE them. Dense pgvector (cosine) retrieval, with an optional ticker filter that keeps
+a company's question on its own filings. Companies not yet indexed are fetched & cached live
+(agents.filings_ingest), so narrative retrieval is "any company", not a fixed corpus.
 
-BM25/hybrid is intentionally omitted for now — filing queries are semantic, not
-exact-code lookups, and the ticker filter matters more here. Add hybrid only if eval
-shows exact-term recall is lacking (same data-driven restraint as not adding an RL router).
+Dense-only, data-driven: a gold_evidence eval on lazily-ingested filings showed the CrossEncoder
+reranker (ms-marco, trained for web QA) was DEMOTING the right passages on dry 10-K narrative —
+dense ranked "Latin America" / "water" / "new stores" at positions 0-1-4, the reranker pushed them
+to 4-7-9 (out of the top-k). So the reranker was dropped here (kept where it helps, e.g. course
+codes in Slug Advisor). Same restraint as not adding an RL router — remove complexity the eval
+shows hurts, not just avoid adding it.
 """
 import os
 
@@ -18,9 +21,7 @@ from langchain_core.documents import Document
 from agents.finance_tools import edgar_url, cik_for
 
 _EMB_MODEL = os.environ.get("EMB_MODEL", "text-embedding-3-small")
-_RERANK = os.environ.get("RERANK", "1") == "1"
 _emb = None
-_reranker = None
 
 
 def _embed(q: str):
@@ -30,16 +31,11 @@ def _embed(q: str):
     return "[" + ",".join(f"{x:.8f}" for x in _emb.embed_query(q)) + "]"
 
 
-def _get_reranker():
-    global _reranker
-    if _reranker is None and _RERANK:
-        try:
-            from agents.reranker import create_cross_encoder_reranker
-            _reranker = create_cross_encoder_reranker()
-        except Exception as e:
-            print(f"[search_filings] reranker disabled ({type(e).__name__}: {e})")
-            _reranker = False
-    return _reranker or None
+def _dense(cur, qv, ticker, k):
+    tflt, tp = ("where ticker=%s", (ticker,)) if ticker else ("", ())
+    cur.execute("select ticker,fiscal_year,section,accession,chunk_text "
+                f"from filing_chunks {tflt} order by embedding<=>%s::vector limit %s", tp + (qv, k))
+    return cur.fetchall()
 
 
 def search_filings(query: str, ticker: str = None, k: int = 5) -> str:
@@ -52,45 +48,25 @@ def search_filings(query: str, ticker: str = None, k: int = 5) -> str:
         return (f"No indexed filing narrative available for '{query}'"
                 + (f" ({ticker})." if ticker else ".") + " (narrative search is not configured.)")
     qv = _embed(query)
-    kk = max(k * 3, k)
-    if ticker:
-        sql = ("select ticker,fiscal_year,section,accession,chunk_text,"
-               "embedding<=>%s::vector as d from filing_chunks where ticker=%s "
-               "order by d limit %s")
-        params = (qv, ticker.strip().upper(), kk)
-    else:
-        sql = ("select ticker,fiscal_year,section,accession,chunk_text,"
-               "embedding<=>%s::vector as d from filing_chunks order by d limit %s")
-        params = (qv, kk)
-
+    tk = ticker.strip().upper() if ticker else None
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
-        cur.execute(sql, params)
-        rows = cur.fetchall()
+        rows = _dense(cur, qv, tk, k)
 
-    if not rows and ticker:                 # company not indexed yet -> fetch & cache it live,
+    if not rows and tk:                     # company not indexed yet -> fetch & cache it live,
         from agents.filings_ingest import ingest_ticker   # so narrative is "any company" too
-        if ingest_ticker(ticker):
+        if ingest_ticker(tk):
             with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
-                cur.execute(sql, params)
-                rows = cur.fetchall()
+                rows = _dense(cur, qv, tk, k)
 
-    docs = [Document(page_content=r[4],
-                     metadata={"ticker": r[0], "fiscal_year": r[1],
-                               "section": r[2], "accession": r[3]})
-            for r in rows]
-    rr = _get_reranker()
-    docs = rr(query, docs)[:k] if (rr and docs) else docs[:k]
-
-    if not docs:
+    if not rows:
         return f"No filing passages found for '{query}'" + (f" ({ticker})." if ticker else ".")
 
     out = []
-    for d in docs:
-        m = d.metadata
-        cik = cik_for(m["ticker"])
-        url = f" · {edgar_url(cik, m['accession'])}" if cik else ""
-        out.append(f"[{m['ticker']} · FY{m['fiscal_year']} · {m['section']} · "
-                   f"{m['accession']}{url}]\n{d.page_content}")
+    for r in rows:
+        ticker_, fy, section, accession, text = r
+        cik = cik_for(ticker_)
+        url = f" · {edgar_url(cik, accession)}" if cik else ""
+        out.append(f"[{ticker_} · FY{fy} · {section} · {accession}{url}]\n{text}")
     return "\n\n".join(out)
 
 
