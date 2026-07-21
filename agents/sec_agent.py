@@ -104,10 +104,12 @@ ticker (the tool fetches its XBRL live) — do NOT abstain out_of_scope. If the 
 or RENAMED (its ticker no longer trades, e.g. Activision, or Square which became Block), pass its \
 full COMPANY NAME instead of a ticker — the tool resolves the name (including former names) to the \
 right filer. Only abstain out_of_scope if the tool returns no data (an unknown company or a \
-private company). QUALITATIVE filing text \
-(search_filings) is indexed ONLY for the listed companies: for a risk / strategy / MD&A question \
-about a company NOT in that list, say you can give its figures but its filing narrative isn't \
-indexed — do NOT fabricate narrative. For requests that are NOT financial-analysis questions \
+private company). QUALITATIVE filing text (search_filings) ALSO covers ANY U.S. public company — \
+for a risk / strategy / MD&A question about a company NOT in the list above, still CALL \
+search_filings with its ticker (it fetches and indexes that company's 10-K narrative live on \
+first use); only if search_filings then returns no passages should you say its narrative isn't \
+available — never abstain on a narrative question WITHOUT calling search_filings first, and never \
+fabricate narrative. For requests that are NOT financial-analysis questions \
 answerable from filings — writing tasks, opinions, investment/buy-sell advice, forecasts or \
 predictions, or real-time market data like stock prices — call `abstain` with reason off_topic. \
 Do not call the data tools for these.
