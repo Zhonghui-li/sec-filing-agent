@@ -21,6 +21,27 @@ _SAFE = ("I can't give a reliable figure for this — it needs a computation I d
          "deterministic tool for, and I won't report a hand-derived number that may be wrong. "
          "Ask for the underlying figures (I can give those exactly), or rephrase.")
 
+# A $ amount, with an optional scale word (so "$550 million" == "$550,000,000"). The \b keeps a
+# stray trailing letter ("$5 the") from being read as a unit.
+_MONEY_RX = re.compile(
+    r"\$\s?([\d,]+(?:\.\d+)?)\s*(trillion|billion|million|thousand|tn|bn|mn|[kmbt])?\b", re.I)
+_MULT = {"trillion": 1e12, "tn": 1e12, "t": 1e12, "billion": 1e9, "bn": 1e9, "b": 1e9,
+         "million": 1e6, "mn": 1e6, "m": 1e6, "thousand": 1e3, "k": 1e3}
+# A cited figure must land within 2% of a source figure. Unit rendering is exact (0%) and light
+# rounding stays inside; a dropped/added zero is a ~90% miss, so it's caught.
+_MONEY_TOL = 0.02
+
+
+def _parse_money(text) -> List[float]:
+    """Every $ amount in `text`, unit-normalized to a plain number ($1.5 billion -> 1.5e9)."""
+    out = []
+    for num, unit in _MONEY_RX.findall(text or ""):
+        try:
+            out.append(float(num.replace(",", "")) * _MULT.get(unit.lower(), 1.0))
+        except ValueError:
+            pass
+    return out
+
 
 def _fetched_figures(trace) -> List[float]:
     """Every number a fetch tool actually produced — the only legitimate operands for a later
@@ -95,7 +116,15 @@ def guardrail(answer: str, tools_used: List[str], trace: List[Dict] = None) -> s
             except ValueError:
                 continue
     if not (set(tools_used) & _DATA_TOOLS) and re.search(r"\$\s?\d", answer):
-        return _SAFE
+        # No numeric tool ran, but a $ amount may still be legitimately quoted from filing prose —
+        # an 8-K debt/buyback figure, say, that XBRL doesn't carry. Allow it only if it traces (unit-
+        # normalized, within tolerance) to a figure in a retrieved passage; otherwise it's memory.
+        prose = [v for t in (trace or [])
+                 if t.get("tool") == "search_filings" and t.get("output")
+                 for v in _parse_money(t["output"])]
+        for a in _parse_money(answer):
+            if not any(abs(a - s) <= _MONEY_TOL * max(a, s, 1.0) for s in prose):
+                return _SAFE
     if _hand_typed_operand(trace):
         return _SAFE
     return answer
