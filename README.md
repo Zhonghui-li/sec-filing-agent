@@ -89,9 +89,10 @@ the conventions into fixed formulas removes that whole class of error.
 
 ## Evaluation — the part most agent demos skip
 
-**1 · Internal CI gate.** 69 self-grounded cases over 7 curated companies, scored by a complementary
-suite (`numerical`, `grounded`, `citation`, `tool` trajectory, `abstain`, `context_recall`, `forbid`
-injection). The 9 deterministic metrics gate CI; 3 LLM-judge metrics monitor only.
+**1 · Internal CI gate.** 84 cases: numeric answers self-grounded from XBRL (correct by construction)
+over 7 curated companies, plus 27 narrative cases with gold evidence across ~20 companies. Scored by
+a complementary suite (`numerical`, `grounded`, `citation`, `tool` trajectory, `abstain`,
+`context_recall`, `forbid` injection); the 9 deterministic metrics gate CI, 3 LLM-judge metrics monitor only.
 
 **2 · Calibrated domain judge.** A rubric judge that scores honest hedging / appropriate abstention
 as *good*, calibrated against a balanced human-labeled set including *subtle* hallucinations:
