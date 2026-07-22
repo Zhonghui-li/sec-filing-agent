@@ -72,8 +72,10 @@ by construction) over 7 curated companies, scored by a **complementary suite** �
 (they're systematically biased against the honest hedging a regulated domain *should* use).
 
 **2 · Calibrated domain judge.** A rubric judge that scores honest hedging / appropriate abstention
-as *good*, calibrated to human labels — **Cohen's κ = 0.95**. Fixes the generic metric's bias
-(JPMorgan capital answer: generic relevancy `0.0` vs domain judge `1.0`). Runs on live traces too.
+as *good*, calibrated against a **balanced human-labeled set** (good/bad, including *subtle*
+hallucinations) — **Cohen's κ = 0.76** ("substantial agreement"), with **zero false-positives on
+hedged/abstaining answers**. Fixes the generic metric's bias (JPMorgan capital answer: generic
+relevancy `0.0` vs domain judge `1.0`). Runs on live traces too.
 
 **3 · External benchmark — [FinanceBench](https://github.com/patronus-ai/financebench) (Patronus AI).**
 150 questions / 32 companies we did *not* write. **Addressable coverage 44% → 87% across five

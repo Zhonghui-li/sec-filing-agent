@@ -114,10 +114,10 @@
 **【画外音】**
 > "Now, making an agent trustworthy isn't just about the answer you see — in production you have to be able to see what the agent actually did, and measure it. So I instrument everything with Langfuse. Every request logs which tools were called, what was cited, latency, and cost — this is how I caught real production bugs."
 
-**【操作】** 切到 **GitHub README 标签**,慢慢滚过这三处:**CI badge(顶部)→ "12-metric suite in CI" 那行 → "Cohen's κ = 0.95" 那段**。
+**【操作】** 切到 **GitHub README 标签**,慢慢滚过这三处:**CI badge(顶部)→ "12-metric suite in CI" 那行 → "Cohen's κ = 0.76" 那段**。
 
 **【画外音】**
-> "And it's not just a demo — it's gated in CI by a 12-metric evaluation suite, plus a domain-tuned judge I calibrated against human labels at 0.95 agreement, to catch quality issues a generic metric misses."
+> "And it's not just a demo — it's gated in CI by a 12-metric evaluation suite, plus a domain-tuned judge I calibrated against a balanced human-labeled set at κ = 0.76, with zero false-positives on hedged answers, to catch quality issues a generic metric misses."
 
 ---
 
