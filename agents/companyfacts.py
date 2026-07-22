@@ -193,6 +193,32 @@ def annual_values(units, kind):
     return out
 
 
+def quarterly_values(units, kind):
+    """{period_end -> {val, accn}} for DISCRETE quarterly facts from 10-Q filings. A duration flow
+    (revenue, net income) is reported both as a 3-month figure and a year-to-date figure in the same
+    10-Q; we keep only the discrete quarter (85-95 days), never the YTD. An instant (balance sheet)
+    fact is the quarter-end balance. Q4 has no 10-Q — derive it as annual minus Q1+Q2+Q3 if needed.
+    Latest accession wins per period-end (as-reported for the quarter)."""
+    facts = {}                       # end -> [(accn, val), ...]
+    for u in units:
+        if u.get("form") != "10-Q":
+            continue
+        end = u["end"]
+        if kind == "duration":
+            if "start" not in u:
+                continue
+            days = (date.fromisoformat(end) - date.fromisoformat(u["start"])).days
+            if not (85 <= days <= 95):          # discrete quarter only (drop YTD 6-/9-month spans)
+                continue
+        else:                                   # instant balance at quarter-end (no start)
+            if "start" in u:
+                continue
+        facts.setdefault(end, []).append((u.get("accn", ""), u["val"]))
+    return {end: {"val": max(cands, key=lambda c: c[0])[1],
+                  "accn": max(cands, key=lambda c: c[0])[0]}
+            for end, cands in facts.items()}
+
+
 def _close(a, b, tol=0.01):
     """Two figures are the 'same' line item if they agree within a relative tolerance (allows
     minor restatement rounding; a component vs its total won't agree, so it's rejected)."""

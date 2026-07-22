@@ -9,7 +9,7 @@ import os
 
 import pytest
 
-from agents.companyfacts import annual_values, extract_rows
+from agents.companyfacts import annual_values, extract_rows, quarterly_values
 
 # Synthetic facts: revenue (duration) with a full year, a quarter, a restated year, and a 10-Q;
 # a lower-priority revenue tag filling an older year; assets (instant).
@@ -63,6 +63,25 @@ def test_candidate_tag_gap_fill():
     # 2020 comes only from the lower-priority "Revenues" tag
     r = [r for r in _rows() if r["metric"] == "revenue" and r["fiscal_year"] == 2020][0]
     assert r["value"] == 274000 and r["us_gaap_tag"] == "Revenues"
+
+
+def test_quarterly_keeps_discrete_drops_ytd_and_annual():
+    # a duration flow: keep the discrete 3-month quarter, drop the YTD span and the 10-K annual
+    units = [
+        {"form": "10-Q", "start": "2024-04-01", "end": "2024-06-29", "val": 85800, "accn": "q3"},   # ~89d discrete
+        {"form": "10-Q", "start": "2024-01-01", "end": "2024-06-29", "val": 176600, "accn": "q3"},  # YTD 6-month
+        {"form": "10-K", "start": "2023-10-01", "end": "2024-09-28", "val": 391000, "accn": "fy"},  # annual, wrong form
+    ]
+    assert quarterly_values(units, "duration") == {"2024-06-29": {"val": 85800, "accn": "q3"}}
+
+
+def test_quarterly_instant_at_quarter_end():
+    # a balance-sheet instant at quarter-end is kept; a same-end duration (has start) is not
+    units = [
+        {"form": "10-Q", "end": "2024-06-29", "val": 331000, "accn": "q3"},
+        {"form": "10-Q", "start": "2024-04-01", "end": "2024-06-29", "val": 5, "accn": "q3"},
+    ]
+    assert quarterly_values(units, "instant") == {"2024-06-29": {"val": 331000, "accn": "q3"}}
 
 
 def test_instant_no_start_only():
