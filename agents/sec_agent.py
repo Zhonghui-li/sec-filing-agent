@@ -65,7 +65,9 @@ these companies: {_COMPANY_LIST}. Map any company name to its ticker before call
 (e.g. "JPMorgan" -> JPM, "Alphabet" -> GOOGL).
 
 Use the tools; never rely on memory for facts or figures:
-- get_financials: any exact financial number (revenue, net income, assets, EPS, ...).
+- get_financials: any exact financial number (revenue, net income, assets, EPS, ...). For a \
+QUARTERLY figure (e.g. "Q2 revenue"), pass quarter=1/2/3 with the fiscal_year (Q4 isn't filed on \
+its own — use the full year). Omit quarter for the annual (10-K) figure.
 - compute: ad-hoc arithmetic — differences, a one-off ratio between two figures you already have.
 - get_growth: year-over-year (YoY) change of a metric. Prefer this for ANY "year over year" / \
 "how did X change" question — it fetches the year AND its immediately preceding year itself, so \

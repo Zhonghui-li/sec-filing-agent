@@ -68,9 +68,11 @@ def test_candidate_tag_gap_fill():
 def test_quarterly_keeps_discrete_drops_ytd_and_annual():
     # a duration flow: keep the discrete 3-month quarter, drop the YTD span and the 10-K annual
     units = [
-        {"form": "10-Q", "start": "2024-04-01", "end": "2024-06-29", "val": 85800, "accn": "q3"},   # ~89d discrete
-        {"form": "10-Q", "start": "2024-01-01", "end": "2024-06-29", "val": 176600, "accn": "q3"},  # YTD 6-month
-        {"form": "10-K", "start": "2023-10-01", "end": "2024-09-28", "val": 391000, "accn": "fy"},  # annual, wrong form
+        {"form": "10-Q", "start": "2024-04-01", "end": "2024-06-29", "val": 85800, "accn": "q3",
+         "fy": 2024, "fp": "Q3"},                                                                # ~89d discrete
+        {"form": "10-Q", "start": "2024-01-01", "end": "2024-06-29", "val": 176600, "accn": "q3",
+         "fy": 2024, "fp": "Q3"},                                                                # YTD 6-month
+        {"form": "10-K", "start": "2023-10-01", "end": "2024-09-28", "val": 391000, "accn": "fy"},  # annual
     ]
     assert quarterly_values(units, "duration") == {"2024-06-29": {"val": 85800, "accn": "q3"}}
 
@@ -78,10 +80,26 @@ def test_quarterly_keeps_discrete_drops_ytd_and_annual():
 def test_quarterly_instant_at_quarter_end():
     # a balance-sheet instant at quarter-end is kept; a same-end duration (has start) is not
     units = [
-        {"form": "10-Q", "end": "2024-06-29", "val": 331000, "accn": "q3"},
-        {"form": "10-Q", "start": "2024-04-01", "end": "2024-06-29", "val": 5, "accn": "q3"},
+        {"form": "10-Q", "end": "2024-06-29", "val": 331000, "accn": "q3", "fy": 2024, "fp": "Q3"},
+        {"form": "10-Q", "start": "2024-04-01", "end": "2024-06-29", "val": 5, "accn": "q3",
+         "fy": 2024, "fp": "Q3"},
     ]
     assert quarterly_values(units, "instant") == {"2024-06-29": {"val": 331000, "accn": "q3"}}
+
+
+def test_fiscal_period_derives_quarter_from_date():
+    from agents.companyfacts import _fiscal_period
+    # Apple (FYE month 9): fiscal quarters end Dec/Mar/Jun/Sep
+    assert _fiscal_period("2023-12-30", 9) == (2024, "Q1")   # holiday quarter -> fiscal Q1 2024
+    assert _fiscal_period("2024-03-30", 9) == (2024, "Q2")
+    assert _fiscal_period("2023-04-01", 9) == (2023, "Q2")   # spilled to the 1st -> prior month/quarter
+    assert _fiscal_period("2024-06-29", 9) == (2024, "Q3")
+    assert _fiscal_period("2024-09-28", 9) == (2024, "Q4")
+    # calendar-year company (FYE month 12)
+    assert _fiscal_period("2024-03-31", 12) == (2024, "Q1")
+    assert _fiscal_period("2024-12-31", 12) == (2024, "Q4")
+    # Walmart-style (FYE month 1, ends late January)
+    assert _fiscal_period("2023-07-31", 1) == (2024, "Q2")
 
 
 def test_instant_no_start_only():
