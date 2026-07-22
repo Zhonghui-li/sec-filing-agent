@@ -48,5 +48,5 @@ progression (44% → 62% → 65% → 73% → 87%) lives there. See `REPORT.md` f
 
 - FinanceBench exercises the **dynamic path** end-to-end (32 companies) — this is where the agent's
   recent work shows up. The internal `testset.jsonl` gate is deterministic but only 7 curated
-  companies; the domain judge's κ=0.95 was calibrated on those 7 (generalization is an assumption).
+  companies; the domain judge's κ=0.76 was calibrated on those 7 (generalization is an assumption).
 - Narrative/text-extraction questions need `DATABASE_URL`; without it they abstain (not a regression).

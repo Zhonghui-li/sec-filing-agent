@@ -81,7 +81,7 @@ transcribes a number.
   DB-enabled run. → re-run with the filings store when access is restored.
 - **Eval coverage.** The deterministic CI gate (`testset.jsonl`) is 7 curated companies; the
   dynamic path is covered here (FinanceBench) plus synthetic unit tests and a small set of
-  network-gated live assertions — but not in the fast gate. The domain judge's κ=0.95 was calibrated
+  network-gated live assertions — but not in the fast gate. The domain judge's κ=0.76 was calibrated
   on the 7 curated companies; generalization to the full market is an assumption, not yet validated.
 
 ## Reproduce
