@@ -283,17 +283,18 @@ def build_agent(model: str = None, temperature: float = 0.0, user_id: str = None
     return create_react_agent(llm, tools, prompt=prompt)
 
 
-def _extract_trace(messages) -> List[Dict]:
+def _extract_trace(messages, max_chars=600) -> List[Dict]:
     # pair each tool call with the output it produced (by tool_call_id) so the audit trail can show
     # what a tool RETURNED — the cited figure, the abstain, the [CHECK] convention note — not just
-    # how it was called. Long retrieval prose is trimmed for the UI.
+    # how it was called. Long retrieval prose is trimmed (max_chars) for the UI; pass max_chars=None
+    # for the full output, which the guardrail needs to verify a $ figure traces to retrieved prose.
     outputs = {getattr(m, "tool_call_id", None): m.content
                for m in messages if isinstance(m, ToolMessage)}
     trace = []
     for m in messages:
         for tc in getattr(m, "tool_calls", None) or []:
             out = outputs.get(tc.get("id"))
-            out = str(out)[:600] if out is not None else None
+            out = str(out)[:max_chars] if out is not None else None
             trace.append({"tool": tc["name"], "args": tc["args"], "output": out})
     return trace
 
@@ -330,7 +331,8 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
                                   {"recursion_limit": recursion_limit})
             messages = result["messages"]
             answer = messages[-1].content
-            trace = _extract_trace(messages)
+            trace = _extract_trace(messages)                        # UI-trimmed for the audit trail
+            full_trace = _extract_trace(messages, max_chars=None)   # untrimmed for the guardrail
             # tool outputs (with tool name) — used to verify every number in the answer
             # traces back to get_financials/compute (not read out of search_filings prose).
             tool_outputs = [(getattr(m, "name", "") or "", m.content)
@@ -339,9 +341,11 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
         except GraphRecursionError:
             answer = ("I couldn't resolve this within the step limit — please narrow the "
                       "question.")
-            trace = []
+            trace = full_trace = []
         tools_used = [t["tool"] for t in trace]
-        answer = guardrail(answer, tools_used, trace)   # hard backstop against hand-computed bad numbers
+        # full_trace (untrimmed): the guardrail must see the whole retrieved passage to confirm a $
+        # figure traces to it — the 600-char UI trim would starve the check and false-abstain.
+        answer = guardrail(answer, tools_used, full_trace)   # hard backstop against bad numbers
         # audit trail: which filings were cited + whether/why it abstained
         accns = sorted({a for _, c in tool_outputs
                         for a in re.findall(r"\d{10}-\d{2}-\d{6}", c)})

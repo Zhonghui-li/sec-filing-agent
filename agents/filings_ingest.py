@@ -92,13 +92,15 @@ def _fetch_10q_mda(ticker, quarters):
 
 
 def _fetch_8k(ticker, months=18, cap=12):
-    """Recent 8-K event items, bounded to ~`months` back and `cap` filings. Concatenates each 8-K's
-    item texts (the concise event descriptions), skipping the large earnings exhibits that `.text()`
-    would pull in. Filings come newest-first, so we stop once past the cutoff. Returns [(fy, section,
-    accession, text)]."""
+    """Recent 8-K events, bounded to ~`months` back and `cap` filings. Emits ONE row per item (the
+    concise event description), not per filing: an 8-K bundles a high-signal event item (e.g. Item
+    8.01 "issued $550M of notes") with boilerplate (Item 9.01 exhibit lists) that, chunked together,
+    dilutes the event's embedding and sinks its retrieval rank — per-item keeps each event's signal
+    clean. Skips the large earnings exhibits that `.text()` would pull in. Filings come newest-first,
+    so we stop once past the cutoff. Returns [(fy, section, accession, text), ...]."""
     from datetime import date, timedelta
     cutoff = date.today() - timedelta(days=months * 30)
-    out = []
+    out, n_filings = [], 0
     for f in Company(ticker).get_filings(form="8-K"):
         if f.form != "8-K":
             continue
@@ -110,12 +112,14 @@ def _fetch_8k(ticker, months=18, cap=12):
             break
         try:
             ek = f.obj()
-            text = "\n".join(str(ek[it]) for it in ek.items)
+            items = [str(ek[it]) for it in ek.items]
         except Exception:
             continue
-        if text and len(text) >= 100:
-            out.append((fd.year, "8k", f.accession_no, text))
-        if len(out) >= cap:
+        for text in items:
+            if text and len(text) >= 100:
+                out.append((fd.year, "8k", f.accession_no, text))
+        n_filings += 1
+        if n_filings >= cap:
             break
     return out
 
@@ -141,9 +145,13 @@ def ingest_ticker(ticker, years=1):
         if not sections:
             return 0
         splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=150)
-        chunks = [(fy, sec, accn, piece)
-                  for (fy, sec, accn, text) in sections
-                  for piece in splitter.split_text(text)]
+        chunks = []
+        for (fy, sec, accn, text) in sections:
+            # An 8-K is a short, self-contained event (a debt issuance, a buyback authorization);
+            # keep each whole so the figure and its context stay in ONE retrievable chunk, instead
+            # of being split across 1200-char windows that dilute and scatter the event.
+            pieces = [text] if sec == "8k" else splitter.split_text(text)
+            chunks += [(fy, sec, accn, p) for p in pieces]
         vectors = OpenAIEmbeddings(model=_EMB_MODEL).embed_documents([c[3] for c in chunks])
         with psycopg.connect(dsn) as conn, conn.cursor() as cur:
             cur.execute("select pg_advisory_xact_lock(hashtext(%s))", (tk,))  # serialize per ticker
