@@ -95,3 +95,37 @@ def test_pass_compute_cross_company():
              _comp(391035000000, 245122000000, op="diff")]
     assert guardrail("Apple's revenue is $145,913,000,000 higher.",
                      ["get_financials", "compute"], trace) != _SAFE
+
+
+# --- $ figures quoted from retrieved filing prose (8-K/10-Q events XBRL doesn't carry) ---
+def _sf(out):
+    return {"tool": "search_filings", "args": {}, "output": out}
+
+
+_MCD_8K = _sf("On August 27, 2025, McDonald's issued $550,000,000 of its 4.400% Medium-Term "
+              "Notes due 2031 and $750,000,000 of its 5.000% Medium-Term Notes due 2036.")
+
+
+def test_pass_dollar_traces_to_prose():
+    # figure quoted verbatim from the 8-K passage -> allowed even though no numeric tool ran
+    ans = "MCD issued $550,000,000 of 4.400% notes due 2031 and $750,000,000 of 5.000% notes."
+    assert guardrail(ans, ["search_filings"], [_MCD_8K]) != _SAFE
+
+
+def test_pass_dollar_prose_unit_rendering():
+    # "$550 million" == "$550,000,000" after unit normalization
+    assert guardrail("MCD issued $550 million of notes.", ["search_filings"], [_MCD_8K]) != _SAFE
+
+
+def test_block_dollar_not_in_prose():
+    # a figure that appears in no retrieved passage -> fabricated from memory
+    assert _blocked_t("MCD issued $800,000,000 of notes.", ["search_filings"], [_MCD_8K])
+
+
+def test_block_dollar_prose_dropped_zero():
+    # a dropped zero (55,000,000 vs 550,000,000) is ~90% off -> outside tolerance, caught
+    assert _blocked_t("MCD issued $55,000,000 of notes.", ["search_filings"], [_MCD_8K])
+
+
+def _blocked_t(ans, tools, trace):
+    return guardrail(ans, tools, trace) == _SAFE

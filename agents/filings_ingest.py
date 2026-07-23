@@ -1,10 +1,11 @@
-"""Lazy, on-demand ingestion of a company's 10-K narrative into the pgvector RAG corpus.
+"""Lazy, on-demand ingestion of a company's filing narrative into the pgvector RAG corpus.
 
 Mirrors the numeric side (XBRL fetched live for ANY company): when search_filings hits a
-company whose filings aren't indexed yet, we fetch its latest 10-K sections, chunk, embed, and
-cache them in filing_chunks — so narrative retrieval is "any company", not a fixed 7-company
-corpus. Reuses the fetch (fetch_filings) and chunk/embed (build_filings_store) logic; the first
-query for a new company pays the ingest, subsequent queries hit the cache.
+company whose filings aren't indexed yet, we fetch its latest 10-K sections, recent 10-Q MD&A,
+and recent (bounded) 8-K events, chunk, embed, and cache them in filing_chunks — so narrative
+retrieval is "any company", not a fixed 7-company corpus. The 8-K path is what lets the agent
+answer event questions (a debt issuance, a buyback authorization) whose figures XBRL doesn't
+carry. The first query for a new company pays the ingest, subsequent queries hit the cache.
 """
 import os
 
@@ -56,8 +57,75 @@ def _fetch_sections(ticker, years):
     return out
 
 
+def _tenq_mda(tenq):
+    """MD&A text (Item 2) from a TenQ. The item key varies by filer/edgartools version ('Part I,
+    Item 2' vs 'Item 2') and TenQ.items is unreliable, so we try candidate keys and confirm the text
+    is actually MD&A (rather than silently returning the wrong item)."""
+    for k in ("Part I, Item 2", "Item 2"):
+        try:
+            t = tenq[k]
+        except Exception:
+            continue
+        if t and len(str(t)) >= 200 and "discussion and analysis" in str(t)[:3000].lower():
+            return str(t)
+    return None
+
+
+def _fetch_10q_mda(ticker, quarters):
+    """Latest `quarters` 10-Q MD&A sections (the quarterly narrative). Returns
+    [(fy, section, accession, text)]."""
+    out = []
+    for f in Company(ticker).get_filings(form="10-Q"):
+        if f.form != "10-Q":
+            continue
+        try:
+            mda = _tenq_mda(f.obj())
+        except Exception:
+            continue
+        if mda:
+            period = str(getattr(f, "period_of_report", "") or "")
+            fy = int(period[:4]) if period[:4].isdigit() else int(str(f.filing_date)[:4])
+            out.append((fy, "mda_10q", f.accession_no, mda))
+        if len(out) >= quarters:
+            break
+    return out
+
+
+def _fetch_8k(ticker, months=18, cap=12):
+    """Recent 8-K events, bounded to ~`months` back and `cap` filings. Emits ONE row per item (the
+    concise event description), not per filing: an 8-K bundles a high-signal event item (e.g. Item
+    8.01 "issued $550M of notes") with boilerplate (Item 9.01 exhibit lists) that, chunked together,
+    dilutes the event's embedding and sinks its retrieval rank — per-item keeps each event's signal
+    clean. Skips the large earnings exhibits that `.text()` would pull in. Filings come newest-first,
+    so we stop once past the cutoff. Returns [(fy, section, accession, text), ...]."""
+    from datetime import date, timedelta
+    cutoff = date.today() - timedelta(days=months * 30)
+    out, n_filings = [], 0
+    for f in Company(ticker).get_filings(form="8-K"):
+        if f.form != "8-K":
+            continue
+        try:
+            fd = date.fromisoformat(str(f.filing_date)[:10])
+        except Exception:
+            continue
+        if fd < cutoff:
+            break
+        try:
+            ek = f.obj()
+            items = [str(ek[it]) for it in ek.items]
+        except Exception:
+            continue
+        for text in items:
+            if text and len(text) >= 100:
+                out.append((fd.year, "8k", f.accession_no, text))
+        n_filings += 1
+        if n_filings >= cap:
+            break
+    return out
+
+
 def ingest_ticker(ticker, years=1):
-    """Fetch, chunk, embed, and cache a company's latest 10-K narrative in filing_chunks.
+    """Fetch, chunk, embed, and cache a company's 10-K/10-Q/8-K narrative in filing_chunks.
     Idempotent (skips if the ticker is already indexed; a per-ticker advisory lock serializes
     concurrent first-queries). Returns the number of chunks inserted (0 if already present,
     nothing found, or on failure — the caller falls back to abstain, never fabricates)."""
@@ -72,12 +140,18 @@ def ingest_ticker(ticker, years=1):
             if cur.fetchone():
                 return 0                       # already indexed -> cache hit, nothing to do
         sections = _fetch_sections(tk, years)
+        sections += _fetch_10q_mda(tk, quarters=4)   # last 4 quarters of 10-Q MD&A
+        sections += _fetch_8k(tk)                     # recent bounded 8-K events
         if not sections:
             return 0
         splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=150)
-        chunks = [(fy, sec, accn, piece)
-                  for (fy, sec, accn, text) in sections
-                  for piece in splitter.split_text(text)]
+        chunks = []
+        for (fy, sec, accn, text) in sections:
+            # An 8-K is a short, self-contained event (a debt issuance, a buyback authorization);
+            # keep each whole so the figure and its context stay in ONE retrievable chunk, instead
+            # of being split across 1200-char windows that dilute and scatter the event.
+            pieces = [text] if sec == "8k" else splitter.split_text(text)
+            chunks += [(fy, sec, accn, p) for p in pieces]
         vectors = OpenAIEmbeddings(model=_EMB_MODEL).embed_documents([c[3] for c in chunks])
         with psycopg.connect(dsn) as conn, conn.cursor() as cur:
             cur.execute("select pg_advisory_xact_lock(hashtext(%s))", (tk,))  # serialize per ticker

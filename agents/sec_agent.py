@@ -79,7 +79,9 @@ asset_turnover, fixed_asset_turnover, capex_pct_revenue, interest_coverage). ALW
 over assembling a ratio from parts yourself — multi-step ratios (esp. days-outstanding like DPO) \
 are error-prone by hand; the formulas and conventions (ROA uses AVERAGE assets, "debt" means \
 long-term debt not total liabilities, days ratios use 365 × average balance) are fixed in the tool.
-- search_filings: qualitative content — risk factors, strategy, management's discussion.
+- search_filings: qualitative content — risk factors, strategy, management's discussion, and \
+recent CORPORATE EVENTS from 8-K / quarterly 10-Q filings (a debt/notes issuance, a buyback \
+authorization, a dividend action, a material agreement, an executive change).
 - abstain: call this (instead of answering) whenever you cannot answer from the data.
 
 HARD RULES (this is finance — wrong or unsupported numbers are unacceptable):
@@ -107,11 +109,13 @@ or RENAMED (its ticker no longer trades, e.g. Activision, or Square which became
 full COMPANY NAME instead of a ticker — the tool resolves the name (including former names) to the \
 right filer. Only abstain out_of_scope if the tool returns no data (an unknown company or a \
 private company). QUALITATIVE filing text (search_filings) ALSO covers ANY U.S. public company — \
-for a risk / strategy / MD&A question about a company NOT in the list above, still CALL \
-search_filings with its ticker (it fetches and indexes that company's 10-K narrative live on \
-first use); only if search_filings then returns no passages should you say its narrative isn't \
-available — never abstain on a narrative question WITHOUT calling search_filings first, and never \
-fabricate narrative. For requests that are NOT financial-analysis questions \
+for a risk / strategy / MD&A question, OR a question about a recent CORPORATE EVENT (notes \
+issued, buyback authorized, dividend changed, agreement signed, executive appointed), still CALL \
+search_filings with its ticker (it fetches and indexes that company's 10-K, recent quarterly 10-Q, \
+and recent 8-K narrative live on first use). The corpus INCLUDES recent filings, so do NOT assume \
+an event is "too recent" or "not in my data" and abstain — SEARCH FIRST; only if search_filings \
+then returns no relevant passages should you say it isn't available. NEVER abstain on a narrative \
+or corporate-event question WITHOUT calling search_filings first, and never fabricate narrative. For requests that are NOT financial-analysis questions \
 answerable from filings — writing tasks, opinions, investment/buy-sell advice, forecasts or \
 predictions, or real-time market data like stock prices — call `abstain` with reason off_topic. \
 Do not call the data tools for these.
@@ -283,17 +287,18 @@ def build_agent(model: str = None, temperature: float = 0.0, user_id: str = None
     return create_react_agent(llm, tools, prompt=prompt)
 
 
-def _extract_trace(messages) -> List[Dict]:
+def _extract_trace(messages, max_chars=600) -> List[Dict]:
     # pair each tool call with the output it produced (by tool_call_id) so the audit trail can show
     # what a tool RETURNED — the cited figure, the abstain, the [CHECK] convention note — not just
-    # how it was called. Long retrieval prose is trimmed for the UI.
+    # how it was called. Long retrieval prose is trimmed (max_chars) for the UI; pass max_chars=None
+    # for the full output, which the guardrail needs to verify a $ figure traces to retrieved prose.
     outputs = {getattr(m, "tool_call_id", None): m.content
                for m in messages if isinstance(m, ToolMessage)}
     trace = []
     for m in messages:
         for tc in getattr(m, "tool_calls", None) or []:
             out = outputs.get(tc.get("id"))
-            out = str(out)[:600] if out is not None else None
+            out = str(out)[:max_chars] if out is not None else None
             trace.append({"tool": tc["name"], "args": tc["args"], "output": out})
     return trace
 
@@ -330,7 +335,8 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
                                   {"recursion_limit": recursion_limit})
             messages = result["messages"]
             answer = messages[-1].content
-            trace = _extract_trace(messages)
+            trace = _extract_trace(messages)                        # UI-trimmed for the audit trail
+            full_trace = _extract_trace(messages, max_chars=None)   # untrimmed for the guardrail
             # tool outputs (with tool name) — used to verify every number in the answer
             # traces back to get_financials/compute (not read out of search_filings prose).
             tool_outputs = [(getattr(m, "name", "") or "", m.content)
@@ -339,9 +345,11 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
         except GraphRecursionError:
             answer = ("I couldn't resolve this within the step limit — please narrow the "
                       "question.")
-            trace = []
+            trace = full_trace = []
         tools_used = [t["tool"] for t in trace]
-        answer = guardrail(answer, tools_used, trace)   # hard backstop against hand-computed bad numbers
+        # full_trace (untrimmed): the guardrail must see the whole retrieved passage to confirm a $
+        # figure traces to it — the 600-char UI trim would starve the check and false-abstain.
+        answer = guardrail(answer, tools_used, full_trace)   # hard backstop against bad numbers
         # audit trail: which filings were cited + whether/why it abstained
         accns = sorted({a for _, c in tool_outputs
                         for a in re.findall(r"\d{10}-\d{2}-\d{6}", c)})
