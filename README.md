@@ -41,8 +41,9 @@ Answers financial questions about **any U.S. public company** from its SEC filin
 ```
 
 Two paths, one bar. Exact figures come from **deterministic tools over XBRL** (the LLM never does
-arithmetic on financials, and never reads a number out of prose); narrative goes through
-**retrieval** with citations; an **output guardrail** blocks any number that doesn't trace to a tool.
+arithmetic on financials); narrative goes through **retrieval** with citations. An **output
+guardrail** blocks any number that doesn't trace to its source: an XBRL tool, or (for an event
+figure XBRL doesn't carry, like a debt issuance) a cited 8-K passage the number matches verbatim.
 
 ## The finance bar
 
@@ -53,8 +54,9 @@ arithmetic on financials, and never reads a number out of prose); narrative goes
 | **Abstains, never fabricates** | a structured signal when a metric isn't reported or is out of scope |
 | **Same bar for your docs** | uploaded statements → table-cell extraction, cell-level citations |
 
-Covers **23 statement line-items + 18 ratios** plus any spelled-out formula, for any public company.
-Delisted or renamed firms resolve by **name** (Activision, Square→Block), not a dead ticker.
+Covers **23 statement line-items + 18 ratios**, annual or by quarter, plus any spelled-out formula,
+for any public company. Delisted or renamed firms resolve by **name** (Activision, Square→Block),
+not a dead ticker.
 
 ## Example
 
@@ -76,11 +78,11 @@ A: 🔧 get_financials(JPM, gross_profit) → not reported · abstain(not_report
 
 | Tool | What it does |
 |---|---|
-| `get_financials` | an exact figure from XBRL, any public company, fetched live |
+| `get_financials` | an exact figure from XBRL (full-year or a specific quarter), any public company, fetched live |
 | `get_ratio` | 18 standard ratios from fixed formulas, the right base metric baked in |
 | `get_growth` | YoY change, always consecutive years, so no multi-year span is mislabeled as YoY |
 | `compute_formula` | a spelled-out formula, **Program-of-Thought**: the model writes it once, code fetches every figure and evaluates, so the model never transcribes a number |
-| `search_filings` | qualitative context via pgvector dense retrieval |
+| `search_filings` | qualitative context from 10-K, recent 10-Q MD&A, and 8-K events, via pgvector dense retrieval |
 | `abstain(reason)` | a structured, machine-readable refusal |
 
 *Ratios and growth are computed, not assembled.* LLMs reliably pick the **wrong base metric**: total
@@ -137,8 +139,8 @@ global cap.
 
 - **Numbers**: SEC `companyfacts` XBRL, live for any company; 7 companies cached in
   `data/financials.json` as the deterministic eval baseline.
-- **Narrative**: filing text via `edgartools` → **pgvector**, indexed live on first query for **any**
-  company (the curated set pre-cached).
+- **Narrative**: 10-K sections, recent 10-Q MD&A, and recent 8-K events (each 8-K chunked per item)
+  via `edgartools` → **pgvector**, indexed live on first query for **any** company (curated set pre-cached).
 - **Tag drift**: a company migrates the same line to a different XBRL tag across years; the extractor
   merges candidate tags, and a footnote component can never substitute for the total line.
 - **As-reported basis**: returns the figure as originally filed (matching the source and the
