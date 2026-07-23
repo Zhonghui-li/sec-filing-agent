@@ -94,6 +94,16 @@ def _rows_for(ticker):
         return []
 
 
+def _quarterly_rows_for(ticker):
+    """Discrete quarterly rows (Q1-Q3) for one ticker, fetched live from SEC 10-Q XBRL (cached).
+    Quarterly isn't in the curated annual snapshot, so it always goes through the live fetch."""
+    try:
+        from agents.companyfacts import company_quarterly_rows
+        return company_quarterly_rows(ticker.strip().upper())
+    except Exception:
+        return []
+
+
 def edgar_url(cik, accession):
     """Direct link to the filing's index page on SEC EDGAR (uses the company CIK, not
     the accession prefix, which can be a filing agent's)."""
@@ -126,16 +136,50 @@ def _log_miss(ticker, metric, fiscal_year, reason):
         pass
 
 
-def get_financials(ticker: str, metric: str, fiscal_year: int = None) -> str:
+def _quarterly_answer(tk, ticker, key, metric, fiscal_year, quarter):
+    """Discrete quarterly figure (Q1-Q3) from 10-Q XBRL. Q4 isn't filed on its own -> point to the
+    full year. Mirrors get_financials' abstain-not-fabricate behavior."""
+    try:
+        q = int(quarter)
+    except (ValueError, TypeError):
+        return f"quarter must be 1, 2, or 3 (got {quarter!r})."
+    if q == 4:
+        return (f"Q4 isn't filed on its own (there is no Q4 10-Q). Call get_financials WITHOUT "
+                f"quarter for the full fiscal year, or ask for Q1-Q3.")
+    if q not in (1, 2, 3):
+        return "quarter must be 1, 2, or 3."
+    rows = _quarterly_rows_for(tk)
+    hits = [r for r in rows if r["metric"] == key and r["quarter"] == f"Q{q}"]
+    if fiscal_year is not None:
+        hits = [r for r in hits if r["fiscal_year"] == int(fiscal_year)]
+    if not hits:
+        yrs = sorted({r["fiscal_year"] for r in rows if r["metric"] == key})
+        if not yrs:
+            return (f"No quarterly {key} available for {tk}" +
+                    ("" if rows else " (no quarterly XBRL data — the company may not file 10-Qs)."))
+        return (f"No Q{q} {key} for {tk}" + (f" FY{fiscal_year}" if fiscal_year else "") +
+                f". Quarterly years available: {yrs[0]}–{yrs[-1]}.")
+    r = max(hits, key=lambda x: x["period_end"])
+    unit = r["unit"]
+    val = f"${r['value']:,}" if unit == "USD" else f"{r['value']:,} {unit}"
+    return (f"{_entity(r, ticker)} {key} for {r['quarter']} FY{r['fiscal_year']} (quarter ending "
+            f"{r['period_end']}): {val}. [source: 10-Q accession {r['accession']}, "
+            f"{edgar_url(r['cik'], r['accession'])}]")
+
+
+def get_financials(ticker: str, metric: str, fiscal_year: int = None, quarter: int = None) -> str:
     """Return an EXACT financial figure for a company from SEC XBRL data, with its
     source filing. Use this for ANY financial number (revenue, net income, total assets,
     gross profit, EPS, cash, equity, ...) — never recall or estimate a number yourself.
-    Pass fiscal_year (e.g. 2024) for a specific year, or omit it for the latest. For a delisted
-    or renamed company whose ticker no longer trades (e.g. Activision, or Square/Block), pass the
-    company NAME as `ticker` instead. If the company doesn't report the metric, this says so (do
-    not fabricate a value)."""
+    Pass fiscal_year (e.g. 2024) for a specific year, or omit it for the latest ANNUAL (10-K)
+    figure. For a QUARTERLY figure pass quarter=1/2/3 (from 10-Q; Q4 isn't filed alone — use the
+    full year). For a delisted or renamed company whose ticker no longer trades (e.g. Activision,
+    or Square/Block), pass the company NAME as `ticker` instead. If the company doesn't report the
+    metric, this says so (do not fabricate a value)."""
     tk = ticker.strip().upper()
     key = _canon(metric)
+    if quarter is not None:
+        return _quarterly_answer(tk, ticker, key, metric, fiscal_year, quarter)
     rows = _rows_for(tk)
     if not rows:                                   # ticker didn't resolve to any filer at all
         return (f"No company found for '{ticker}'. If it is delisted or renamed (its ticker no "

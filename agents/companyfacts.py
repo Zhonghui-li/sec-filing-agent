@@ -193,6 +193,91 @@ def annual_values(units, kind):
     return out
 
 
+def quarterly_values(units, kind):
+    """{period_end -> {val, accn}} for DISCRETE quarterly facts from 10-Q filings. A duration flow
+    (revenue, net income) is reported both as a 3-month figure and a year-to-date figure in the same
+    10-Q; we keep only the discrete quarter (85-95 days), never the YTD. An instant (balance sheet)
+    fact is the quarter-end balance. Q4 has no 10-Q — derive it as annual minus Q1+Q2+Q3 if needed.
+    Latest accession wins per period-end (as-reported for the quarter)."""
+    facts = {}                       # end -> [(accn, val), ...]
+    for u in units:
+        if u.get("form") != "10-Q":
+            continue
+        end = u["end"]
+        if kind == "duration":
+            if "start" not in u:
+                continue
+            days = (date.fromisoformat(end) - date.fromisoformat(u["start"])).days
+            if not (85 <= days <= 95):          # discrete quarter only (drop YTD 6-/9-month spans)
+                continue
+        else:                                   # instant balance at quarter-end (no start)
+            if "start" in u:
+                continue
+        facts.setdefault(end, []).append((u.get("accn", ""), u["val"]))
+    return {end: {"val": max(cands, key=lambda c: c[0])[1],
+                  "accn": max(cands, key=lambda c: c[0])[0]}
+            for end, cands in facts.items()}
+
+
+def _rounded_month(end):
+    """Month of a period-end, treating a date on the 1st-5th as the prior month (fiscal quarters
+    often end on a Saturday that spills a day or two into the next month, e.g. Apple's 2023-04-01
+    is really the March/Q2 close)."""
+    y, m, d = int(end[:4]), int(end[5:7]), int(end[8:10])
+    if d <= 5:
+        m -= 1
+        if m == 0:
+            m, y = 12, y - 1
+    return y, m
+
+
+def _fiscal_period(end, fye_month):
+    """(fiscal_year, 'Q1'|'Q2'|'Q3'|'Q4') for a period-end, from the company's fiscal-year-end month.
+    Derived from the DATE, not the filing's fy/fp (those tag the FILING and mislabel comparatives)."""
+    y, m = _rounded_month(end)
+    fy = y + 1 if m > fye_month else y
+    start = (fye_month % 12) + 1                     # fiscal year starts the month after year-end
+    return fy, f"Q{((m - start) % 12) // 3 + 1}"
+
+
+def quarterly_rows(gaap, ticker, cik):
+    """Discrete quarterly rows (Q1-Q3, from 10-Q) matching extract_rows' schema plus a `quarter`.
+    fiscal_year/quarter are derived from each period-end date and the company's fiscal-year-end
+    (NOT the fact's fy/fp, which tag the filing and mislabel comparative periods)."""
+    # fiscal-year-end month = the most common month of the ANNUAL (10-K) period ends
+    from collections import Counter
+    ann_months = []
+    for metric, (tags, kind) in METRICS.items():
+        if kind != "duration":
+            continue
+        t = next((t for t in tags if t in gaap), None)
+        if t:
+            unit = next(iter(gaap[t]["units"]))
+            ann_months += [_rounded_month(e)[1] for e in annual_values(gaap[t]["units"][unit], kind)]
+    fye = Counter(ann_months).most_common(1)[0][0] if ann_months else 12
+
+    rows = []
+    for metric, (tags, kind) in METRICS.items():
+        present = [t for t in tags if t in gaap]
+        if not present:
+            continue
+        merged = {}
+        for t in present:
+            unit = next(iter(gaap[t]["units"]))
+            for end, info in quarterly_values(gaap[t]["units"][unit], kind).items():
+                if end not in merged:
+                    merged[end] = {**info, "tag": t, "unit": unit}
+        for end, info in merged.items():
+            fy, q = _fiscal_period(end, fye)
+            if q == "Q4":                            # Q4 has no 10-Q; a stray Q4-dated 10-Q fact is noise
+                continue
+            rows.append({"ticker": ticker, "cik": cik, "metric": metric,
+                         "us_gaap_tag": info["tag"], "period_end": end,
+                         "fiscal_year": fy, "quarter": q,
+                         "value": info["val"], "unit": info["unit"], "accession": info["accn"]})
+    return rows
+
+
 def _close(a, b, tol=0.01):
     """Two figures are the 'same' line item if they agree within a relative tolerance (allows
     minor restatement rounding; a component vs its total won't agree, so it's rejected)."""
@@ -253,7 +338,8 @@ def fetch_facts(cik):
 
 
 # --- on-demand, cached -----------------------------------------------------------------------
-_rows_mem = {}   # TICKER -> rows (in-process)
+_rows_mem = {}   # TICKER -> annual rows (in-process)
+_qrows_mem = {}  # TICKER -> quarterly rows (in-process)
 
 
 def _disk_path(ticker):
@@ -323,4 +409,25 @@ def company_rows(ticker):
     if rows:
         _save_disk(tk, rows)
     _rows_mem[tk] = rows
+    return rows
+
+
+def company_quarterly_rows(ticker):
+    """Discrete quarterly rows (Q1-Q3, from 10-Q XBRL) for ANY public company, fetched live and
+    cached in-process. Same schema as company_rows plus a `quarter` field. [] on unknown/failure."""
+    tk = ticker.strip().upper()
+    if tk in _qrows_mem:
+        return _qrows_mem[tk]
+    cik = cik_for(tk)
+    if not cik:
+        _qrows_mem[tk] = []
+        return []
+    try:
+        entity, gaap = fetch_company(cik)
+    except Exception:
+        return []                          # transient failure — don't cache
+    rows = quarterly_rows(gaap, tk, cik)
+    for r in rows:
+        r["entity_name"] = entity
+    _qrows_mem[tk] = rows
     return rows
