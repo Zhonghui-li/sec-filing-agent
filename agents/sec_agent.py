@@ -13,6 +13,7 @@ system prompt change (raised to the finance bar).
 """
 import os
 import re
+import functools
 from typing import Dict, List
 
 from langchain_core.tools import tool
@@ -79,8 +80,29 @@ def search_filings(query: str, ticker: str = None, k: int = 5) -> str:
 
 search_filings.__doc__ = _search_filings.__doc__
 
-TOOLS = [tool(_get_financials), tool(_compute), tool(_get_ratio), tool(_get_growth),
-         tool(_compute_formula), tool(search_filings), tool(abstain)]
+_MAX_NUMERIC = 8
+_numeric_state = {"n": 0}   # per-run numeric-tool call budget (same module-global reasoning as search)
+
+
+def _budgeted(fn):
+    """Wrap a numeric tool with a per-turn call budget. A genuinely-absent figure (e.g. a footnote
+    detail like pension-asset fair value that isn't an XBRL line-item) makes the model retry the
+    lookup indefinitely, blowing the recursion limit — the search budget doesn't cover the numeric
+    tools. After _MAX_NUMERIC calls, force answer-from-what-you-have or abstain. functools.wraps keeps
+    the original signature/annotations so langchain's tool() still builds the right args schema."""
+    @functools.wraps(fn)
+    def wrapped(*args, **kwargs):
+        _numeric_state["n"] += 1
+        if _numeric_state["n"] > _MAX_NUMERIC:
+            return ("You have made many data lookups this turn without converging. Do NOT call "
+                    "another data tool. Answer from the figures you already have, or call abstain "
+                    "(not_reported / not_in_filings) if the requested figure isn't in the data.")
+        return fn(*args, **kwargs)
+    return wrapped
+
+TOOLS = [tool(_budgeted(_get_financials)), tool(_budgeted(_compute)), tool(_budgeted(_get_ratio)),
+         tool(_budgeted(_get_growth)), tool(_budgeted(_compute_formula)), tool(search_filings),
+         tool(abstain)]
 
 SYSTEM_PROMPT = f"""You are a financial-analysis assistant that answers questions about \
 public companies' SEC 10-K filings. For NUMBERS (exact figures, ratios, year-over-year growth) \
@@ -358,6 +380,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
     agent = agent or build_agent()
     usage, tool_outputs = None, []
     _search_state["n"] = 0                    # reset the per-turn search budget for this run
+    _numeric_state["n"] = 0                   # reset the per-turn numeric-tool budget for this run
     # the Langfuse span (if enabled) wraps the invoke, so its duration is the real latency
     with observability.trace_agent(question) as record:
         try:
