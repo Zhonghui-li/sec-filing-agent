@@ -96,7 +96,9 @@ def test_get_ratio_abstains_when_base_missing():
 
 
 def test_get_ratio_unknown():
-    assert "Unknown ratio" in get_ratio("made_up_ratio", "AAPL", 2024)
+    # an undefined ratio steers the model to compute_formula (and logs the miss for curation)
+    out = get_ratio("made_up_ratio", "AAPL", 2024)
+    assert "compute_formula" in out and "isn't one of the standard ratios" in out
 
 
 def test_get_growth_uses_consecutive_years():
