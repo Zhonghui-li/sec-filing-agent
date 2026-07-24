@@ -295,6 +295,8 @@ RATIOS = {
     "capex_pct_revenue": (("capex", "/", "revenue"), "pct", "capex / revenue"),
     "interest_coverage": (("operating_income", "/", "interest_expense"), "turns",
                          "operating income / interest expense (times interest earned)"),
+    "effective_tax_rate": (("income_tax_expense", "/", "pretax_income"), "pct",
+                         "income tax expense / pre-tax income (income before income taxes)"),
 }
 
 
@@ -332,6 +334,8 @@ _RATIO_ALIASES = {
     "capex % of revenue": "capex_pct_revenue", "capex as a % of revenue": "capex_pct_revenue",
     "capex to revenue": "capex_pct_revenue", "capex margin": "capex_pct_revenue",
     "interest coverage": "interest_coverage", "times interest earned": "interest_coverage",
+    "effective tax rate": "effective_tax_rate", "tax rate": "effective_tax_rate",
+    "effective income tax rate": "effective_tax_rate",
 }
 
 
@@ -388,13 +392,20 @@ def get_ratio(ratio: str, ticker: str, fiscal_year: int = None) -> str:
     """Compute a standard financial RATIO deterministically (the formula is fixed in code, so
     the right base metrics and conventions are always used). Supports: gross_margin,
     operating_margin, net_margin, cogs_pct, roa, roe, current_ratio, quick_ratio, payout_ratio,
-    debt_to_equity, dpo, dso, dio, asset_turnover, fixed_asset_turnover, inventory_turnover,
-    capex_pct_revenue, interest_coverage. Use this for ANY ratio (incl. days-outstanding and
+    debt_to_equity, effective_tax_rate, dpo, dso, dio, asset_turnover, fixed_asset_turnover,
+    inventory_turnover, capex_pct_revenue, interest_coverage. Use this for ANY ratio (incl. days-outstanding and
     turnover ratios) instead
     of fetching pieces and dividing yourself — it returns the exact value, the formula, and source."""
     name = _RATIO_ALIASES.get(ratio.strip().lower(), ratio.strip().lower().replace(" ", "_"))
     if name not in RATIOS:
-        return (f"Unknown ratio '{ratio}'. Supported: {', '.join(sorted(RATIOS))}.")
+        # Not a standard ratio: log it (so the miss surfaces for later curation into RATIOS) and
+        # route the model to compute_formula (which writes the formula symbolically, fetches the
+        # figures itself, and returns the formula used) rather than leaving it to guess a wrong one.
+        _log_miss(ticker.strip().upper(), name, fiscal_year, "ratio_undefined")
+        return (f"'{ratio}' isn't one of the standard ratios ({', '.join(sorted(RATIOS))}). "
+                f"For a non-standard or custom ratio, call compute_formula with the formula "
+                f"(from the question, or the standard definition of this ratio) — it fetches the "
+                f"figures and returns the value along with the formula it used.")
     (num_spec, _op, den_spec), kind, definition = RATIOS[name]
     tk = ticker.strip().upper()
     used = []                                        # every source row touched (incl. avg: prior year)

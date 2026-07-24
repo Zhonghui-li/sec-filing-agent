@@ -14,6 +14,8 @@ from edgar import set_identity, Company
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from agents.companyfacts import cik_for
+
 set_identity("Zhonghui Li lizhonghui923@gmail.com")  # SEC requires a contact
 
 _EMB_MODEL = os.environ.get("EMB_MODEL", "text-embedding-3-small")
@@ -34,11 +36,23 @@ def _vec(v):
     return "[" + ",".join(f"{x:.8f}" for x in v) + "]"
 
 
+def _company(ticker):
+    """Resolve a ticker OR company name (incl. former names of delisted/renamed issuers) to an
+    edgartools Company, via the same CIK resolution the numeric side uses. Returns None on an
+    unknown/ambiguous name, so the caller skips ingestion (agent abstains) instead of edgartools
+    raising CompanyNotFoundError on a raw name the model passed."""
+    cik = cik_for(ticker)
+    return Company(int(cik)) if cik else None
+
+
 def _fetch_sections(ticker, years):
     """Latest `years` fiscal years of 10-K narrative sections (one 10-K per FY, amendments
     excluded, newest accession wins). Returns [(fy, section, accession, text), ...]."""
     by_year = {}
-    for f in Company(ticker).get_filings(form="10-K"):
+    co = _company(ticker)
+    if co is None:
+        return []
+    for f in co.get_filings(form="10-K"):
         if f.form != "10-K":
             continue
         yr = str(getattr(f, "period_of_report", "") or "")[:4]
@@ -75,7 +89,10 @@ def _fetch_10q_mda(ticker, quarters):
     """Latest `quarters` 10-Q MD&A sections (the quarterly narrative). Returns
     [(fy, section, accession, text)]."""
     out = []
-    for f in Company(ticker).get_filings(form="10-Q"):
+    co = _company(ticker)
+    if co is None:
+        return out
+    for f in co.get_filings(form="10-Q"):
         if f.form != "10-Q":
             continue
         try:
@@ -101,7 +118,10 @@ def _fetch_8k(ticker, months=18, cap=12):
     from datetime import date, timedelta
     cutoff = date.today() - timedelta(days=months * 30)
     out, n_filings = [], 0
-    for f in Company(ticker).get_filings(form="8-K"):
+    co = _company(ticker)
+    if co is None:
+        return out
+    for f in co.get_filings(form="8-K"):
         if f.form != "8-K":
             continue
         try:

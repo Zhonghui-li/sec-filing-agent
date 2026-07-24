@@ -54,8 +54,30 @@ def abstain(reason: str, detail: str = "") -> str:
     return f"ABSTAIN[{r}] {detail}".strip()
 
 
+_MAX_SEARCHES = 3
+_search_state = {"n": 0}  # per-run search counter. A module global (not a ContextVar/thread-local)
+                          # because LangGraph copies the context per node, so those don't accumulate
+                          # across tool calls. Single-instance service -> sequential turns; reset per run.
+
+
+def search_filings(query: str, ticker: str = None, k: int = 5) -> str:
+    # Per-turn budget enforced in code: an LLM will re-search a narrative question indefinitely
+    # (rephrasing the query) instead of committing to an answer, blowing the recursion limit —
+    # and prompting alone does NOT reliably stop it. After _MAX_SEARCHES calls we force the model
+    # to answer from what it has, or abstain. Rigor is preserved: the forced options are "answer
+    # from the cited passages" or "abstain", never fabricate (and the guardrail still runs).
+    _search_state["n"] += 1
+    if _search_state["n"] > _MAX_SEARCHES:
+        return ("You have already searched the filings several times this turn. Do NOT search "
+                "again. Answer now using the passages already retrieved (quote and cite them), or "
+                "call abstain (not_in_filings) if they do not contain the answer.")
+    return _search_filings(query, ticker, k)
+
+
+search_filings.__doc__ = _search_filings.__doc__
+
 TOOLS = [tool(_get_financials), tool(_compute), tool(_get_ratio), tool(_get_growth),
-         tool(_compute_formula), tool(_search_filings), tool(abstain)]
+         tool(_compute_formula), tool(search_filings), tool(abstain)]
 
 SYSTEM_PROMPT = f"""You are a financial-analysis assistant that answers questions about \
 public companies' SEC 10-K filings. For NUMBERS (exact figures, ratios, year-over-year growth) \
@@ -74,14 +96,18 @@ its own — use the full year). Omit quarter for the annual (10-K) figure.
 the comparison is always between consecutive years (do NOT fetch two years and call compute, \
 which lets a wrong baseline slip in).
 - get_ratio: a STANDARD financial ratio (gross/operating/net margin, cogs_pct, roa, roe, \
-current_ratio, quick_ratio, payout_ratio, debt_to_equity, and activity ratios dpo, dso, dio, \
-asset_turnover, fixed_asset_turnover, capex_pct_revenue, interest_coverage). ALWAYS prefer this \
+current_ratio, quick_ratio, payout_ratio, debt_to_equity, effective_tax_rate, and activity ratios \
+dpo, dso, dio, asset_turnover, fixed_asset_turnover, inventory_turnover, capex_pct_revenue, \
+interest_coverage). ALWAYS prefer this \
 over assembling a ratio from parts yourself — multi-step ratios (esp. days-outstanding like DPO) \
 are error-prone by hand; the formulas and conventions (ROA uses AVERAGE assets, "debt" means \
 long-term debt not total liabilities, days ratios use 365 × average balance) are fixed in the tool.
 - search_filings: qualitative content — risk factors, strategy, management's discussion, and \
 recent CORPORATE EVENTS from 8-K / quarterly 10-Q filings (a debt/notes issuance, a buyback \
-authorization, a dividend action, a material agreement, an executive change).
+authorization, a dividend action, a material agreement, an executive change). Call it AT MOST 2-3 \
+times per question, then ANSWER from the retrieved passages (quote and cite them). Do NOT keep \
+re-searching for a better passage — if the passages you already have don't contain the answer, \
+`abstain` (not_in_filings). Endlessly re-searching wastes the step budget and stalls the answer.
 - abstain: call this (instead of answering) whenever you cannot answer from the data.
 
 HARD RULES (this is finance — wrong or unsupported numbers are unacceptable):
@@ -328,6 +354,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
     for multi-turn (Model B). Returns {answer, trace, tools_used, tool_outputs}."""
     agent = agent or build_agent()
     usage, tool_outputs = None, []
+    _search_state["n"] = 0                    # reset the per-turn search budget for this run
     # the Langfuse span (if enabled) wraps the invoke, so its duration is the real latency
     with observability.trace_agent(question) as record:
         try:
@@ -343,8 +370,11 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
                             for m in messages if isinstance(m, ToolMessage)]
             usage = observability.sum_usage(messages)
         except GraphRecursionError:
-            answer = ("I couldn't resolve this within the step limit — please narrow the "
-                      "question.")
+            # The agent looped without converging (usually over-searching a narrative question).
+            # Degrade gracefully: a clean "couldn't answer" instead of exposing the step limit.
+            answer = ("I wasn't able to find a confident, well-supported answer to this from the "
+                      "filings and tools I have. It may not be covered, or the question may need "
+                      "to be narrower or more specific.")
             trace = full_trace = []
         tools_used = [t["tool"] for t in trace]
         # full_trace (untrimmed): the guardrail must see the whole retrieved passage to confirm a $
