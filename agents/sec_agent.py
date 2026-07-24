@@ -412,7 +412,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
     """Run the agent on a question. `history` (optional) is prior turns [{role, content}, ...]
     for multi-turn (Model B). Returns {answer, trace, tools_used, tool_outputs}."""
     agent = agent or build_agent()
-    usage, tool_outputs = None, []
+    usage, tool_outputs, salvaged = None, [], False
     _search_state["n"] = 0                    # reset the per-turn search budget for this run
     _numeric_state["n"] = 0                   # reset the per-turn numeric-tool budget for this run
     # the Langfuse span (if enabled) wraps the invoke, so its duration is the real latency
@@ -432,6 +432,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
             # already retrieved, or a clean abstention — never a blank step-limit error.
             messages = (last_state or {}).get("messages", [])
             answer = _salvage(question, messages)
+            salvaged = True                    # hit the loop backstop (a health signal for monitoring)
         # both paths: build the audit trail + guardrail inputs from the messages we ended up with
         # (the salvage path now has real messages, so its answer is cited and guardrail-checked too).
         trace = _extract_trace(messages)                        # UI-trimmed for the audit trail
@@ -466,7 +467,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
         for step in trace:
             print(f"  🔧 {step['tool']}({step['args']})")
     return {"answer": answer, "trace": trace, "tool_outputs": tool_outputs,
-            "tools_used": tools_used, "trace_id": trace_id}
+            "tools_used": tools_used, "trace_id": trace_id, "salvaged": salvaged}
 
 
 if __name__ == "__main__":
