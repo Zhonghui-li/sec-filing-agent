@@ -17,7 +17,8 @@ import functools
 from typing import Dict, List
 
 from langchain_core.tools import tool
-from langchain_core.messages import ToolMessage, HumanMessage, AIMessage, trim_messages
+from langchain_core.messages import (ToolMessage, HumanMessage, AIMessage, SystemMessage,
+                                     trim_messages)
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from langgraph.errors import GraphRecursionError
@@ -373,6 +374,39 @@ def _build_messages(question: str, history) -> List:
     return prior + [HumanMessage(question)]
 
 
+def _llm(model: str = None):
+    """The chat model, built the same way as build_agent's (used by the salvage synthesis)."""
+    model = model or os.environ.get("GEN_LLM_MODEL", "o4-mini")
+    if re.match(r"^o\d", model):
+        return ChatOpenAI(model=model, reasoning_effort=os.environ.get("REASONING_EFFORT", "medium"))
+    return ChatOpenAI(model=model, temperature=0)
+
+
+_SALVAGE_EMPTY = ("I couldn't find the information needed to answer this in the filings and data "
+                  "available. It may not be covered, or the question may need to be more specific.")
+
+
+def _salvage(question: str, messages: List) -> str:
+    """Last-resort answer when the agent hit the step limit without converging (it looped, ignoring
+    the soft tool budgets). Force ONE final answer from the tool outputs it DID retrieve, or a clean
+    abstention — never a blank error. Only a code-level backstop like this is reliable: the model can
+    ignore a 'stop' message, but it cannot override the recursion limit. Rigor holds: the synthesis is
+    told to use only the retrieved passages and never invent a number, and the caller's guardrail
+    still runs on the result."""
+    retrieved = "\n\n".join(str(m.content) for m in messages if isinstance(m, ToolMessage))
+    if not retrieved.strip():
+        return _SALVAGE_EMPTY
+    sys = ("Answer the question using ONLY the retrieved tool outputs below, and cite the filing "
+           "accession they carry. If they do not contain the answer, say you could not find it in "
+           "the available filings. Never use outside knowledge, and never state a number that is not "
+           "present verbatim in the retrieved text.")
+    try:
+        return _llm().invoke([SystemMessage(sys),
+                              HumanMessage(f"Question: {question}\n\nRetrieved:\n{retrieved[:8000]}")]).content
+    except Exception:
+        return _SALVAGE_EMPTY
+
+
 def run_agent(question: str, agent=None, history=None, verbose: bool = False,
               recursion_limit: int = DEFAULT_RECURSION_LIMIT) -> Dict:
     """Run the agent on a question. `history` (optional) is prior turns [{role, content}, ...]
@@ -383,25 +417,28 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
     _numeric_state["n"] = 0                   # reset the per-turn numeric-tool budget for this run
     # the Langfuse span (if enabled) wraps the invoke, so its duration is the real latency
     with observability.trace_agent(question) as record:
+        last_state = None
         try:
-            result = agent.invoke({"messages": _build_messages(question, history)},
-                                  {"recursion_limit": recursion_limit})
-            messages = result["messages"]
+            # stream (not invoke) so that if the recursion limit is hit we still hold the last state
+            # (the passages the agent retrieved) to salvage from, instead of losing it to the exception.
+            for last_state in agent.stream({"messages": _build_messages(question, history)},
+                                           {"recursion_limit": recursion_limit}, stream_mode="values"):
+                pass
+            messages = last_state["messages"]
             answer = messages[-1].content
-            trace = _extract_trace(messages)                        # UI-trimmed for the audit trail
-            full_trace = _extract_trace(messages, max_chars=None)   # untrimmed for the guardrail
-            # tool outputs (with tool name) — used to verify every number in the answer
-            # traces back to get_financials/compute (not read out of search_filings prose).
-            tool_outputs = [(getattr(m, "name", "") or "", m.content)
-                            for m in messages if isinstance(m, ToolMessage)]
-            usage = observability.sum_usage(messages)
         except GraphRecursionError:
-            # The agent looped without converging (usually over-searching a narrative question).
-            # Degrade gracefully: a clean "couldn't answer" instead of exposing the step limit.
-            answer = ("I wasn't able to find a confident, well-supported answer to this from the "
-                      "filings and tools I have. It may not be covered, or the question may need "
-                      "to be narrower or more specific.")
-            trace = full_trace = []
+            # The agent looped without converging (over-searching, or retrying an absent metric),
+            # ignoring the soft tool budgets. Salvage: force ONE final answer from the passages it
+            # already retrieved, or a clean abstention — never a blank step-limit error.
+            messages = (last_state or {}).get("messages", [])
+            answer = _salvage(question, messages)
+        # both paths: build the audit trail + guardrail inputs from the messages we ended up with
+        # (the salvage path now has real messages, so its answer is cited and guardrail-checked too).
+        trace = _extract_trace(messages)                        # UI-trimmed for the audit trail
+        full_trace = _extract_trace(messages, max_chars=None)   # untrimmed for the guardrail
+        tool_outputs = [(getattr(m, "name", "") or "", m.content)
+                        for m in messages if isinstance(m, ToolMessage)]
+        usage = observability.sum_usage(messages)
         tools_used = [t["tool"] for t in trace]
         # full_trace (untrimmed): the guardrail must see the whole retrieved passage to confirm a $
         # figure traces to it — the 600-char UI trim would starve the check and false-abstain.
