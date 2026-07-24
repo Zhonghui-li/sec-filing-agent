@@ -74,8 +74,9 @@ its own — use the full year). Omit quarter for the annual (10-K) figure.
 the comparison is always between consecutive years (do NOT fetch two years and call compute, \
 which lets a wrong baseline slip in).
 - get_ratio: a STANDARD financial ratio (gross/operating/net margin, cogs_pct, roa, roe, \
-current_ratio, quick_ratio, payout_ratio, debt_to_equity, and activity ratios dpo, dso, dio, \
-asset_turnover, fixed_asset_turnover, capex_pct_revenue, interest_coverage). ALWAYS prefer this \
+current_ratio, quick_ratio, payout_ratio, debt_to_equity, effective_tax_rate, and activity ratios \
+dpo, dso, dio, asset_turnover, fixed_asset_turnover, inventory_turnover, capex_pct_revenue, \
+interest_coverage). ALWAYS prefer this \
 over assembling a ratio from parts yourself — multi-step ratios (esp. days-outstanding like DPO) \
 are error-prone by hand; the formulas and conventions (ROA uses AVERAGE assets, "debt" means \
 long-term debt not total liabilities, days ratios use 365 × average balance) are fixed in the tool.

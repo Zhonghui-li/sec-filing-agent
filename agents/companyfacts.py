@@ -67,6 +67,11 @@ METRICS = {
     "accounts_receivable": (["AccountsReceivableNetCurrent", "ReceivablesNetCurrent"], "instant"),
     "interest_expense":    (["InterestExpense", "InterestExpenseDebt",
                              "InterestExpenseNonoperating"], "duration"),
+    # income-tax components (added to enable effective_tax_rate; also usable in compute_formula):
+    "income_tax_expense":  (["IncomeTaxExpenseBenefit"], "duration"),
+    "pretax_income":       (["IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+                             "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments"],
+                            "duration"),
 }
 
 # Per-share metrics where a later filing's RETROACTIVE STOCK-SPLIT adjustment is the standard,

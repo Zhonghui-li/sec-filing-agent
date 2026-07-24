@@ -295,6 +295,8 @@ RATIOS = {
     "capex_pct_revenue": (("capex", "/", "revenue"), "pct", "capex / revenue"),
     "interest_coverage": (("operating_income", "/", "interest_expense"), "turns",
                          "operating income / interest expense (times interest earned)"),
+    "effective_tax_rate": (("income_tax_expense", "/", "pretax_income"), "pct",
+                         "income tax expense / pre-tax income (income before income taxes)"),
 }
 
 
@@ -332,6 +334,8 @@ _RATIO_ALIASES = {
     "capex % of revenue": "capex_pct_revenue", "capex as a % of revenue": "capex_pct_revenue",
     "capex to revenue": "capex_pct_revenue", "capex margin": "capex_pct_revenue",
     "interest coverage": "interest_coverage", "times interest earned": "interest_coverage",
+    "effective tax rate": "effective_tax_rate", "tax rate": "effective_tax_rate",
+    "effective income tax rate": "effective_tax_rate",
 }
 
 
