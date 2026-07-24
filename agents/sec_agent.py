@@ -55,9 +55,12 @@ def abstain(reason: str, detail: str = "") -> str:
 
 
 _MAX_SEARCHES = 3
-_search_state = {"n": 0}  # per-run search counter. A module global (not a ContextVar/thread-local)
-                          # because LangGraph copies the context per node, so those don't accumulate
-                          # across tool calls. Single-instance service -> sequential turns; reset per run.
+_search_state = {"n": 0}  # per-run search counter. A module global because neither a ContextVar
+                          # (LangGraph copies the context per node) nor threading.local (the tool runs
+                          # in a worker threadpool, off the request thread — verified) accumulates
+                          # across tool calls. Fine for the single-instance service's sequential turns;
+                          # under true concurrency requests would share it -> proper fix is graph state
+                          # (per-invocation), deferred as low-severity (recursion_limit still backstops).
 
 
 def search_filings(query: str, ticker: str = None, k: int = 5) -> str:
