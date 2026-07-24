@@ -82,7 +82,10 @@ are error-prone by hand; the formulas and conventions (ROA uses AVERAGE assets, 
 long-term debt not total liabilities, days ratios use 365 × average balance) are fixed in the tool.
 - search_filings: qualitative content — risk factors, strategy, management's discussion, and \
 recent CORPORATE EVENTS from 8-K / quarterly 10-Q filings (a debt/notes issuance, a buyback \
-authorization, a dividend action, a material agreement, an executive change).
+authorization, a dividend action, a material agreement, an executive change). Call it AT MOST 2-3 \
+times per question, then ANSWER from the retrieved passages (quote and cite them). Do NOT keep \
+re-searching for a better passage — if the passages you already have don't contain the answer, \
+`abstain` (not_in_filings). Endlessly re-searching wastes the step budget and stalls the answer.
 - abstain: call this (instead of answering) whenever you cannot answer from the data.
 
 HARD RULES (this is finance — wrong or unsupported numbers are unacceptable):
@@ -344,8 +347,11 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
                             for m in messages if isinstance(m, ToolMessage)]
             usage = observability.sum_usage(messages)
         except GraphRecursionError:
-            answer = ("I couldn't resolve this within the step limit — please narrow the "
-                      "question.")
+            # The agent looped without converging (usually over-searching a narrative question).
+            # Degrade gracefully: a clean "couldn't answer" instead of exposing the step limit.
+            answer = ("I wasn't able to find a confident, well-supported answer to this from the "
+                      "filings and tools I have. It may not be covered, or the question may need "
+                      "to be narrower or more specific.")
             trace = full_trace = []
         tools_used = [t["tool"] for t in trace]
         # full_trace (untrimmed): the guardrail must see the whole retrieved passage to confirm a $
