@@ -45,9 +45,12 @@ def _company(ticker):
     return Company(int(cik)) if cik else None
 
 
-def _fetch_sections(ticker, years):
-    """Latest `years` fiscal years of 10-K narrative sections (one 10-K per FY, amendments
-    excluded, newest accession wins). Returns [(fy, section, accession, text), ...]."""
+def _fetch_sections(ticker, years=1, fiscal_year=None):
+    """10-K narrative sections (one 10-K per FY, amendments excluded, newest accession wins).
+    With `fiscal_year`, the 10-K FOR that fiscal year (year-aware — so a historical narrative question
+    retrieves the right year's filing, not just the latest; ±1 tolerates non-December fiscal-year-ends,
+    and rows are tagged with the REQUESTED year so retrieval filters to it exactly). Otherwise the
+    latest `years` fiscal years. Returns [(fy, section, accession, text), ...]."""
     by_year = {}
     co = _company(ticker)
     if co is None:
@@ -58,11 +61,17 @@ def _fetch_sections(ticker, years):
         yr = str(getattr(f, "period_of_report", "") or "")[:4]
         if yr.isdigit() and (yr not in by_year or f.accession_no > by_year[yr].accession_no):
             by_year[yr] = f
+    if fiscal_year is not None:                       # year-aware: the 10-K for this fiscal year
+        fy = int(fiscal_year)
+        pick = next((by_year[y] for y in (str(fy), str(fy + 1), str(fy - 1)) if y in by_year), None)
+        chosen = [(fy, pick)] if pick else []         # tag with REQUESTED year -> exact retrieval filter
+    else:
+        chosen = [(None, by_year[y]) for y in sorted(by_year, reverse=True)[:years]]
     out = []
-    for y in sorted(by_year, reverse=True)[:years]:
-        f = by_year[y]
+    for tag_fy, f in chosen:
         period = str(getattr(f, "period_of_report", "") or "")
-        fy = int(period[:4]) if period[:4].isdigit() else int(str(f.filing_date)[:4]) - 1
+        fy = tag_fy if tag_fy is not None else (int(period[:4]) if period[:4].isdigit()
+                                                else int(str(f.filing_date)[:4]) - 1)
         tenk = f.obj()
         for name, attr in _SECTIONS.items():
             text = getattr(tenk, attr, None)
@@ -144,24 +153,36 @@ def _fetch_8k(ticker, months=18, cap=12):
     return out
 
 
-def ingest_ticker(ticker, years=1):
-    """Fetch, chunk, embed, and cache a company's 10-K/10-Q/8-K narrative in filing_chunks.
-    Idempotent (skips if the ticker is already indexed; a per-ticker advisory lock serializes
-    concurrent first-queries). Returns the number of chunks inserted (0 if already present,
-    nothing found, or on failure — the caller falls back to abstain, never fabricates)."""
+def ingest_ticker(ticker, years=1, fiscal_year=None):
+    """Fetch, chunk, embed, and cache a company's filing narrative in filing_chunks. With
+    `fiscal_year`, ingest just that fiscal year's 10-K (year-aware, keyed on (ticker, fiscal_year));
+    otherwise the latest 10-K + recent 10-Q/8-K. Idempotent (skips if already indexed; an advisory
+    lock serializes concurrent first-queries). Returns the number of chunks inserted (0 if already
+    present, nothing found, or on failure — the caller falls back to abstain, never fabricates)."""
     tk = ticker.strip().upper()
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:
         return 0
+    fy_req = int(fiscal_year) if fiscal_year is not None else None
+
+    def _present(cur):                                 # cache key is (ticker) or (ticker, fiscal_year)
+        if fy_req is not None:
+            cur.execute("select 1 from filing_chunks where ticker=%s and fiscal_year=%s limit 1", (tk, fy_req))
+        else:
+            cur.execute("select 1 from filing_chunks where ticker=%s limit 1", (tk,))
+        return cur.fetchone()
+
     try:
         with psycopg.connect(dsn) as conn, conn.cursor() as cur:
             cur.execute(_ENSURE)
-            cur.execute("select 1 from filing_chunks where ticker=%s limit 1", (tk,))
-            if cur.fetchone():
+            if _present(cur):
                 return 0                       # already indexed -> cache hit, nothing to do
-        sections = _fetch_sections(tk, years)
-        sections += _fetch_10q_mda(tk, quarters=4)   # last 4 quarters of 10-Q MD&A
-        sections += _fetch_8k(tk)                     # recent bounded 8-K events
+        if fy_req is not None:
+            sections = _fetch_sections(tk, fiscal_year=fy_req)   # that year's 10-K only
+        else:
+            sections = _fetch_sections(tk, years)
+            sections += _fetch_10q_mda(tk, quarters=4)   # last 4 quarters of 10-Q MD&A
+            sections += _fetch_8k(tk)                     # recent bounded 8-K events
         if not sections:
             return 0
         splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=150)
@@ -173,10 +194,10 @@ def ingest_ticker(ticker, years=1):
             pieces = [text] if sec == "8k" else splitter.split_text(text)
             chunks += [(fy, sec, accn, p) for p in pieces]
         vectors = OpenAIEmbeddings(model=_EMB_MODEL).embed_documents([c[3] for c in chunks])
+        lock_key = f"{tk}:{fy_req}" if fy_req is not None else tk
         with psycopg.connect(dsn) as conn, conn.cursor() as cur:
-            cur.execute("select pg_advisory_xact_lock(hashtext(%s))", (tk,))  # serialize per ticker
-            cur.execute("select 1 from filing_chunks where ticker=%s limit 1", (tk,))
-            if cur.fetchone():
+            cur.execute("select pg_advisory_xact_lock(hashtext(%s))", (lock_key,))  # serialize per key
+            if _present(cur):
                 return 0                       # another request ingested it while we embedded
             for (fy, sec, accn, text), v in zip(chunks, vectors):
                 cur.execute(
