@@ -82,7 +82,7 @@ A: 🔧 get_financials(JPM, gross_profit) → not reported · abstain(not_report
 | `get_ratio` | 18 standard ratios from fixed formulas, the right base metric baked in |
 | `get_growth` | YoY change, always consecutive years, so no multi-year span is mislabeled as YoY |
 | `compute_formula` | a spelled-out formula, **Program-of-Thought**: the model writes it once, code fetches every figure and evaluates, so the model never transcribes a number |
-| `search_filings` | qualitative context from 10-K, recent 10-Q MD&A, and 8-K events, via pgvector dense retrieval |
+| `search_filings` | qualitative context from a 10-K (any fiscal year), recent 10-Q MD&A, and 8-K events, via pgvector dense retrieval |
 | `abstain(reason)` | a structured, machine-readable refusal |
 
 *Ratios and growth are computed, not assembled.* LLMs reliably pick the **wrong base metric**: total
@@ -103,7 +103,9 @@ metric's bias (JPMorgan capital answer: generic relevancy `0.0` vs domain judge 
 
 **3 · External benchmark — [FinanceBench](https://github.com/patronus-ai/financebench) (Patronus AI).**
 150 questions / 32 companies we did *not* write. **Addressable coverage 44% → 87% across five
-iterations, hallucination ≈ 0.** Reproducible harness with a tracked runs log.
+iterations, hallucination ≈ 0** (numeric). The qualitative side is scored too — **78% answered-correct
+where the evidence is in indexed narrative** (real agent, year-controlled). Reproducible harness with
+a tracked runs log.
 → [`eval/financebench/`](eval/financebench/) · [REPORT.md](eval/financebench/REPORT.md)
 
 > Built eval-driven: the eval surfaced the failures that drove the agent. It once *guessed* fiscal
@@ -140,7 +142,9 @@ global cap.
 - **Numbers**: SEC `companyfacts` XBRL, live for any company; 7 companies cached in
   `data/financials.json` as the deterministic eval baseline.
 - **Narrative**: 10-K sections, recent 10-Q MD&A, and recent 8-K events (each 8-K chunked per item)
-  via `edgartools` → **pgvector**, indexed live on first query for **any** company (curated set pre-cached).
+  via `edgartools` → **pgvector**, indexed live on first query for **any** company and **any fiscal
+  year** (a historical question retrieves that year's 10-K, not just the latest; curated set pre-cached).
+  The lazy cache is bounded by an LRU + freshness TTL.
 - **Tag drift**: a company migrates the same line to a different XBRL tag across years; the extractor
   merges candidate tags, and a footnote component can never substitute for the total line.
 - **As-reported basis**: returns the figure as originally filed (matching the source and the
