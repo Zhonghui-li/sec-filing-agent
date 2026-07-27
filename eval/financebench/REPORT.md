@@ -134,9 +134,11 @@ adding a technique.**
   judgments, not fabricated numbers). Coverage classification (prose vs statement/table) is itself an
   LLM label. Treat 78% answered-correct-on-prose as the robust signal and the overall 48% as
   directional.
-- **Lazy narrative cache is unbounded.** `filing_chunks` ingests on demand and never evicts; with
-  year-aware retrieval (multiple years per company) it grew to fill the 512 MB store during this study
-  and had to be truncated. A bounded LRU/TTL on the cache is future work.
+- **Lazy narrative cache growth (now bounded).** `filing_chunks` ingests on demand; with year-aware
+  retrieval (multiple years per company) it grew to fill the 512 MB store during this study and had to
+  be truncated. It is now bounded by an LRU eviction policy — a `last_accessed` touch on retrieval, and
+  after each ingest the least-recently-used companies are dropped until under `FILING_CHUNKS_MAX`
+  (default 20 000 chunks ≈ 320 MB).
 - **Eval coverage.** The deterministic CI gate (`testset.jsonl`) is 7 curated companies; the
   dynamic path is covered here (FinanceBench) plus synthetic unit tests and a small set of
   network-gated live assertions — but not in the fast gate. The domain judge's κ=0.76 was calibrated
