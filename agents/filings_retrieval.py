@@ -116,6 +116,13 @@ def search_filings(query: str, ticker: str = None, k: int = 5, fiscal_year: int 
     if not rows:
         return f"No filing passages found for '{query}'" + (f" ({ticker})." if ticker else ".")
 
+    if tk:                                  # LRU touch: mark this company recently-used so the bounded
+        try:                                # cache (agents.filings_ingest) evicts colder ones first
+            with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+                cur.execute("update filing_chunks set last_accessed=now() where ticker=%s", (tk,))
+        except Exception:
+            pass
+
     out = []
     for r in rows:
         ticker_, fy, section, accession, text = r

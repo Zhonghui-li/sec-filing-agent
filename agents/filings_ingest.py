@@ -19,6 +19,11 @@ from agents.companyfacts import cik_for
 set_identity("Zhonghui Li lizhonghui923@gmail.com")  # SEC requires a contact
 
 _EMB_MODEL = os.environ.get("EMB_MODEL", "text-embedding-3-small")
+# Bounded LRU cache: this table is a lazy, on-demand cache that otherwise grows without limit (each
+# (company, year) narrative adds ~100-700 vector rows and is never evicted), which filled the 512 MB
+# store once year-aware retrieval put multiple years per company in it. Cap the row count and drop the
+# least-recently-used companies when over it. ~20k rows ≈ 320 MB, well under the free-tier limit.
+_MAX_CHUNKS = int(os.environ.get("FILING_CHUNKS_MAX", "20000"))
 _SECTIONS = {"business": "business", "risk_factors": "risk_factors",
              "mda": "management_discussion"}
 
@@ -29,7 +34,27 @@ create table if not exists filing_chunks (
     ticker text, fiscal_year int, section text, accession text,
     chunk_text text, embedding vector(1536)
 );
+alter table filing_chunks add column if not exists last_accessed timestamptz not null default now();
 """
+
+
+def _evict_lru(cur, cap, protect=None):
+    """If the cache exceeds `cap` chunks, drop whole least-recently-used companies (by their most
+    recent access) until back under cap. Whole-ticker eviction keeps every cached filing complete;
+    an evicted company simply re-ingests on its next query. `protect` (the just-ingested ticker) is
+    never evicted — so a single company larger than the cap is kept rather than deleted right after
+    ingesting it."""
+    cur.execute("select count(*) from filing_chunks")
+    n = cur.fetchone()[0]
+    while n > cap:
+        cur.execute("select ticker, count(*) from filing_chunks where ticker <> %s group by ticker "
+                    "order by max(last_accessed) asc, count(*) desc limit 1", (protect or "",))
+        row = cur.fetchone()
+        if not row:
+            break                          # only the protected ticker remains; keep it even if over cap
+        victim, vc = row
+        cur.execute("delete from filing_chunks where ticker=%s", (victim,))
+        n -= vc
 
 
 def _vec(v):
@@ -204,6 +229,8 @@ def ingest_ticker(ticker, years=1, fiscal_year=None):
                     "insert into filing_chunks (ticker,fiscal_year,section,accession,"
                     "chunk_text,embedding) values (%s,%s,%s,%s,%s,%s::vector)",
                     (tk, fy, sec, accn, text, _vec(v)))
+            conn.commit()
+            _evict_lru(cur, _MAX_CHUNKS, protect=tk)   # bound the cache: drop LRU companies if over cap
             conn.commit()
         return len(chunks)
     except Exception as e:
