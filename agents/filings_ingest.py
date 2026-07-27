@@ -24,6 +24,10 @@ _EMB_MODEL = os.environ.get("EMB_MODEL", "text-embedding-3-small")
 # store once year-aware retrieval put multiple years per company in it. Cap the row count and drop the
 # least-recently-used companies when over it. ~20k rows ≈ 320 MB, well under the free-tier limit.
 _MAX_CHUNKS = int(os.environ.get("FILING_CHUNKS_MAX", "20000"))
+# Freshness TTL: an entry older than this is pruned so a re-query re-fetches the newest filing (a new
+# 10-Q/10-K may have been filed). Year-pinned filings are immutable, so pruning just harmlessly
+# re-fetches the same content on next use.
+_TTL_DAYS = int(os.environ.get("FILING_TTL_DAYS", "30"))
 _SECTIONS = {"business": "business", "risk_factors": "risk_factors",
              "mda": "management_discussion"}
 
@@ -35,25 +39,31 @@ create table if not exists filing_chunks (
     chunk_text text, embedding vector(1536)
 );
 alter table filing_chunks add column if not exists last_accessed timestamptz not null default now();
+alter table filing_chunks add column if not exists ingested_at timestamptz not null default now();
 """
 
 
+def _prune_stale(cur, ttl_days):
+    """Freshness: drop entries older than the TTL, so the next query re-ingests the newest filing."""
+    cur.execute("delete from filing_chunks where ingested_at < now() - make_interval(days => %s)", (ttl_days,))
+
+
 def _evict_lru(cur, cap, protect=None):
-    """If the cache exceeds `cap` chunks, drop whole least-recently-used companies (by their most
-    recent access) until back under cap. Whole-ticker eviction keeps every cached filing complete;
-    an evicted company simply re-ingests on its next query. `protect` (the just-ingested ticker) is
-    never evicted — so a single company larger than the cap is kept rather than deleted right after
-    ingesting it."""
+    """If the cache exceeds `cap` chunks, drop least-recently-used FILINGS (one accession at a time,
+    oldest access first) until back under cap. Per-accession eviction keeps every cached filing whole
+    and retains a company's other filings; an evicted filing re-ingests on its next query. `protect`
+    (the just-ingested ticker) is spared, so a single company larger than the cap is kept, not deleted
+    right after ingesting it."""
     cur.execute("select count(*) from filing_chunks")
     n = cur.fetchone()[0]
     while n > cap:
-        cur.execute("select ticker, count(*) from filing_chunks where ticker <> %s group by ticker "
+        cur.execute("select accession, count(*) from filing_chunks where ticker <> %s group by accession "
                     "order by max(last_accessed) asc, count(*) desc limit 1", (protect or "",))
         row = cur.fetchone()
         if not row:
             break                          # only the protected ticker remains; keep it even if over cap
-        victim, vc = row
-        cur.execute("delete from filing_chunks where ticker=%s", (victim,))
+        accn, vc = row
+        cur.execute("delete from filing_chunks where accession=%s", (accn,))
         n -= vc
 
 
@@ -230,7 +240,8 @@ def ingest_ticker(ticker, years=1, fiscal_year=None):
                     "chunk_text,embedding) values (%s,%s,%s,%s,%s,%s::vector)",
                     (tk, fy, sec, accn, text, _vec(v)))
             conn.commit()
-            _evict_lru(cur, _MAX_CHUNKS, protect=tk)   # bound the cache: drop LRU companies if over cap
+            _prune_stale(cur, _TTL_DAYS)               # freshness: drop entries past the TTL
+            _evict_lru(cur, _MAX_CHUNKS, protect=tk)   # size: drop LRU filings if over cap
             conn.commit()
         return len(chunks)
     except Exception as e:

@@ -136,9 +136,10 @@ adding a technique.**
   directional.
 - **Lazy narrative cache growth (now bounded).** `filing_chunks` ingests on demand; with year-aware
   retrieval (multiple years per company) it grew to fill the 512 MB store during this study and had to
-  be truncated. It is now bounded by an LRU eviction policy — a `last_accessed` touch on retrieval, and
-  after each ingest the least-recently-used companies are dropped until under `FILING_CHUNKS_MAX`
-  (default 20 000 chunks ≈ 320 MB).
+  be truncated. It is now bounded by **size + freshness**: a `last_accessed` touch on retrieval drives
+  a per-filing **LRU** eviction (drop the least-recently-used *accessions* until under
+  `FILING_CHUNKS_MAX`, default 20 000 chunks ≈ 320 MB), and an `ingested_at` **TTL** prunes entries
+  older than `FILING_TTL_DAYS` (default 30) so a re-query re-fetches the newest filing.
 - **Eval coverage.** The deterministic CI gate (`testset.jsonl`) is 7 curated companies; the
   dynamic path is covered here (FinanceBench) plus synthetic unit tests and a small set of
   network-gated live assertions — but not in the fast gate. The domain judge's κ=0.76 was calibrated
