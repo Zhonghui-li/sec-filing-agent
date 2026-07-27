@@ -104,9 +104,8 @@ metric's bias (JPMorgan capital answer: generic relevancy `0.0` vs domain judge 
 **3 · External benchmark — [FinanceBench](https://github.com/patronus-ai/financebench) (Patronus AI).**
 150 questions / 32 companies we did *not* write. **Addressable coverage 44% → 87% across five
 iterations, hallucination ≈ 0** (numeric). The qualitative side is scored too — **78% answered-correct
-where the evidence is in indexed narrative** (real agent, year-controlled) — and an eval-gated
-retrieval study there whose honest conclusion was to *not* ship a +22pp-recall technique that hurt
-end-to-end answers. Reproducible harness with a tracked runs log.
+where the evidence is in indexed narrative** (real agent, year-controlled). Reproducible harness with
+a tracked runs log.
 → [`eval/financebench/`](eval/financebench/) · [REPORT.md](eval/financebench/REPORT.md)
 
 > Built eval-driven: the eval surfaced the failures that drove the agent. It once *guessed* fiscal
