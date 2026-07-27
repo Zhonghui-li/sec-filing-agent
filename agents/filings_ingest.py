@@ -19,6 +19,15 @@ from agents.companyfacts import cik_for
 set_identity("Zhonghui Li lizhonghui923@gmail.com")  # SEC requires a contact
 
 _EMB_MODEL = os.environ.get("EMB_MODEL", "text-embedding-3-small")
+# Bounded LRU cache: this table is a lazy, on-demand cache that otherwise grows without limit (each
+# (company, year) narrative adds ~100-700 vector rows and is never evicted), which filled the 512 MB
+# store once year-aware retrieval put multiple years per company in it. Cap the row count and drop the
+# least-recently-used companies when over it. ~20k rows ≈ 320 MB, well under the free-tier limit.
+_MAX_CHUNKS = int(os.environ.get("FILING_CHUNKS_MAX", "20000"))
+# Freshness TTL: an entry older than this is pruned so a re-query re-fetches the newest filing (a new
+# 10-Q/10-K may have been filed). Year-pinned filings are immutable, so pruning just harmlessly
+# re-fetches the same content on next use.
+_TTL_DAYS = int(os.environ.get("FILING_TTL_DAYS", "30"))
 _SECTIONS = {"business": "business", "risk_factors": "risk_factors",
              "mda": "management_discussion"}
 
@@ -29,7 +38,33 @@ create table if not exists filing_chunks (
     ticker text, fiscal_year int, section text, accession text,
     chunk_text text, embedding vector(1536)
 );
+alter table filing_chunks add column if not exists last_accessed timestamptz not null default now();
+alter table filing_chunks add column if not exists ingested_at timestamptz not null default now();
 """
+
+
+def _prune_stale(cur, ttl_days):
+    """Freshness: drop entries older than the TTL, so the next query re-ingests the newest filing."""
+    cur.execute("delete from filing_chunks where ingested_at < now() - make_interval(days => %s)", (ttl_days,))
+
+
+def _evict_lru(cur, cap, protect=None):
+    """If the cache exceeds `cap` chunks, drop least-recently-used FILINGS (one accession at a time,
+    oldest access first) until back under cap. Per-accession eviction keeps every cached filing whole
+    and retains a company's other filings; an evicted filing re-ingests on its next query. `protect`
+    (the just-ingested ticker) is spared, so a single company larger than the cap is kept, not deleted
+    right after ingesting it."""
+    cur.execute("select count(*) from filing_chunks")
+    n = cur.fetchone()[0]
+    while n > cap:
+        cur.execute("select accession, count(*) from filing_chunks where ticker <> %s group by accession "
+                    "order by max(last_accessed) asc, count(*) desc limit 1", (protect or "",))
+        row = cur.fetchone()
+        if not row:
+            break                          # only the protected ticker remains; keep it even if over cap
+        accn, vc = row
+        cur.execute("delete from filing_chunks where accession=%s", (accn,))
+        n -= vc
 
 
 def _vec(v):
@@ -45,9 +80,12 @@ def _company(ticker):
     return Company(int(cik)) if cik else None
 
 
-def _fetch_sections(ticker, years):
-    """Latest `years` fiscal years of 10-K narrative sections (one 10-K per FY, amendments
-    excluded, newest accession wins). Returns [(fy, section, accession, text), ...]."""
+def _fetch_sections(ticker, years=1, fiscal_year=None):
+    """10-K narrative sections (one 10-K per FY, amendments excluded, newest accession wins).
+    With `fiscal_year`, the 10-K FOR that fiscal year (year-aware — so a historical narrative question
+    retrieves the right year's filing, not just the latest; ±1 tolerates non-December fiscal-year-ends,
+    and rows are tagged with the REQUESTED year so retrieval filters to it exactly). Otherwise the
+    latest `years` fiscal years. Returns [(fy, section, accession, text), ...]."""
     by_year = {}
     co = _company(ticker)
     if co is None:
@@ -58,11 +96,17 @@ def _fetch_sections(ticker, years):
         yr = str(getattr(f, "period_of_report", "") or "")[:4]
         if yr.isdigit() and (yr not in by_year or f.accession_no > by_year[yr].accession_no):
             by_year[yr] = f
+    if fiscal_year is not None:                       # year-aware: the 10-K for this fiscal year
+        fy = int(fiscal_year)
+        pick = next((by_year[y] for y in (str(fy), str(fy + 1), str(fy - 1)) if y in by_year), None)
+        chosen = [(fy, pick)] if pick else []         # tag with REQUESTED year -> exact retrieval filter
+    else:
+        chosen = [(None, by_year[y]) for y in sorted(by_year, reverse=True)[:years]]
     out = []
-    for y in sorted(by_year, reverse=True)[:years]:
-        f = by_year[y]
+    for tag_fy, f in chosen:
         period = str(getattr(f, "period_of_report", "") or "")
-        fy = int(period[:4]) if period[:4].isdigit() else int(str(f.filing_date)[:4]) - 1
+        fy = tag_fy if tag_fy is not None else (int(period[:4]) if period[:4].isdigit()
+                                                else int(str(f.filing_date)[:4]) - 1)
         tenk = f.obj()
         for name, attr in _SECTIONS.items():
             text = getattr(tenk, attr, None)
@@ -144,24 +188,36 @@ def _fetch_8k(ticker, months=18, cap=12):
     return out
 
 
-def ingest_ticker(ticker, years=1):
-    """Fetch, chunk, embed, and cache a company's 10-K/10-Q/8-K narrative in filing_chunks.
-    Idempotent (skips if the ticker is already indexed; a per-ticker advisory lock serializes
-    concurrent first-queries). Returns the number of chunks inserted (0 if already present,
-    nothing found, or on failure — the caller falls back to abstain, never fabricates)."""
+def ingest_ticker(ticker, years=1, fiscal_year=None):
+    """Fetch, chunk, embed, and cache a company's filing narrative in filing_chunks. With
+    `fiscal_year`, ingest just that fiscal year's 10-K (year-aware, keyed on (ticker, fiscal_year));
+    otherwise the latest 10-K + recent 10-Q/8-K. Idempotent (skips if already indexed; an advisory
+    lock serializes concurrent first-queries). Returns the number of chunks inserted (0 if already
+    present, nothing found, or on failure — the caller falls back to abstain, never fabricates)."""
     tk = ticker.strip().upper()
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:
         return 0
+    fy_req = int(fiscal_year) if fiscal_year is not None else None
+
+    def _present(cur):                                 # cache key is (ticker) or (ticker, fiscal_year)
+        if fy_req is not None:
+            cur.execute("select 1 from filing_chunks where ticker=%s and fiscal_year=%s limit 1", (tk, fy_req))
+        else:
+            cur.execute("select 1 from filing_chunks where ticker=%s limit 1", (tk,))
+        return cur.fetchone()
+
     try:
         with psycopg.connect(dsn) as conn, conn.cursor() as cur:
             cur.execute(_ENSURE)
-            cur.execute("select 1 from filing_chunks where ticker=%s limit 1", (tk,))
-            if cur.fetchone():
+            if _present(cur):
                 return 0                       # already indexed -> cache hit, nothing to do
-        sections = _fetch_sections(tk, years)
-        sections += _fetch_10q_mda(tk, quarters=4)   # last 4 quarters of 10-Q MD&A
-        sections += _fetch_8k(tk)                     # recent bounded 8-K events
+        if fy_req is not None:
+            sections = _fetch_sections(tk, fiscal_year=fy_req)   # that year's 10-K only
+        else:
+            sections = _fetch_sections(tk, years)
+            sections += _fetch_10q_mda(tk, quarters=4)   # last 4 quarters of 10-Q MD&A
+            sections += _fetch_8k(tk)                     # recent bounded 8-K events
         if not sections:
             return 0
         splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=150)
@@ -173,16 +229,19 @@ def ingest_ticker(ticker, years=1):
             pieces = [text] if sec == "8k" else splitter.split_text(text)
             chunks += [(fy, sec, accn, p) for p in pieces]
         vectors = OpenAIEmbeddings(model=_EMB_MODEL).embed_documents([c[3] for c in chunks])
+        lock_key = f"{tk}:{fy_req}" if fy_req is not None else tk
         with psycopg.connect(dsn) as conn, conn.cursor() as cur:
-            cur.execute("select pg_advisory_xact_lock(hashtext(%s))", (tk,))  # serialize per ticker
-            cur.execute("select 1 from filing_chunks where ticker=%s limit 1", (tk,))
-            if cur.fetchone():
+            cur.execute("select pg_advisory_xact_lock(hashtext(%s))", (lock_key,))  # serialize per key
+            if _present(cur):
                 return 0                       # another request ingested it while we embedded
             for (fy, sec, accn, text), v in zip(chunks, vectors):
                 cur.execute(
                     "insert into filing_chunks (ticker,fiscal_year,section,accession,"
                     "chunk_text,embedding) values (%s,%s,%s,%s,%s,%s::vector)",
                     (tk, fy, sec, accn, text, _vec(v)))
+            conn.commit()
+            _prune_stale(cur, _TTL_DAYS)               # freshness: drop entries past the TTL
+            _evict_lru(cur, _MAX_CHUNKS, protect=tk)   # size: drop LRU filings if over cap
             conn.commit()
         return len(chunks)
     except Exception as e:

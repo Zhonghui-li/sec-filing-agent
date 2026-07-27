@@ -65,7 +65,7 @@ _search_state = {"n": 0}  # per-run search counter. A module global because neit
                           # (per-invocation), deferred as low-severity (recursion_limit still backstops).
 
 
-def search_filings(query: str, ticker: str = None, k: int = 5) -> str:
+def search_filings(query: str, ticker: str = None, k: int = 5, fiscal_year: int = None) -> str:
     # Per-turn budget enforced in code: an LLM will re-search a narrative question indefinitely
     # (rephrasing the query) instead of committing to an answer, blowing the recursion limit —
     # and prompting alone does NOT reliably stop it. After _MAX_SEARCHES calls we force the model
@@ -76,7 +76,7 @@ def search_filings(query: str, ticker: str = None, k: int = 5) -> str:
         return ("You have already searched the filings several times this turn. Do NOT search "
                 "again. Answer now using the passages already retrieved (quote and cite them), or "
                 "call abstain (not_in_filings) if they do not contain the answer.")
-    return _search_filings(query, ticker, k)
+    return _search_filings(query, ticker, k, fiscal_year)
 
 
 search_filings.__doc__ = _search_filings.__doc__
@@ -167,7 +167,10 @@ search_filings with its ticker (it fetches and indexes that company's 10-K, rece
 and recent 8-K narrative live on first use). The corpus INCLUDES recent filings, so do NOT assume \
 an event is "too recent" or "not in my data" and abstain — SEARCH FIRST; only if search_filings \
 then returns no relevant passages should you say it isn't available. NEVER abstain on a narrative \
-or corporate-event question WITHOUT calling search_filings first, and never fabricate narrative. For requests that are NOT financial-analysis questions \
+or corporate-event question WITHOUT calling search_filings first, and never fabricate narrative. \
+For a narrative question about a SPECIFIC fiscal year (e.g. "what drove FY2022 gross margin change"), \
+pass fiscal_year to search_filings so it retrieves THAT year's 10-K, not just the latest — the same \
+way you pass fiscal_year to get_financials. For requests that are NOT financial-analysis questions \
 answerable from filings — writing tasks, opinions, investment/buy-sell advice, forecasts or \
 predictions, or real-time market data like stock prices — call `abstain` with reason off_topic. \
 Do not call the data tools for these.

@@ -1,7 +1,10 @@
 # Validating the SEC filing agent on FinanceBench
 
 A brief on how we measured the agent against an **independent external benchmark**, and what five
-data-driven iterations achieved: **addressable coverage 44% → 87%, real hallucination rate ≈ 0.**
+data-driven iterations achieved: **addressable coverage 44% → 87%, real hallucination rate ≈ 0**
+(the numeric side). A **narrative scorecard** (78% answered-correct where the evidence is in the text
+we index) and an eval-gated retrieval study — whose honest conclusion was to *not* ship a
++22pp-recall technique that hurt end-to-end answers — follow below.
 
 ---
 
@@ -73,12 +76,70 @@ transcribes a number.
   CCC "−3.70" *equals* gold "-3.7" (the scorer's number extraction dropped a unicode minus), and
   Ulta is an honest refusal in prose (no fabricated number).
 
+## Narrative side (the qualitative questions)
+
+The 87% above is the **numeric** headline; the questions that need *qualitative* filing text were
+unmeasured in that run (the narrative store was offline). Measured now — the real production agent
+(all tools, **year-aware retrieval**, default config) on the **61 FinanceBench 10-K narrative
+questions** (non-numeric gold, evidence drawn from 10-Ks), scored on the same finance bar:
+
+| | correct | wrong | abstain |
+|---|---|---|---|
+| **overall (61)** | **29 (48%)** | 15 (25%) | 17 (28%) |
+| evidence in narrative prose (23) | 14 | 4 | 5 |
+| evidence in a statement/table (38) | 15 | 11 | 12 |
+
+Reading it honestly:
+
+- **The agent answers 72% and abstains 28%** — far less than a narrative-only pipeline (a plain
+  retrieve-then-answer baseline over these questions abstained ~64%), because the agent also routes
+  to the deterministic numeric tools and iterates.
+- **On questions whose evidence is genuinely in the narrative we index, answered-correctness is 78%
+  (14/18)** — the clean "narrative capability" number.
+- **Its weakness is coverage, not retrieval tuning.** 38/61 questions keep their evidence in a
+  financial statement or segment table the narrative path doesn't index; of the 17 abstains only **5
+  are fixable** (evidence was in narrative, agent still declined) and **12 are legit** (the data isn't
+  in narrative at all — the report-level-data gap, future work).
+- **Different failure mode from numeric.** The 25% "wrong" are qualitative judgments (e.g. "is X
+  capital-intensive?") — a mix of genuine error and debatable-conclusion disagreement with the LLM
+  judge, **not fabricated numbers**. The ≈0-hallucination result is about *numbers* and still holds.
+
+### What moved the narrative number — and what didn't (an eval-gated retrieval study)
+
+A rebuilt, trustworthy retrieval eval-gate (year-controlled, LLM-judged gold) showed dense recall@10
+was only ~45% — near the ~55–60% oracle ceiling reported for this task, i.e. a genuinely hard, open
+problem. Against that gate we A/B'd the usual levers:
+
+| lever | effect on the gate | shipped? |
+|---|---|---|
+| cross-encoder reranker | recall +2 (churny wash) | no |
+| contextual (metadata) chunks | recall +1 | no |
+| **Multi-HyDE** | **recall@10 48% → 70% (+22pp)** | **no** |
+| **year-aware ingestion** (retrieve the *asked* fiscal year, not just the latest) | **answer-correct +21pp, 0 regressions** | **yes** |
+
+Multi-HyDE won decisively on *recall* — but a clean end-to-end re-test with the real guardrailed agent
+showed it **lowered** answer quality (−3, by surfacing plausible-but-off passages the agent then
+abstained or erred on), so it ships **default-off** (`FILINGS_HYDE=1` to enable). The only change that
+cleanly improved answers was a **correctness fix, not a retrieval technique**: narrative retrieval had
+only ever indexed the *latest* 10-K, so a "FY2022" question read the wrong year's filing; scoping
+retrieval to the asked year lifted answered-correctness +21pp with zero regressions. **The lesson:
+recall is a misleading proxy once a capable agent is in the loop — the win was fixing a bug, not
+adding a technique.**
+
 ## Honest limits (and future work)
 
-- **Narrative side needs a DB.** This run had `search_filings` degraded (no `DATABASE_URL`), so
-  text-extraction and qualitative questions abstain. The **numeric coverage headline is unaffected**
-  (numeric questions never touch the DB), but the domain/novel scores are not comparable to a
-  DB-enabled run. → re-run with the filings store when access is restored.
+- **Narrative scorecard caveats.** The 61-case narrative run above is DB-enabled and year-controlled,
+  but it is smaller than the numeric set and graded by an LLM judge on *qualitative* conclusions, where
+  the correct/wrong line is fuzzier than a 2.5% numeric match (the 25% "wrong" includes debatable
+  judgments, not fabricated numbers). Coverage classification (prose vs statement/table) is itself an
+  LLM label. Treat 78% answered-correct-on-prose as the robust signal and the overall 48% as
+  directional.
+- **Lazy narrative cache growth (now bounded).** `filing_chunks` ingests on demand; with year-aware
+  retrieval (multiple years per company) it grew to fill the 512 MB store during this study and had to
+  be truncated. It is now bounded by **size + freshness**: a `last_accessed` touch on retrieval drives
+  a per-filing **LRU** eviction (drop the least-recently-used *accessions* until under
+  `FILING_CHUNKS_MAX`, default 20 000 chunks ≈ 320 MB), and an `ingested_at` **TTL** prunes entries
+  older than `FILING_TTL_DAYS` (default 30) so a re-query re-fetches the newest filing.
 - **Eval coverage.** The deterministic CI gate (`testset.jsonl`) is 7 curated companies; the
   dynamic path is covered here (FinanceBench) plus synthetic unit tests and a small set of
   network-gated live assertions — but not in the fast gate. The domain judge's κ=0.76 was calibrated
