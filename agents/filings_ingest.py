@@ -40,12 +40,15 @@ create table if not exists filing_chunks (
 );
 alter table filing_chunks add column if not exists last_accessed timestamptz not null default now();
 alter table filing_chunks add column if not exists ingested_at timestamptz not null default now();
+alter table filing_chunks add column if not exists pinned boolean not null default false;
 """
 
 
 def _prune_stale(cur, ttl_days):
-    """Freshness: drop entries older than the TTL, so the next query re-ingests the newest filing."""
-    cur.execute("delete from filing_chunks where ingested_at < now() - make_interval(days => %s)", (ttl_days,))
+    """Freshness: drop perishable latest-snapshot entries older than the TTL, so the next query
+    re-fetches the newest filing. Year-pinned filings are immutable → exempt (kept until LRU-evicted)."""
+    cur.execute("delete from filing_chunks where not pinned and ingested_at < now() - make_interval(days => %s)",
+                (ttl_days,))
 
 
 def _evict_lru(cur, cap, protect=None):
@@ -199,12 +202,16 @@ def ingest_ticker(ticker, years=1, fiscal_year=None):
     if not dsn:
         return 0
     fy_req = int(fiscal_year) if fiscal_year is not None else None
+    pinned = fy_req is not None                         # a year-pinned filing vs the perishable latest snapshot
 
-    def _present(cur):                                 # cache key is (ticker) or (ticker, fiscal_year)
+    def _present(cur):
+        # Idempotency key: a year-aware ingest is keyed on (ticker, fiscal_year); a no-year ingest on the
+        # LATEST SNAPSHOT ONLY (`not pinned`) — otherwise a cached year-pinned entry would falsely satisfy
+        # the no-year check and the latest 10-K/10-Q/8-K would never be fetched for that company.
         if fy_req is not None:
             cur.execute("select 1 from filing_chunks where ticker=%s and fiscal_year=%s limit 1", (tk, fy_req))
         else:
-            cur.execute("select 1 from filing_chunks where ticker=%s limit 1", (tk,))
+            cur.execute("select 1 from filing_chunks where ticker=%s and not pinned limit 1", (tk,))
         return cur.fetchone()
 
     try:
@@ -237,8 +244,8 @@ def ingest_ticker(ticker, years=1, fiscal_year=None):
             for (fy, sec, accn, text), v in zip(chunks, vectors):
                 cur.execute(
                     "insert into filing_chunks (ticker,fiscal_year,section,accession,"
-                    "chunk_text,embedding) values (%s,%s,%s,%s,%s,%s::vector)",
-                    (tk, fy, sec, accn, text, _vec(v)))
+                    "chunk_text,embedding,pinned) values (%s,%s,%s,%s,%s,%s::vector,%s)",
+                    (tk, fy, sec, accn, text, _vec(v), pinned))
             conn.commit()
             _prune_stale(cur, _TTL_DAYS)               # freshness: drop entries past the TTL
             _evict_lru(cur, _MAX_CHUNKS, protect=tk)   # size: drop LRU filings if over cap

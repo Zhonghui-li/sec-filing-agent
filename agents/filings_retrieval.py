@@ -85,6 +85,8 @@ def _dense(cur, qv, ticker, k, fiscal_year=None):
         where.append("ticker=%s"); tp.append(ticker)
     if fiscal_year is not None:
         where.append("fiscal_year=%s"); tp.append(int(fiscal_year))
+    else:
+        where.append("not pinned")          # no-year query -> the latest snapshot, not a cached pinned year
     wc = ("where " + " and ".join(where)) if where else ""
     cur.execute("select ticker,fiscal_year,section,accession,chunk_text "
                 f"from filing_chunks {wc} order by embedding<=>%s::vector limit %s", tuple(tp) + (qv, k))
