@@ -152,16 +152,33 @@ def _value_for_fy(values, fy):
     return None
 
 
-def _member(full_dimension_label):
-    """The member name from a 'axis: Member' dimension label (e.g. '...BusinessSegmentsAxis: Datacenter'
-    -> 'Datacenter'). Pure/testable."""
-    return str(full_dimension_label or "").rsplit(": ", 1)[-1].strip()
+def _member_for_axis(dim_meta, axis):
+    """From a row's `dimension_metadata` (list of {dimension, member_label, ...}), the member label for
+    `axis` — but ONLY if the row is a PURE breakdown by that axis: not also crossed with a different
+    breakdown dimension (geography/product/customer/timing — a multi-axis cross-tab would double-count),
+    and not an intersegment/corporate reconciling item. Returns None otherwise. Pure/testable. Uses the
+    structured metadata (not the string label, whose member names can contain commas)."""
+    if not isinstance(dim_meta, (list, tuple)):
+        return None
+    member = None
+    for e in dim_meta:
+        dim = str((e or {}).get("dimension") or "")
+        lbl = str((e or {}).get("member_label") or "")
+        if axis in dim:
+            member = lbl
+        elif "ConsolidationItemsAxis" in dim:
+            if "Operating Segment" not in lbl:       # intersegment eliminations / corporate -> skip
+                return None
+        elif "Axis" in dim:                          # a second breakdown axis -> cross-tab -> skip
+            return None
+    return member
 
 
 def _breakdown_from_xbrl(xb, axis, want_concept, fy):
-    """Walk the Segment Reporting disclosures and collect {member -> value} for rows dimensioned by
-    `axis` (BusinessSegments / Geographical) whose concept matches `want_concept`, at fiscal year `fy`.
-    Robust to per-company role names — it matches by axis + concept, not a hardcoded role."""
+    """Walk the Segment Reporting disclosures and collect {member -> value} for rows that are a PURE
+    breakdown by `axis` (BusinessSegments / Geographical) whose concept matches `want_concept`, at
+    fiscal year `fy`. Robust to per-company role names (matches by axis + concept, not a hardcoded role)
+    and to multi-axis filers (rejects cross-tab rows via _member_for_axis, so segments don't double-count)."""
     import pandas as pd
     out = {}
     for s in xb.get_all_statements():
@@ -171,15 +188,13 @@ def _breakdown_from_xbrl(xb, axis, want_concept, fy):
             df = pd.DataFrame(xb.get_statement(s["role"]))
         except Exception:
             continue
-        if "full_dimension_label" not in df.columns or "values" not in df.columns:
+        if "dimension_metadata" not in df.columns or "values" not in df.columns:
             continue
         for _, r in df.iterrows():
-            if not r.get("has_values"):
+            if not r.get("has_values") or want_concept not in str(r.get("concept") or ""):
                 continue
-            fdl = str(r.get("full_dimension_label") or "")
-            if axis not in fdl or want_concept not in str(r.get("concept") or ""):
-                continue
-            m, v = _member(fdl), _value_for_fy(r.get("values"), fy)
+            m = _member_for_axis(r.get("dimension_metadata"), axis)
+            v = _value_for_fy(r.get("values"), fy)
             if m and v is not None and m not in out:
                 out[m] = v
     return out
