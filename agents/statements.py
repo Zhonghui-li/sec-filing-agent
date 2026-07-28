@@ -228,3 +228,71 @@ def get_segment_breakdown(ticker: str, dimension: str = "segment", metric: str =
     lines = "\n".join(f"  {m}: {_fmt(v)}" for m, v in sorted(out.items(), key=lambda x: -x[1]))
     return (f"{ticker.upper()} FY{fy} {mname} by {dimension} (from the XBRL segment disclosure):\n{lines}\n"
             f"[source: FY{fy} 10-K · {f.accession_no} · {edgar_url(cik, f.accession_no)}]")
+
+
+# --- Part B (P3): year-over-year growth by segment / geography ------------------------------------
+def _growth_pct(this, prior):
+    """(this - prior) / prior, or None if prior is 0/None. Pure/testable."""
+    if prior in (None, 0) or this is None:
+        return None
+    return (this - prior) / abs(prior)
+
+
+def _segment_growth(xb, axis, want_concept, fy):
+    """{member -> (this_year, prior_year)} from the filing's OWN recast prior-year comparatives — so it
+    survives a segment restructuring (the prior year is recast to the current structure IN THE SAME
+    filing), unlike comparing two separate filings. Pure of superlatives; the caller computes growth."""
+    import pandas as pd
+    out = {}
+    for s in xb.get_all_statements():
+        if "Segment" not in (s.get("role_name") or "") or s.get("category") != "disclosure":
+            continue
+        try:
+            df = pd.DataFrame(xb.get_statement(s["role"]))
+        except Exception:
+            continue
+        if "dimension_metadata" not in df.columns or "values" not in df.columns:
+            continue
+        for _, r in df.iterrows():
+            if not r.get("has_values") or want_concept not in str(r.get("concept") or ""):
+                continue
+            m = _member_for_axis(r.get("dimension_metadata"), axis)
+            if not m or m in out:
+                continue
+            this, prior = _value_for_fy(r.get("values"), fy), _value_for_fy(r.get("values"), fy - 1)
+            if this is not None and prior is not None:
+                out[m] = (this, prior)
+    return out
+
+
+def get_segment_growth(ticker: str, dimension: str = "segment", metric: str = "revenue",
+                       fiscal_year: int = None) -> str:
+    """Year-over-year GROWTH of revenue (or operating income) BY BUSINESS SEGMENT or BY GEOGRAPHY — the
+    deterministic answer to "which segment grew fastest / dragged down growth". Uses the filing's own
+    recast prior-year figures (consistent even after a segment restructuring); growth is computed in
+    code (never scanned by the model) and cited. NOTE: this is XBRL as-reported growth — it does NOT
+    isolate organic / ex-M&A growth (that's a non-GAAP figure only in the narrative)."""
+    if dimension not in _AXIS:
+        return f"Unknown dimension '{dimension}'. Use 'segment' or 'geography'."
+    if metric not in _METRIC_CONCEPT:
+        return f"Unknown metric '{metric}'. Use 'revenue' or 'operating_income'."
+    cik = cik_for(ticker)
+    if not cik:
+        return f"No data for {ticker}."
+    try:
+        f = _filing(cik, fiscal_year)
+        if f is None:
+            return f"No 10-K for {ticker}" + (f" FY{fiscal_year}" if fiscal_year else "") + "."
+        period = str(getattr(f, "period_of_report", "") or "")
+        fy = int(period[:4]) if period[:4].isdigit() else fiscal_year
+        g = _segment_growth(f.xbrl(), _AXIS[dimension], _METRIC_CONCEPT[metric], fy)
+    except Exception as e:
+        return f"Could not compute {dimension} {metric} growth for {ticker}: {type(e).__name__}."
+    rows = [(m, t, p, _growth_pct(t, p)) for m, (t, p) in g.items()]
+    rows = sorted([r for r in rows if r[3] is not None], key=lambda x: -x[3])
+    if not rows:
+        return f"No {dimension} {metric} growth (with a comparable prior year) found for {ticker} FY{fy}."
+    lines = "\n".join(f"  {m}: {_fmt(p)} -> {_fmt(t)}  ({gr:+.1%})" for m, t, p, gr in rows)
+    return (f"{ticker.upper()} FY{fy} {metric} YoY by {dimension} (vs FY{fy - 1}, recast, as-reported):\n{lines}\n"
+            f"  fastest: {rows[0][0]} ({rows[0][3]:+.1%}); most-declining: {rows[-1][0]} ({rows[-1][3]:+.1%})\n"
+            f"[source: FY{fy} 10-K · {f.accession_no} · {edgar_url(cik, f.accession_no)}]")
