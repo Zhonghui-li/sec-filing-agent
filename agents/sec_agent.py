@@ -27,6 +27,8 @@ from agents.finance_tools import (get_financials as _get_financials, compute as 
                                   get_ratio as _get_ratio, get_growth as _get_growth,
                                   compute_formula as _compute_formula)
 from agents.filings_retrieval import search_filings as _search_filings
+from agents.statements import (get_statement as _get_statement,
+                               largest_line_item as _largest_line_item)
 from agents.guardrail import guardrail
 from agents import observability
 
@@ -102,8 +104,8 @@ def _budgeted(fn):
     return wrapped
 
 TOOLS = [tool(_budgeted(_get_financials)), tool(_budgeted(_compute)), tool(_budgeted(_get_ratio)),
-         tool(_budgeted(_get_growth)), tool(_budgeted(_compute_formula)), tool(search_filings),
-         tool(abstain)]
+         tool(_budgeted(_get_growth)), tool(_budgeted(_compute_formula)), tool(_budgeted(_get_statement)),
+         tool(_budgeted(_largest_line_item)), tool(search_filings), tool(abstain)]
 
 SYSTEM_PROMPT = f"""You are a financial-analysis assistant that answers questions about \
 public companies' SEC 10-K filings. For NUMBERS (exact figures, ratios, year-over-year growth) \
@@ -128,6 +130,14 @@ interest_coverage). ALWAYS prefer this \
 over assembling a ratio from parts yourself — multi-step ratios (esp. days-outstanding like DPO) \
 are error-prone by hand; the formulas and conventions (ROA uses AVERAGE assets, "debt" means \
 long-term debt not total liabilities, days ratios use 365 × average balance) are fixed in the tool.
+- get_statement: the FULL line items of a statement ("balance_sheet", "income_statement", or \
+"cash_flow"), for statement STRUCTURE or a line item get_financials does not track (e.g. a bank's \
+customer deposits, insurance reserves). Use this only when a specific tracked metric won't do — for \
+revenue, net income, assets, etc. use get_financials.
+- largest_line_item: the single largest (or smallest=true) line item in a balance-sheet \
+section ("liabilities", "assets", "equity") — the exact answer to "what is X's largest liability/ \
+asset?". The max/min is computed in code, so USE THIS rather than pulling a whole statement and \
+eyeballing which number is biggest.
 - search_filings: qualitative content — risk factors, strategy, management's discussion, and \
 recent CORPORATE EVENTS from 8-K / quarterly 10-Q filings (a debt/notes issuance, a buyback \
 authorization, a dividend action, a material agreement, an executive change). Call it AT MOST 2-3 \
