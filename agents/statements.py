@@ -9,6 +9,7 @@ Finance bar: values come straight from XBRL (never the model), each answer cites
 superlatives ("largest liability") are computed in code — the model never scans the numbers and picks.
 """
 import os
+import re
 
 from agents.finance_tools import edgar_url, cik_for
 
@@ -132,3 +133,83 @@ def largest_line_item(ticker: str, section: str = "liabilities", fiscal_year: in
     noun = {"liabilities": "liability", "assets": "asset", "equity": "equity item"}[section]
     return (f"{ticker.upper()}'s {sup} {noun} in FY{fy} is {pick[0]} at {_fmt(pick[1])}. "
             f"[source: FY{fy} balance sheet · {accn} · {edgar_url(cik_for(ticker), accn)}]")
+
+
+# --- Part B: segment / geographic breakdown (dimensional XBRL) ------------------------------------
+_AXIS = {"segment": "BusinessSegmentsAxis", "geography": "GeographicalAxis"}
+_METRIC_CONCEPT = {"revenue": "Revenue", "operating_income": "OperatingIncomeLoss"}
+
+
+def _value_for_fy(values, fy):
+    """From a {period_key -> value} dict (keys like 'duration_2021-12-26_2022-12-31'), the value whose
+    period ENDS in fiscal year `fy`. Pure/testable."""
+    if not isinstance(values, dict):
+        return None
+    for k, v in values.items():
+        dates = re.findall(r"(\d{4})-\d{2}-\d{2}", str(k))
+        if dates and int(dates[-1]) == int(fy) and isinstance(v, (int, float)):
+            return float(v)
+    return None
+
+
+def _member(full_dimension_label):
+    """The member name from a 'axis: Member' dimension label (e.g. '...BusinessSegmentsAxis: Datacenter'
+    -> 'Datacenter'). Pure/testable."""
+    return str(full_dimension_label or "").rsplit(": ", 1)[-1].strip()
+
+
+def _breakdown_from_xbrl(xb, axis, want_concept, fy):
+    """Walk the Segment Reporting disclosures and collect {member -> value} for rows dimensioned by
+    `axis` (BusinessSegments / Geographical) whose concept matches `want_concept`, at fiscal year `fy`.
+    Robust to per-company role names — it matches by axis + concept, not a hardcoded role."""
+    import pandas as pd
+    out = {}
+    for s in xb.get_all_statements():
+        if "Segment" not in (s.get("role_name") or "") or s.get("category") != "disclosure":
+            continue
+        try:
+            df = pd.DataFrame(xb.get_statement(s["role"]))
+        except Exception:
+            continue
+        if "full_dimension_label" not in df.columns or "values" not in df.columns:
+            continue
+        for _, r in df.iterrows():
+            if not r.get("has_values"):
+                continue
+            fdl = str(r.get("full_dimension_label") or "")
+            if axis not in fdl or want_concept not in str(r.get("concept") or ""):
+                continue
+            m, v = _member(fdl), _value_for_fy(r.get("values"), fy)
+            if m and v is not None and m not in out:
+                out[m] = v
+    return out
+
+
+def get_segment_breakdown(ticker: str, dimension: str = "segment", metric: str = "revenue",
+                          fiscal_year: int = None) -> str:
+    """Revenue (or operating income) broken down BY BUSINESS SEGMENT or BY GEOGRAPHY for a fiscal year —
+    dimensional XBRL data the flat metric tools (get_financials) can't reach. `dimension` is "segment"
+    or "geography"; `metric` is "revenue" or "operating_income". Values come from XBRL and the answer
+    cites the filing. Use this for "revenue by segment/region", "which segment is largest", etc."""
+    if dimension not in _AXIS:
+        return f"Unknown dimension '{dimension}'. Use 'segment' or 'geography'."
+    if metric not in _METRIC_CONCEPT:
+        return f"Unknown metric '{metric}'. Use 'revenue' or 'operating_income'."
+    cik = cik_for(ticker)
+    if not cik:
+        return f"No data for {ticker}."
+    try:
+        f = _filing(cik, fiscal_year)
+        if f is None:
+            return f"No 10-K for {ticker}" + (f" FY{fiscal_year}" if fiscal_year else "") + "."
+        period = str(getattr(f, "period_of_report", "") or "")
+        fy = int(period[:4]) if period[:4].isdigit() else fiscal_year
+        out = _breakdown_from_xbrl(f.xbrl(), _AXIS[dimension], _METRIC_CONCEPT[metric], fy)
+    except Exception as e:
+        return f"Could not extract {dimension} {metric} for {ticker}: {type(e).__name__}."
+    if not out:
+        return f"No {dimension} {metric} breakdown found for {ticker} FY{fy}."
+    mname = "revenue" if metric == "revenue" else "operating income"
+    lines = "\n".join(f"  {m}: {_fmt(v)}" for m, v in sorted(out.items(), key=lambda x: -x[1]))
+    return (f"{ticker.upper()} FY{fy} {mname} by {dimension} (from the XBRL segment disclosure):\n{lines}\n"
+            f"[source: FY{fy} 10-K · {f.accession_no} · {edgar_url(cik, f.accession_no)}]")
