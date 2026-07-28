@@ -15,6 +15,7 @@ _IMPLAUSIBLE = [
     (re.compile(r"(-?\d[\d,]*\.?\d*)\s*x\b"), 100),             # turnover ratios are bounded
 ]
 _DATA_TOOLS = {"get_financials", "get_ratio", "get_growth", "compute_formula",
+               "get_statement", "largest_line_item",
                "get_my_financials", "get_my_ratio", "get_my_growth"}
 
 _SAFE = ("I can't give a reliable figure for this — it needs a computation I don't have a "
