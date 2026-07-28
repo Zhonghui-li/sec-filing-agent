@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install pytest
+      - run: pip install pytest pandas
       - name: L1 — tools + scorer logic (no LLM / DB / secrets)
         run: python -m pytest tests/ -q
 
