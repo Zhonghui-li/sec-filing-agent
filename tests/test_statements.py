@@ -43,3 +43,22 @@ def test_equity_section_isolated_from_liabilities():
 def test_empty_section_returns_none():
     only_assets = _bs()[_bs()["parent_concept"].isin(["us-gaap_Assets", None])]
     assert _pick_line_item(only_assets, "2022", "liabilities") is None
+
+
+# --- Part B: segment breakdown pure helpers (no network) -----------------------------------------
+
+def test_value_for_fy_picks_the_period_ending_in_the_fiscal_year():
+    from agents.statements import _value_for_fy
+    values = {"duration_2021-12-26_2022-12-31": 6043000000.0,
+              "duration_2020-12-27_2021-12-25": 3694000000.0}
+    assert _value_for_fy(values, 2022) == 6043000000.0
+    assert _value_for_fy(values, 2021) == 3694000000.0
+    assert _value_for_fy(values, 2019) is None          # no period ends in 2019
+    assert _value_for_fy("not a dict", 2022) is None
+
+
+def test_member_parses_the_dimension_member():
+    from agents.statements import _member
+    assert _member("us-gaap:StatementBusinessSegmentsAxis: Datacenter") == "Datacenter"
+    assert _member("srt:StatementGeographicalAxis: China (including Hong Kong)") == "China (including Hong Kong)"
+    assert _member("") == ""
