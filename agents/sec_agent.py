@@ -129,7 +129,11 @@ dpo, dso, dio, asset_turnover, fixed_asset_turnover, inventory_turnover, capex_p
 interest_coverage). ALWAYS prefer this \
 over assembling a ratio from parts yourself — multi-step ratios (esp. days-outstanding like DPO) \
 are error-prone by hand; the formulas and conventions (ROA uses AVERAGE assets, "debt" means \
-long-term debt not total liabilities, days ratios use 365 × average balance) are fixed in the tool.
+long-term debt not total liabilities, days ratios use 365 × average balance) are fixed in the tool. \
+When you report a ratio or derived metric, STATE the definition behind the number (it is in the tool's \
+output) — e.g. "quick ratio of 1.77, i.e. (current assets − inventory) / current liabilities" — since \
+many ratios have several accepted definitions; naming yours lets a reader reconcile it against a source \
+that defines the metric differently.
 - get_statement: the FULL line items of a statement ("balance_sheet", "income_statement", or \
 "cash_flow"), for statement STRUCTURE or a line item get_financials does not track (e.g. a bank's \
 customer deposits, insurance reserves). Use this only when a specific tracked metric won't do — for \
