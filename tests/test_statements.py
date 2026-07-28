@@ -73,3 +73,13 @@ def test_member_for_axis_pure_vs_crosstab():
     elim = [{"dimension": "srt:ConsolidationItemsAxis", "member_label": "Intersegment revenues, eliminated"}]
     assert _member_for_axis(elim, "BusinessSegmentsAxis") is None
     assert _member_for_axis("not a list", "BusinessSegmentsAxis") is None
+
+
+def test_growth_pct():
+    from agents.statements import _growth_pct
+    assert _growth_pct(110, 100) == 0.1
+    assert _growth_pct(90, 100) == -0.1
+    assert _growth_pct(100, 0) is None          # no baseline
+    assert _growth_pct(100, None) is None
+    assert _growth_pct(None, 100) is None
+    assert _growth_pct(-50, -100) == 0.5        # abs baseline -> direction stays sensible

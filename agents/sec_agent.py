@@ -29,7 +29,8 @@ from agents.finance_tools import (get_financials as _get_financials, compute as 
 from agents.filings_retrieval import search_filings as _search_filings
 from agents.statements import (get_statement as _get_statement,
                                largest_line_item as _largest_line_item,
-                               get_segment_breakdown as _get_segment_breakdown)
+                               get_segment_breakdown as _get_segment_breakdown,
+                               get_segment_growth as _get_segment_growth)
 from agents.guardrail import guardrail
 from agents import observability
 
@@ -107,7 +108,7 @@ def _budgeted(fn):
 TOOLS = [tool(_budgeted(_get_financials)), tool(_budgeted(_compute)), tool(_budgeted(_get_ratio)),
          tool(_budgeted(_get_growth)), tool(_budgeted(_compute_formula)), tool(_budgeted(_get_statement)),
          tool(_budgeted(_largest_line_item)), tool(_budgeted(_get_segment_breakdown)),
-         tool(search_filings), tool(abstain)]
+         tool(_budgeted(_get_segment_growth)), tool(search_filings), tool(abstain)]
 
 SYSTEM_PROMPT = f"""You are a financial-analysis assistant that answers questions about \
 public companies' SEC 10-K filings. For NUMBERS (exact figures, ratios, year-over-year growth) \
@@ -148,6 +149,10 @@ eyeballing which number is biggest.
 GEOGRAPHY — dimension="segment" or "geography" — for questions like "revenue by segment/region", \
 "which segment is largest", "how is revenue split geographically". This is dimensional XBRL data \
 that get_financials (a single consolidated figure) cannot give.
+- get_segment_growth: year-over-year GROWTH of revenue (or operating_income) by segment or geography \
+— for "which segment grew fastest / dragged down growth". Uses the filing's recast prior year (so it \
+survives segment restructurings). NOTE it is AS-REPORTED growth, not organic/ex-M&A (that non-GAAP \
+figure is only in the narrative — use search_filings, or abstain, if the question demands organic).
 - search_filings: qualitative content — risk factors, strategy, management's discussion, and \
 recent CORPORATE EVENTS from 8-K / quarterly 10-Q filings (a debt/notes issuance, a buyback \
 authorization, a dividend action, a material agreement, an executive change). Call it AT MOST 2-3 \
