@@ -10,11 +10,10 @@ superlatives ("largest liability") are computed in code — the model never scan
 """
 import os
 
-from edgar import Company, set_identity
-
 from agents.finance_tools import edgar_url, cik_for
 
-set_identity("Zhonghui Li lizhonghui923@gmail.com")
+# edgartools is imported lazily (inside _filing) so `import agents.statements` — and its pure-logic
+# unit tests — don't require the heavy dep; matches how finance_tools defers edgar.
 
 _STMT = {"balance_sheet": "balance_sheet", "income_statement": "income_statement",
          "cash_flow": "cash_flow_statement"}
@@ -39,6 +38,8 @@ def _fmt(v):
 
 def _filing(cik, fiscal_year):
     """The 10-K for `fiscal_year` (±1 for non-December year-ends), or the latest 10-K if None."""
+    from edgar import Company, set_identity
+    set_identity("Zhonghui Li lizhonghui923@gmail.com")  # SEC requires a contact; idempotent
     cands = {}
     for f in Company(int(cik)).get_filings(form="10-K"):
         if f.form != "10-K":
