@@ -57,8 +57,19 @@ def test_value_for_fy_picks_the_period_ending_in_the_fiscal_year():
     assert _value_for_fy("not a dict", 2022) is None
 
 
-def test_member_parses_the_dimension_member():
-    from agents.statements import _member
-    assert _member("us-gaap:StatementBusinessSegmentsAxis: Datacenter") == "Datacenter"
-    assert _member("srt:StatementGeographicalAxis: China (including Hong Kong)") == "China (including Hong Kong)"
-    assert _member("") == ""
+def test_member_for_axis_pure_vs_crosstab():
+    from agents.statements import _member_for_axis
+    seg = [{"dimension": "us-gaap:StatementBusinessSegmentsAxis", "member_label": "Datacenter"}]
+    assert _member_for_axis(seg, "BusinessSegmentsAxis") == "Datacenter"
+    # ConsolidationItems=Operating Segments is a scope qualifier, still a pure segment breakdown
+    scoped = [{"dimension": "srt:ConsolidationItemsAxis", "member_label": "Operating Segments"},
+              {"dimension": "us-gaap:StatementBusinessSegmentsAxis", "member_label": "Commercial"}]
+    assert _member_for_axis(scoped, "BusinessSegmentsAxis") == "Commercial"
+    # crossed with ANOTHER breakdown axis (geography) -> rejected, else it double-counts
+    crosstab = [{"dimension": "us-gaap:StatementBusinessSegmentsAxis", "member_label": "Commercial"},
+                {"dimension": "srt:StatementGeographicalAxis", "member_label": "US"}]
+    assert _member_for_axis(crosstab, "BusinessSegmentsAxis") is None
+    # intersegment / corporate reconciling item -> rejected
+    elim = [{"dimension": "srt:ConsolidationItemsAxis", "member_label": "Intersegment revenues, eliminated"}]
+    assert _member_for_axis(elim, "BusinessSegmentsAxis") is None
+    assert _member_for_axis("not a list", "BusinessSegmentsAxis") is None
