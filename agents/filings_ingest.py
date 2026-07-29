@@ -132,9 +132,12 @@ def _tenq_mda(tenq):
     return None
 
 
-def _fetch_10q_mda(ticker, quarters):
+def _fetch_10q_mda(ticker, quarters, target_year=None):
     """Latest `quarters` 10-Q MD&A sections (the quarterly narrative). Returns
-    [(fy, section, accession, text)]."""
+    [(fy, section, accession, text)].
+
+    With `target_year`, fetch that fiscal year's quarters instead of the most recent — the year-aware
+    path (mirrors 10-K/8-K), so a historical-quarter question can reach that year's 10-Q narrative."""
     out = []
     co = _company(ticker)
     if co is None:
@@ -142,26 +145,35 @@ def _fetch_10q_mda(ticker, quarters):
     for f in co.get_filings(form="10-Q"):
         if f.form != "10-Q":
             continue
+        period = str(getattr(f, "period_of_report", "") or "")
+        fy = int(period[:4]) if period[:4].isdigit() else int(str(f.filing_date)[:4])
+        if target_year is not None:
+            if fy > target_year:           # newer than target (newest-first) -> keep scanning
+                continue
+            if fy < target_year:           # passed the target year -> done
+                break
         try:
             mda = _tenq_mda(f.obj())
         except Exception:
             continue
         if mda:
-            period = str(getattr(f, "period_of_report", "") or "")
-            fy = int(period[:4]) if period[:4].isdigit() else int(str(f.filing_date)[:4])
             out.append((fy, "mda_10q", f.accession_no, mda))
         if len(out) >= quarters:
             break
     return out
 
 
-def _fetch_8k(ticker, months=18, cap=12):
+def _fetch_8k(ticker, months=18, cap=12, target_year=None):
     """Recent 8-K events, bounded to ~`months` back and `cap` filings. Emits ONE row per item (the
     concise event description), not per filing: an 8-K bundles a high-signal event item (e.g. Item
     8.01 "issued $550M of notes") with boilerplate (Item 9.01 exhibit lists) that, chunked together,
     dilutes the event's embedding and sinks its retrieval rank — per-item keeps each event's signal
     clean. Skips the large earnings exhibits that `.text()` would pull in. Filings come newest-first,
-    so we stop once past the cutoff. Returns [(fy, section, accession, text), ...]."""
+    so we stop once past the cutoff. Returns [(fy, section, accession, text), ...].
+
+    With `target_year`, fetch that CALENDAR year's 8-Ks instead of the recent-`months` window — this is
+    the year-aware path (mirrors 10-K), so a historical-event question ("the 8-K dated July 2022") can
+    be answered rather than falling outside the recency window."""
     from datetime import date, timedelta
     cutoff = date.today() - timedelta(days=months * 30)
     out, n_filings = [], 0
@@ -175,7 +187,12 @@ def _fetch_8k(ticker, months=18, cap=12):
             fd = date.fromisoformat(str(f.filing_date)[:10])
         except Exception:
             continue
-        if fd < cutoff:
+        if target_year is not None:
+            if fd.year > target_year:      # newer than the target year -> keep scanning (newest-first)
+                continue
+            if fd.year < target_year:      # passed the target year -> done
+                break
+        elif fd < cutoff:
             break
         try:
             ek = f.obj()
@@ -220,7 +237,9 @@ def ingest_ticker(ticker, years=1, fiscal_year=None):
             if _present(cur):
                 return 0                       # already indexed -> cache hit, nothing to do
         if fy_req is not None:
-            sections = _fetch_sections(tk, fiscal_year=fy_req)   # that year's 10-K only
+            sections = _fetch_sections(tk, fiscal_year=fy_req)   # that year's 10-K
+            sections += _fetch_8k(tk, target_year=fy_req, cap=30)   # + that year's 8-K events (historical)
+            sections += _fetch_10q_mda(tk, quarters=4, target_year=fy_req)  # + that year's 10-Q MD&A
         else:
             sections = _fetch_sections(tk, years)
             sections += _fetch_10q_mda(tk, quarters=4)   # last 4 quarters of 10-Q MD&A
