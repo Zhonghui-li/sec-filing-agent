@@ -3,84 +3,204 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SEC Filing Agent</title>
+<title>Vouch — financial answers you can audit</title>
 <style>
-  :root { --accent:#0a7d4d; --dark:#0b2239; --bg:#f6f7f9; }
+  :root {
+    --ground:#0c141c; --panel:#131e29; --panel-2:#172533; --line:#243544;
+    --ink:#eaf1f7; --muted:#8a9bab; --faint:#5f7486;
+    --accent:#35d6a0; --accent-dim:rgba(53,214,160,.13); --accent-line:rgba(53,214,160,.30);
+    --amber:#e2b04a; --amber-dim:rgba(226,176,74,.11); --amber-line:rgba(226,176,74,.34);
+    --user:#1b2a39; --danger:#e07a6b;
+    --serif:Georgia,"Times New Roman",serif;
+    --sans:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:"SF Mono",ui-monospace,"Menlo",Consolas,monospace;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 28px rgba(0,0,0,.22);
+  }
   * { box-sizing:border-box; }
-  body { margin:0; font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-         background:var(--bg); color:#1a1a1a; }
-  header { background:var(--dark); color:#fff; padding:14px 18px; font-weight:600; font-size:18px; }
-  header span { color:#48d597; }
-  header small { display:block; font-weight:400; font-size:12px; color:#9fb3c8; margin-top:3px; }
-  #chat { max-width:780px; margin:0 auto; padding:18px; }
-  .msg { margin:14px 0; }
-  .user { text-align:right; }
-  .user .bubble { background:var(--dark); color:#fff; }
-  .bot .bubble { background:#fff; border:1px solid #e3e6ea; }
-  .bubble { display:inline-block; padding:10px 14px; border-radius:12px; max-width:92%;
-            white-space:pre-wrap; line-height:1.5; text-align:left; }
-  .trace { margin-top:8px; font-size:12px; color:#5a6b7b; }
-  .trace summary { cursor:pointer; color:#8a98a6; user-select:none; list-style:none; }
-  .trace summary::-webkit-details-marker { display:none; }
-  .trace summary:hover { color:var(--accent); }
-  .trace[open] summary { margin-bottom:6px; }
-  .trace-body { padding-left:2px; line-height:1.8; }
-  .trace code { background:#eef1f4; padding:1px 5px; border-radius:4px; }
-  .trace-step { margin-bottom:6px; }
-  .trace-out { padding-left:16px; color:#6b7885; white-space:pre-wrap;
-               word-break:break-word; line-height:1.5; }
-  .trace-check { display:inline; color:#8a5a00; background:#fdf3e0;
-                 padding:1px 5px; border-radius:4px; }
-  .bubble a { color:var(--accent); }
-  .sources { margin-top:8px; font-size:12px; color:#5a6b7b; }
-  .sources a { color:var(--accent); text-decoration:none; }
-  .sources a:hover { text-decoration:underline; }
-  .hint { color:#7a8896; font-size:13px; }
-  form { max-width:780px; margin:0 auto; padding:0 18px 24px; display:flex; gap:8px; }
-  input { flex:1; padding:12px 14px; border:1px solid #cfd6dd; border-radius:10px; font-size:15px; }
-  button { padding:12px 18px; border:0; border-radius:10px; background:var(--accent);
-           color:#fff; font-weight:700; cursor:pointer; }
-  button:disabled { opacity:.5; cursor:default; }
-  #uploadbar { max-width:780px; margin:0 auto; padding:4px 18px 0; display:flex; gap:8px;
-               align-items:center; font-size:13px; color:#5a6b7b; }
-  #uploadbar label { background:#eef1f4; color:#0b2239; padding:7px 12px; border-radius:8px;
-                     cursor:pointer; font-weight:600; }
-  #uploadbar label:hover { background:#e3e6ea; }
-  #exportbar { max-width:780px; margin:0 auto; padding:2px 18px 0; }
-  #exptoggle { background:#eef1f4; color:#0b2239; padding:7px 12px; border-radius:8px;
-    font-size:13px; font-weight:400; }
-  #exptoggle:hover { background:#e3e6ea; }
-  #expform { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:8px; }
-  #expform input { flex:0 1 auto; padding:7px 10px; font-size:13px; }
-  #expticker { width:150px; } #expmetrics { flex:1 1 240px; min-width:200px; }
-  #expfrom, #expto { width:74px; }
-  #expdl { padding:8px 14px; font-size:13px; }
-  #experr { font-size:12.5px; color:#b3452e; }
-  #deldoc { display:inline-flex; align-items:center; gap:4px; white-space:nowrap;
-            background:#fff; color:#c0392b; border:1px solid #e6c3c0; border-radius:8px;
-            padding:7px 11px; font-size:13px; font-weight:600; line-height:1; cursor:pointer; }
-  #deldoc:hover { background:#fbeeed; border-color:#d9a39f; }
-  .fb { margin-top:8px; display:flex; align-items:center; gap:6px; }
-  .fb button { background:#fff; border:1px solid #cfd6dd; border-radius:6px; padding:2px 8px;
-               font-size:14px; line-height:1.4; cursor:pointer; }
-  .fb button:hover:not(:disabled) { background:#eef1f4; }
-  .fb button:disabled { opacity:.45; cursor:default; }
-  .fb .fbmsg { font-size:12px; color:#3a8d4f; }
-  .parsed { margin-top:8px; font-size:12px; }
-  .parsed summary { cursor:pointer; color:#8a98a6; list-style:none; }
+  html,body { overflow-x:hidden; }
+  body { margin:0; font-family:var(--sans); background:var(--ground); color:var(--ink);
+         font-size:15px; line-height:1.55;
+         background-image:radial-gradient(1200px 500px at 50% -10%, #14212e 0%, var(--ground) 70%); }
+  ::selection { background:var(--accent-dim); }
+
+  /* ---- header ---- */
+  header { border-bottom:1px solid var(--line); background:rgba(10,17,24,.72);
+           backdrop-filter:blur(8px); position:sticky; top:0; z-index:20; }
+  .head-in { max-width:860px; margin:0 auto; padding:15px 20px 14px;
+             display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; }
+  .wordmark { font-family:var(--serif); font-size:19px; font-weight:600; letter-spacing:.2px;
+              color:var(--ink); }
+  .wordmark .mk { color:var(--accent); }
+  .trustline { font-size:12px; color:var(--muted); letter-spacing:.2px; flex:1 1 320px; }
+  .trustline b { color:var(--ink); font-weight:600; }
+  .trustline .sep { color:var(--faint); margin:0 6px; }
+  .userchip { font-size:12.5px; color:var(--muted); margin-left:auto; }
+  .userchip a { color:var(--accent); cursor:pointer; margin-left:8px; text-decoration:none; }
+  .userchip a:hover { text-decoration:underline; }
+
+  /* ---- chat column ---- */
+  #chat { max-width:860px; margin:0 auto; padding:22px 20px 8px; }
+  .msg { margin:20px 0; animation:rise .28s ease both; }
+  @keyframes rise { from { opacity:0; transform:translateY(6px);} to { opacity:1; transform:none;} }
+  @media (prefers-reduced-motion:reduce){ .msg{ animation:none; } }
+  .msg.user { display:flex; justify-content:flex-end; }
+  .user .bubble { background:var(--user); border:1px solid var(--line); color:var(--ink);
+                  border-radius:13px 13px 3px 13px; padding:10px 15px; max-width:80%;
+                  white-space:pre-wrap; }
+  .bot .bubble { background:var(--panel); border:1px solid var(--line);
+                 border-radius:3px 13px 13px 13px; padding:15px 17px; max-width:100%;
+                 white-space:pre-wrap; line-height:1.6; box-shadow:var(--shadow);
+                 position:relative; }
+  /* verified answer carries a quiet emerald spine — the "grounded" signal */
+  .bot .bubble::before { content:""; position:absolute; left:0; top:12px; bottom:12px; width:2px;
+                         border-radius:2px; background:var(--accent-line); }
+  .bot.abstain .bubble::before { background:var(--amber-line); }
+  .bubble a { color:var(--accent); text-decoration:none; border-bottom:1px solid var(--accent-line); }
+  .bubble a:hover { border-bottom-color:var(--accent); }
+  .num { font-variant-numeric:tabular-nums; }
+
+  /* honest-abstention treatment — a feature, not a failure */
+  .abstain-tag { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600;
+                 letter-spacing:.4px; text-transform:uppercase; color:var(--amber);
+                 background:var(--amber-dim); border:1px solid var(--amber-line);
+                 padding:3px 9px; border-radius:20px; margin-bottom:9px; }
+
+  /* ---- provenance (sources) — first-class, not gray fine print ---- */
+  .provenance { margin-top:13px; padding-top:12px; border-top:1px solid var(--line);
+                display:flex; flex-wrap:wrap; align-items:center; gap:7px; }
+  .prov-label { font-size:11px; font-weight:600; letter-spacing:.5px; text-transform:uppercase;
+                color:var(--faint); margin-right:2px; }
+  .src-chip { display:inline-flex; align-items:center; gap:6px; font-size:12px;
+              font-family:var(--mono); color:var(--accent); background:var(--accent-dim);
+              border:1px solid var(--accent-line); border-radius:7px; padding:4px 9px;
+              text-decoration:none; transition:background .15s; }
+  .src-chip:hover { background:rgba(53,214,160,.2); }
+  .src-chip svg { opacity:.8; }
+  .doc-prov .src-chip { color:#7fb2e6; background:rgba(91,157,217,.12); border-color:rgba(91,157,217,.32); }
+
+  /* ---- audit trail — visible concise card (the differentiator) ---- */
+  .audit { margin-top:13px; border:1px solid var(--line); border-radius:10px; background:var(--panel-2);
+           overflow:hidden; }
+  .audit > summary { cursor:pointer; list-style:none; padding:9px 13px; font-size:12.5px;
+                     color:var(--muted); display:flex; align-items:center; gap:8px;
+                     user-select:none; }
+  .audit > summary::-webkit-details-marker { display:none; }
+  .audit > summary:hover { color:var(--ink); }
+  .audit > summary .lock { color:var(--accent); }
+  .audit > summary .chev { margin-left:auto; color:var(--faint); transition:transform .18s; }
+  .audit[open] > summary .chev { transform:rotate(90deg); }
+  .audit[open] > summary { border-bottom:1px solid var(--line); }
+  .audit-body { padding:11px 13px; display:flex; flex-direction:column; gap:10px; }
+  .audit-step { font-size:12.5px; }
+  .tool-line { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+  .tool-chip { font-family:var(--mono); font-size:11.5px; color:var(--accent); background:var(--accent-dim);
+               border:1px solid var(--accent-line); border-radius:5px; padding:1px 7px; }
+  .tool-args { font-family:var(--mono); font-size:11.5px; color:var(--faint);
+               overflow-wrap:anywhere; }
+  .audit-out { margin-top:5px; padding-left:11px; border-left:2px solid var(--line);
+               color:var(--muted); font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere;
+               font-variant-numeric:tabular-nums; line-height:1.5; }
+  .check { position:relative; display:inline-block; color:var(--amber); background:var(--amber-dim);
+           border:1px solid var(--amber-line); border-radius:5px; padding:0 6px; font-size:11.5px; cursor:help; }
+  .check[data-tip]::after { content:attr(data-tip); position:absolute; left:0; bottom:calc(100% + 7px);
+           width:250px; max-width:72vw; background:#0a1119; color:#cdd9e4; border:1px solid var(--line);
+           border-radius:8px; padding:8px 10px; font-size:11.5px; line-height:1.45; font-weight:400;
+           letter-spacing:0; text-transform:none; opacity:0; visibility:hidden; transition:opacity .14s;
+           z-index:10; box-shadow:var(--shadow); pointer-events:none; }
+  .check[data-tip]:hover::after { opacity:1; visibility:visible; }
+  .doc-prov .src-chip { color:#7fb2e6; background:rgba(91,157,217,.12); border-color:rgba(91,157,217,.32); }
+  .brand { display:inline-flex; align-items:center; gap:11px; }
+  .brand .mono { font-family:var(--serif); font-weight:600; letter-spacing:.3px; color:var(--ink); font-size:21px; }
+  .login-card { max-width:470px; text-align:center; }
+  .login-card .brand { margin-bottom:26px; justify-content:center; }
+  .login-card .brand .mono { font-size:23px; }
+  .login-card h1 { font-family:var(--serif); font-size:33px; line-height:1.15; font-weight:600;
+                   text-wrap:balance; margin:0 0 16px; }
+  .login-card p { color:var(--muted); line-height:1.65; margin:0 0 24px; }
+  .login-card p b { color:var(--ink); font-weight:600; }
+  .guarantees { display:flex; justify-content:center; flex-wrap:wrap; gap:8px; margin:0 auto 28px; max-width:440px; }
+  .gg { font-size:12px; color:var(--muted); display:inline-flex; align-items:center; gap:7px;
+        background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:6px 12px; }
+  .gg .gdot { width:6px; height:6px; border-radius:50%; background:var(--accent); flex:none; }
+  .gg.hold .gdot { background:var(--amber); }
+
+  /* ---- feedback ---- */
+  .fb { margin-top:12px; display:flex; align-items:center; gap:7px; }
+  .fb button { background:transparent; border:1px solid var(--line); border-radius:7px;
+               padding:3px 10px; font-size:14px; line-height:1.4; cursor:pointer; color:var(--muted); }
+  .fb button:hover:not(:disabled) { background:var(--panel-2); color:var(--ink); border-color:var(--faint); }
+  .fb button:disabled { opacity:.4; cursor:default; }
+  .fb .fbmsg { font-size:12px; color:var(--accent); }
+
+  .hint { color:var(--faint); font-size:14px; }
+  .sources { margin-top:8px; font-size:12px; color:var(--muted); }
+
+  /* ---- intro / welcome card ---- */
+  .intro .bubble { background:linear-gradient(180deg,var(--panel) 0%,#101a24 100%); white-space:normal; }
+  .intro h2 { font-family:var(--serif); font-size:18px; margin:0 0 8px; font-weight:600; }
+  .intro p { margin:0 0 12px; color:var(--muted); }
+  .intro .try { display:flex; flex-direction:column; gap:7px; margin:12px 0 4px; }
+  .chip-q { text-align:left; font-size:13.5px; color:var(--ink); background:var(--panel-2);
+            border:1px solid var(--line); border-radius:9px; padding:9px 12px; cursor:pointer;
+            transition:border-color .15s,background .15s; font-family:inherit; }
+  .chip-q:hover { border-color:var(--accent-line); background:#182634; }
+  .intro .guarantee { display:flex; gap:16px; flex-wrap:wrap; margin-top:14px; padding-top:13px;
+                      border-top:1px solid var(--line); }
+  .g-item { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:7px; }
+  .g-item .dot { width:6px; height:6px; border-radius:50%; background:var(--accent); flex:none; }
+  .g-item.hold .dot { background:var(--amber); }
+
+  /* ---- input + action bars ---- */
+  .composer { max-width:860px; margin:0 auto; padding:6px 20px 22px; position:sticky; bottom:0;
+              background:linear-gradient(180deg,rgba(12,20,28,0) 0%,var(--ground) 34%); }
+  .bars { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:9px; }
+  .ghost { background:var(--panel); color:var(--muted); border:1px solid var(--line);
+           padding:7px 12px; border-radius:8px; font-size:12.5px; cursor:pointer; font-weight:500;
+           display:inline-flex; align-items:center; gap:6px; font-family:inherit; }
+  .ghost:hover { background:var(--panel-2); color:var(--ink); border-color:var(--faint); }
+  #docscope { background:var(--panel); color:var(--ink); border:1px solid var(--line);
+              border-radius:8px; padding:7px 10px; font-size:12.5px; }
+  #deldoc { color:var(--danger); border-color:rgba(224,122,107,.34); }
+  #deldoc:hover { background:rgba(224,122,107,.1); }
+  #upstatus, #experr { font-size:12.5px; color:var(--muted); }
+  #experr { color:var(--danger); }
+  #expform { display:flex; gap:6px; flex-wrap:wrap; align-items:center; width:100%; margin-top:4px; }
+  #expform input { background:var(--panel); color:var(--ink); border:1px solid var(--line);
+                   border-radius:8px; padding:7px 10px; font-size:12.5px; font-family:inherit; }
+  #expticker { width:160px; } #expmetrics { flex:1 1 240px; min-width:180px; }
+  #expfrom,#expto { width:78px; }
+  #expform span { color:var(--faint); }
+
+  form#f { display:flex; gap:9px; align-items:center; }
+  #q { flex:1; background:var(--panel); color:var(--ink); border:1px solid var(--line);
+       border-radius:11px; padding:13px 15px; font-size:15px; font-family:inherit; outline:none;
+       transition:border-color .15s,box-shadow .15s; }
+  #q::placeholder { color:var(--faint); }
+  #q:focus { border-color:var(--accent-line); box-shadow:0 0 0 3px var(--accent-dim); }
+  #send { padding:13px 22px; border:0; border-radius:11px; background:var(--accent); color:#06231a;
+          font-weight:700; cursor:pointer; font-family:inherit; font-size:15px; transition:opacity .15s; }
+  #send:hover:not(:disabled) { opacity:.9; }
+  #send:disabled { opacity:.45; cursor:default; }
+
+  /* parsed-upload preview */
+  .parsed { margin-top:10px; font-size:12px; }
+  .parsed summary { cursor:pointer; color:var(--faint); list-style:none; }
   .parsed summary::-webkit-details-marker { display:none; }
   .parsed summary:hover { color:var(--accent); }
-  .parsed pre { background:#0b2239; color:#d7e3ee; padding:10px; border-radius:8px; overflow:auto;
-                white-space:pre-wrap; line-height:1.4; max-height:320px; font-size:11.5px; }
-  .parsed table { border-collapse:collapse; margin-top:6px; font-size:11.5px; }
-  .parsed td, .parsed th { border:1px solid #d7e3ee; padding:2px 6px; text-align:left; }
-  header .userchip { float:right; font-weight:400; font-size:13px; color:#9fb3c8; }
-  header .userchip a { color:#48d597; cursor:pointer; margin-left:8px; }
-  #login { position:fixed; inset:0; background:var(--bg); z-index:50; display:none;
-           flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px; }
-  #login h1 { color:var(--dark); margin:0 0 6px; font-size:24px; }
-  #login h1 span { color:var(--accent); }
-  #login p { color:#5a6b7b; max-width:440px; line-height:1.6; margin:0 0 24px; }
+  .parsed pre { background:#0a1119; color:#cdd9e4; padding:11px; border-radius:8px; overflow:auto;
+                white-space:pre-wrap; line-height:1.45; max-height:320px; font-size:11.5px;
+                border:1px solid var(--line); }
+  .parsed table { border-collapse:collapse; margin-top:6px; font-size:11.5px; font-variant-numeric:tabular-nums; }
+  .parsed td,.parsed th { border:1px solid var(--line); padding:3px 8px; text-align:left; color:var(--muted); }
+  .parsed th { color:var(--ink); }
+
+  /* ---- sign-in screen ---- */
+  #login { position:fixed; inset:0; background:var(--ground); z-index:50; display:none;
+           flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px;
+           background-image:radial-gradient(900px 420px at 50% 8%, #16242f 0%, var(--ground) 68%); }
+  #login .lm { font-family:var(--serif); font-size:30px; margin:0 0 10px; }
+  #login .lm .mk { color:var(--accent); }
+  #login p { color:var(--muted); max-width:460px; line-height:1.65; margin:0 0 26px; }
   #login .gbtn { display:flex; justify-content:center; }
   #app { display:none; }
 </style>
@@ -88,71 +208,96 @@
 <body>
 <!-- sign-in screen (only shown when GOOGLE_CLIENT_ID is configured server-side) -->
 <div id="login">
-  <h1>📑 SEC <span>Filing Agent</span></h1>
-  <p>A finance-grade agent over SEC 10-K filings and your own documents. Sign in to continue —
-     your uploaded documents stay private to your account.</p>
-  <div class="gbtn" id="gbtn"></div>
+  <div class="login-card">
+    <div class="brand">
+      <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><rect x="1.5" y="1.5" width="37" height="37" rx="9.5" fill="#131e29" stroke="#2c3f4f"/><text x="20" y="28" text-anchor="middle" font-family="Georgia,serif" font-size="23" font-weight="600" fill="#35d6a0">V</text></svg>
+      <span class="mono">Vouch</span>
+    </div>
+    <h1>Financial answers you can audit.</h1>
+    <p>An analyst-grade agent for SEC filings and the documents you upload. Ask about any U.S. public
+       company and get precise figures from XBRL, narrative grounded in the filings, every claim cited to
+       its source. When a figure isn't reported, <b>Vouch</b> tells you plainly instead of estimating it.</p>
+    <div class="guarantees">
+      <span class="gg"><span class="gdot"></span>Figures from XBRL, not memory</span>
+      <span class="gg"><span class="gdot"></span>Every claim cited</span>
+      <span class="gg"><span class="gdot"></span>10-K · 10-Q · 8-K</span>
+      <span class="gg"><span class="gdot"></span>Bring your own documents</span>
+      <span class="gg hold"><span class="gdot"></span>Abstains when unreported</span>
+    </div>
+    <div class="gbtn" id="gbtn"></div>
+    <div style="margin-top:20px;font-size:12px;color:var(--faint)">Your uploaded documents stay private to your account.</div>
+  </div>
 </div>
 
 <div id="app">
-<header>📑 SEC <span>Filing Agent</span>
-  <span class="userchip" id="userchip"></span>
-  <small>Exact XBRL numbers for any U.S. public company, cited to the filing · filing-text search for AAPL · MSFT · NVDA · AMZN · JPM · TSLA · KO</small>
+<header>
+  <div class="head-in">
+    <div class="brand">
+      <svg width="28" height="28" viewBox="0 0 40 40" aria-hidden="true"><rect x="1.5" y="1.5" width="37" height="37" rx="9.5" fill="#131e29" stroke="#2c3f4f"/><text x="20" y="28" text-anchor="middle" font-family="Georgia,serif" font-size="23" font-weight="600" fill="#35d6a0">V</text></svg>
+      <span class="mono">Vouch</span>
+    </div>
+    <span class="userchip" id="userchip"></span>
+  </div>
 </header>
+
 <div id="chat">
-  <div class="msg bot"><div class="bubble">Ask me about any U.S. public company's financials — exact numbers straight from SEC XBRL. Try:
-• What was Apple's revenue in fiscal 2024?
-• What's Alphabet's net margin, and how did Netflix's revenue change year over year?
-• Which earned more last year, Apple or Microsoft?
-• What does JPMorgan say about its capital requirements? (filing-text search covers AAPL, MSFT, NVDA, AMZN, JPM, TSLA, KO)
-
-Every number comes from XBRL (never the model's memory), every claim is cited, and I'll say so honestly when something isn't reported.
-
-You can also upload your own document (PDF) — an internal statement or a private company's financials — and ask about it. Exact numbers come from its tables, cited to the cell.</div></div>
+  <div class="msg bot intro">
+    <div class="bubble">
+      <h2>Financial answers you can audit.</h2>
+      <p>An analyst-grade agent for SEC filings and the documents you upload. Ask about any U.S. public
+         company and get precise figures from XBRL, narrative grounded in the filings, every claim cited
+         to its source. When a figure isn't reported, Vouch tells you plainly instead of estimating it.</p>
+      <div class="guarantees" style="margin:16px 0 0;max-width:none;justify-content:flex-start">
+        <span class="gg"><span class="gdot"></span>Figures from XBRL, not memory</span>
+        <span class="gg"><span class="gdot"></span>Every claim cited</span>
+        <span class="gg"><span class="gdot"></span>10-K · 10-Q · 8-K</span>
+        <span class="gg"><span class="gdot"></span>Bring your own documents</span>
+        <span class="gg hold"><span class="gdot"></span>Abstains when unreported</span>
+      </div>
+    </div>
+  </div>
   <div id="docsnote" class="msg bot" style="display:none"><div class="bubble"></div></div>
 </div>
-<div id="uploadbar">
-  <label for="file">📎 Upload a document</label>
-  <input id="file" type="file" accept=".pdf,.docx,.xlsx" style="display:none" />
-  <select id="docscope" style="display:none; padding:6px 8px; border:1px solid #cfd6dd;
-          border-radius:8px; font-size:13px; color:#0b2239;">
-    <option value="">Ask across all my documents</option>
-  </select>
-  <button id="deldoc" type="button" title="Delete the selected document" style="display:none">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <polyline points="3 6 5 6 21 6"></polyline>
-      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-    </svg>Delete</button>
-  <span id="upstatus"></span>
-</div>
-<div id="exportbar">
-  <button id="exptoggle" type="button">📊 Export figures to CSV</button>
-  <div id="expform" style="display:none">
-    <input id="expticker" autocomplete="off" placeholder="Ticker or company" />
-    <input id="expmetrics" autocomplete="off" placeholder="revenue, net_income, gross_margin, roe" />
-    <input id="expfrom" type="number" placeholder="2020" /><span>–</span><input id="expto" type="number" placeholder="2024" />
-    <button id="expdl" type="button">Download</button>
-    <span id="experr"></span>
+</div><!-- /#chat wrapper stays; composer below is sticky -->
+
+<div class="composer" id="composer" style="display:none">
+  <div class="bars">
+    <label class="ghost" for="file">📎 Upload a document</label>
+    <input id="file" type="file" accept=".pdf,.docx,.xlsx" style="display:none" />
+    <select id="docscope" style="display:none">
+      <option value="">Ask across all my documents</option>
+    </select>
+    <button id="deldoc" class="ghost" type="button" title="Delete the selected document" style="display:none">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="3 6 5 6 21 6"></polyline>
+        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+      </svg>Delete</button>
+    <button id="exptoggle" class="ghost" type="button">📊 Export figures to CSV</button>
+    <span id="upstatus"></span>
+    <div id="expform" style="display:none">
+      <input id="expticker" autocomplete="off" placeholder="Ticker or company" />
+      <input id="expmetrics" autocomplete="off" placeholder="revenue, net_income, gross_margin, roe" />
+      <input id="expfrom" type="number" placeholder="2020" /><span>–</span><input id="expto" type="number" placeholder="2024" />
+      <button id="expdl" class="ghost" type="button">Download</button>
+      <span id="experr"></span>
+    </div>
   </div>
+  <form id="f">
+    <input id="q" autocomplete="off" placeholder="Ask about a company's 10-K, or your uploaded file…" />
+    <button id="send" type="submit">Ask</button>
+  </form>
 </div>
-<form id="f">
-  <input id="q" autocomplete="off" placeholder="Ask about a company's 10-K, or your uploaded file…" />
-  <button id="send" type="submit">Ask</button>
-</form>
-</div><!-- /#app -->
+
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 const chat = document.getElementById('chat'), form = document.getElementById('f'),
       input = document.getElementById('q'), send = document.getElementById('send');
 let history = [];  // [{role, content}] — sent each turn so the agent has multi-turn memory (Model B)
-// anonymous per-browser session id (used when Google sign-in is OFF)
 const sessionId = (() => { let s = localStorage.getItem('sid');
   if (!s) { s = 'sess_' + Math.random().toString(36).slice(2,14); localStorage.setItem('sid', s); }
   return s; })();
-let googleToken = null, userEmail = null;   // set after Google sign-in (when ON)
-// identity sent with each request: a Google token if signed in, else the anonymous session.
-// `who` is the id used for /file deep-links and per-user isolation (email or session).
+let googleToken = null, userEmail = null;
 function idFields(){ return googleToken ? { token: googleToken } : { session_id: sessionId }; }
 function who(){ return userEmail || sessionId; }
 function add(role, html) {
@@ -161,14 +306,23 @@ function add(role, html) {
   window.scrollTo(0, document.body.scrollHeight); return m;
 }
 function esc(s){ return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
-// turn inline markdown links [label](url) into clickable anchors (run after esc)
 function linkify(s){ return s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
   '<a href="$2" target="_blank" rel="noopener">$1</a>'); }
-// link bare accession numbers in the body using the sources map, leaving existing <a> intact
 function linkAccessions(html, srcMap){
   return html.replace(/(<a\b[^>]*>.*?<\/a>)|(\d{10}-\d{2}-\d{6})/g, (m, anchor, acc) =>
     anchor ? anchor : (srcMap[acc] ? '<a href="' + srcMap[acc] +
       '" target="_blank" rel="noopener">' + acc + '</a>' : m)); }
+const EXT = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>';
+
+// plain-language gloss for a tool call, so the audit trail reads to a human, not just JSON
+function toolGloss(name){
+  const g = { get_financials:'Fetched XBRL figure', compute:'Computed', compute_formula:'Computed from formula',
+    get_ratio:'Computed ratio', get_growth:'Computed year-over-year', get_statement:'Read statement line items',
+    largest_line_item:'Ranked line items', get_segment_breakdown:'Broke out by segment',
+    get_segment_growth:'Segment growth', search_filings:'Searched filing text', abstain:'Declined · not in the filings' };
+  return g[name] || name;
+}
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const q = input.value.trim(); if (!q) return;
@@ -183,44 +337,61 @@ form.addEventListener('submit', async (e) => {
                  '</span>'; send.disabled=false; return; }
     const d = await r.json();
     history.push({ role:'user', content:q }, { role:'assistant', content:d.answer });
-    history = history.slice(-12);   // keep recent turns (matches backend trim)
+    history = history.slice(-12);
+    const abstained = (d.tools_used || []).includes('abstain');
+    if (abstained) wait.className = 'msg bot abstain';
     const srcMap = {};
     (d.sources || []).forEach(s => { srcMap[s.accession] = s.url; });
-    let html = linkAccessions(linkify(esc(d.answer)), srcMap);
+    let html = '';
+    if (abstained) html += '<div class="abstain-tag">⊘ Withheld · not in the filings</div>';
+    html += '<span class="num">' + linkAccessions(linkify(esc(d.answer)), srcMap) + '</span>';
+
+    // provenance — sources as first-class chips
     if (d.sources && d.sources.length) {
-      const links = d.sources.map(s => '<a href="' + s.url + '" target="_blank" rel="noopener">' +
-                    esc(s.accession) + '</a>').join(' · ');
-      html += '<div class="sources">📎 Sources: ' + links + '</div>';
+      const chips = d.sources.map(s => '<a class="src-chip" href="' + s.url +
+        '" target="_blank" rel="noopener">SEC ' + esc(s.accession) + EXT + '</a>').join('');
+      html += '<div class="provenance"><span class="prov-label">Cited to</span>' + chips + '</div>';
     }
     if (d.doc_sources && d.doc_sources.length) {
       const items = d.doc_sources.map(s => {
-        let pg = s.page!=null ? ' · p.'+s.page : '';
-        if (s.page!=null && s.doc_id) {  // deep-link to the original PDF page (method 乙)
-          const url = '/file/' + s.doc_id + '?session_id=' + encodeURIComponent(who()) +
-                      '#page=' + s.page;
-          pg = ' · <a href="' + url + '" target="_blank" rel="noopener">p.' + s.page + '</a>';
+        const label = esc(s.filename) + (s.cell ? ' · ' + esc(s.cell) : '');
+        if (s.page!=null && s.doc_id) {
+          const url = '/file/' + s.doc_id + '?session_id=' + encodeURIComponent(who()) + '#page=' + s.page;
+          return '<a class="src-chip" href="' + url + '" target="_blank" rel="noopener">' + label +
+                 ' · p.' + s.page + EXT + '</a>';
         }
-        return esc(s.filename) + pg + (s.cell ? ' · ' + esc(s.cell) : '');
-      }).join('<br>');
-      html += '<div class="sources">📎 From your document: ' + items + '</div>';
+        return '<span class="src-chip">' + label + (s.page!=null ? ' · p.'+s.page : '') + '</span>';
+      }).join('');
+      html += '<div class="provenance doc-prov"><span class="prov-label">From your document</span>' + items + '</div>';
     }
+
+    // audit trail — visible, concise, the differentiator
     if (d.trace && d.trace.length) {
+      const CHECK_TIP = "A figure computed on a convention that differs from our standard (e.g. year-end vs averaged). It's a definition choice, not an error — confirm which one you want.";
       const fmtOut = o => {
         if (!o) return '';
-        // highlight the [CHECK: …] convention note so it stands out from the raw figure
-        const body = o.split(/(\[CHECK:[^\]]*\])/g).map(p =>
-          p.startsWith('[CHECK:') ? '<span class="trace-check">⚠ ' + esc(p) + '</span>'
-                                   : esc(p)).join('');
-        return '<div class="trace-out">↳ ' + body + '</div>';
+        const body = o.split(/(\[CHECK:[^\]]*\])/g).map(p => {
+          if (!p.startsWith('[CHECK:')) return esc(p);
+          const inner = p.replace(/^\[CHECK:\s*/, '').replace(/\]$/, '');
+          return '<span class="check" data-tip="' + esc(CHECK_TIP) + '">⚠ CHECK · ' + esc(inner) + '</span>';
+        }).join('');
+        return '<div class="audit-out">' + body + '</div>';
       };
-      const steps = d.trace.map(s => '<div class="trace-step">🔧 <code>' + esc(s.tool) +
-                    '</code>(' + esc(JSON.stringify(s.args)) + ')' + fmtOut(s.output) +
-                    '</div>').join('');
-      html += '<details class="trace"><summary>' + d.trace.length +
-              ' tool call' + (d.trace.length>1?'s':'') + ' · show audit trail</summary>' +
-              '<div class="trace-body">' + steps + '</div></details>';
+      const steps = d.trace.map(s => '<div class="audit-step"><div class="tool-line">' +
+        '<span class="tool-chip">' + esc(s.tool) + '</span>' +
+        '<span>' + esc(toolGloss(s.tool)) + '</span>' +
+        '<span class="tool-args">' + esc(JSON.stringify(s.args)) + '</span></div>' +
+        fmtOut(s.output) + '</div>').join('');
+      const n = d.trace.length;
+      const verb = abstained ? 'checked, then declined' : (n>1?'verified tool calls':'verified tool call');
+      html += '<details class="audit"' + (abstained?'':' open') + '><summary>' +
+        '<span class="lock">🔒</span> Audit trail · <b>' + n + '</b> ' + verb +
+        ' · figures traced to source' +
+        '<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>' +
+        '</summary><div class="audit-body">' + steps + '</div></details>';
     }
-    if (d.trace_id) {   // thumbs up/down -> Langfuse score, turning traffic into labeled eval data
+
+    if (d.trace_id) {
       html += '<div class="fb" data-tid="' + esc(d.trace_id) + '">' +
               '<button class="fbup" type="button" title="Good answer">👍</button>' +
               '<button class="fbdown" type="button" title="Inaccurate or unhelpful">👎</button>' +
@@ -240,10 +411,13 @@ form.addEventListener('submit', async (e) => {
   send.disabled = false; window.scrollTo(0, document.body.scrollHeight);
 });
 
+// clicking an example question fills + sends it
+document.querySelectorAll('.chip-q').forEach(c => c.addEventListener('click', () => {
+  input.value = c.textContent; form.requestSubmit();
+}));
+
 // --- document upload (bring-your-own-data), parsed asynchronously ---
 const fileInput = document.getElementById('file'), upstatus = document.getElementById('upstatus');
-
-// render the parsed result once a document is ready (fresh parse or a dedup hit)
 function renderUploaded(d) {
   let factsTable = '';
   if (d.facts && d.facts.length) {
@@ -258,7 +432,7 @@ function renderUploaded(d) {
   if (d.parse_quality) {
     pq = d.parse_quality.status === 'ok'
       ? '<div class="sources">✓ parse quality: looks healthy</div>'
-      : '<div class="sources" style="color:#b06a00">⚠ parse quality: please review — ' +
+      : '<div class="sources" style="color:#e2b04a">⚠ parse quality: please review — ' +
         esc((d.parse_quality.warnings || []).join('; ')) + '</div>';
   }
   const cut = d.truncated ? '\n\n…(preview truncated — parsed text is searchable)' : '';
@@ -270,14 +444,12 @@ function renderUploaded(d) {
       (factsTable || '') +
       '<div style="margin-top:6px">Parsed text' + (d.truncated ? ' (first part)' : '') + ':</div>' +
       '<pre>' + esc(d.parsed_markdown || '') + esc(cut) + '</pre></details>');
-  loadMyDocs(false);   // refresh the doc-scope selector now that the document is ready
+  loadMyDocs(false);
 }
-
-// poll /docstatus until the background parse finishes (or fails)
 async function pollStatus(docId, filename) {
   const started = Date.now();
-  const maxMs = 20 * 60 * 1000;                   // whole filings can take many minutes
-  let wait = 3000;                                // gentle backoff: 3s → 10s
+  const maxMs = 20 * 60 * 1000;
+  let wait = 3000;
   while (Date.now() - started < maxMs) {
     await new Promise(r => setTimeout(r, wait));
     if (wait < 10000) wait += 1000;
@@ -301,7 +473,6 @@ async function pollStatus(docId, filename) {
     + 'wait here — it will appear under "Your documents" when it\'s ready (refresh the page to check), '
     + 'and you can ask about your other documents in the meantime.');
 }
-
 fileInput.addEventListener('change', async () => {
   const f = fileInput.files[0]; if (!f) return;
   upstatus.textContent = 'Uploading ' + f.name + '…';
@@ -311,12 +482,12 @@ fileInput.addEventListener('change', async () => {
     const r = await fetch('/upload', { method:'POST', body: fd });
     if (!r.ok) { upstatus.textContent = (r.status===429 ? 'Demo limit reached.' : 'Upload failed.'); return; }
     const d = await r.json();
-    if (d.status === 'ready') {                    // dedup hit — already parsed
+    if (d.status === 'ready') {
       upstatus.textContent = d.already_uploaded
         ? '↩︎ ' + d.filename + ' — already uploaded (reusing existing copy)'
         : '✓ ' + d.filename + ' — ' + d.n_facts + ' figures extracted';
       renderUploaded(d);
-    } else {                                       // processing — parse runs in the background
+    } else {
       upstatus.textContent = '⏳ Parsing ' + d.filename + '…';
       add('bot', '⏳ Parsing <b>' + esc(d.filename) + '</b> in the background — whole filings can take several minutes. You don\'t have to wait here: I\'ll show the result when it\'s ready, and it will also appear under "Your documents". You can ask about your other documents meanwhile.');
       pollStatus(d.doc_id, d.filename);
@@ -328,20 +499,18 @@ fileInput.addEventListener('change', async () => {
 // --- Google sign-in (only when the server has GOOGLE_CLIENT_ID configured) ---
 function decodeEmail(jwt){ try { return JSON.parse(atob(jwt.split('.')[1])).email; } catch(e){ return null; } }
 function tokenExpired(jwt){ try { const p = JSON.parse(atob(jwt.split('.')[1]));
-  return !p.exp || p.exp * 1000 < Date.now() + 30000;   // expired (or within 30s) -> treat as expired
+  return !p.exp || p.exp * 1000 < Date.now() + 30000;
 } catch(e){ return true; } }
 function showApp(){ document.getElementById('login').style.display='none';
                     document.getElementById('app').style.display='block';
+                    document.getElementById('composer').style.display='block';
                     loadMyDocs(true); }
-// show the user's persisted documents so they know their uploads are still there after re-login
 async function loadMyDocs(showMsg){
   try {
     const r = await fetch('/mydocs', { method:'POST', headers:{'Content-Type':'application/json'},
                                        body: JSON.stringify(idFields()) });
     const d = await r.json();
     populateDocScope(d.documents || []);
-    // a fixed banner pinned at the top of the chat (not an appended bubble), so it always
-    // shows above the conversation regardless of when the /mydocs fetch resolves
     const note = document.getElementById('docsnote');
     if (d.documents && d.documents.length) {
       note.querySelector('.bubble').innerHTML = '📂 Your documents (still here from before): <b>' +
@@ -352,33 +521,33 @@ async function loadMyDocs(showMsg){
     }
   } catch(e) {}
 }
-// the doc scope selector (A): pick one document to restrict questions to, or all of them.
-// shown only when 2+ documents exist (with one doc there's nothing to disambiguate).
+let myDocs = [];   // current uploaded documents, so a single doc is still deletable
 function populateDocScope(docs){
+  myDocs = docs || [];
   const sel = document.getElementById('docscope');
   const cur = sel.value;
   sel.innerHTML = '<option value="">Ask across all my documents</option>' +
     docs.map(f => '<option value="' + esc(f) + '">Only: ' + esc(f) + '</option>').join('');
   if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
-  sel.style.display = docs.length >= 2 ? '' : 'none';
+  sel.style.display = docs.length >= 2 ? '' : 'none';   // scope picker only matters with 2+ docs
   updateDelBtn();
 }
-// the delete button acts on whichever document is currently selected in the scope dropdown
 function updateDelBtn(){
   const sel = document.getElementById('docscope');
   const btn = document.getElementById('deldoc');
-  btn.style.display = (sel.style.display !== 'none' && sel.value) ? '' : 'none';
+  // deletable when there's exactly one doc (delete targets it) or a specific doc is scoped among several
+  btn.style.display = (myDocs.length === 1 || (sel.style.display !== 'none' && sel.value)) ? '' : 'none';
 }
 document.getElementById('docscope').addEventListener('change', updateDelBtn);
 document.getElementById('deldoc').addEventListener('click', async () => {
   const sel = document.getElementById('docscope');
-  const name = sel.value;
+  const name = sel.value || (myDocs.length === 1 ? myDocs[0] : '');
   if (!name || !confirm('Delete "' + name + '"? This removes it from your documents.')) return;
   await fetch('/mydocs/delete', { method:'POST', headers:{'Content-Type':'application/json'},
                                   body: JSON.stringify({ filename: name, ...idFields() }) });
-  sel.value = '';                       // drop the scope (the doc is gone)
+  sel.value = '';
   add('bot', '🗑 Deleted <b>' + esc(name) + '</b> from your documents.');
-  loadMyDocs(false);                    // refresh the selector
+  loadMyDocs(false);
 });
 function onGoogle(resp){
   googleToken = resp.credential; userEmail = decodeEmail(googleToken);
@@ -391,9 +560,8 @@ function onGoogle(resp){
 }
 (async () => {
   let cfg; try { cfg = await (await fetch('/auth/config')).json(); } catch(e){ cfg = {auth_required:false}; }
-  if (!cfg.auth_required) { showApp(); return; }   // sign-in off -> open demo
+  if (!cfg.auth_required) { showApp(); return; }
   document.getElementById('login').style.display = 'flex';
-  // reuse a stored token only if it hasn't expired (Google ID tokens last ~1h); else clear it
   const saved = localStorage.getItem('gtok');
   if (saved && !tokenExpired(saved)) { onGoogle({ credential: saved }); }
   else { localStorage.removeItem('gtok'); }
