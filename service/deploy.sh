@@ -15,6 +15,11 @@ IMAGE=us-central1-docker.pkg.dev/proslm/proslm-repo/sec-filing-agent:v1
 LANGFUSE_PUBLIC_KEY=pk-lf-960e32be-ffe9-4fdd-9526-0a8b12e2f8cd
 LANGFUSE_HOST=https://us.cloud.langfuse.com
 
+# Google sign-in — turns on per-account isolation for uploaded documents (the login page appears).
+# The web client id is public (not a secret); its Authorized JavaScript origins must include this
+# service's Cloud Run URL. Unset it to run the public demo without login (anonymous per-session).
+GOOGLE_CLIENT_ID=759005971862-u65f4afgm23gg9ukclmlpdaqg0796lgr.apps.googleusercontent.com
+
 # 1. Build on GCP (native amd64) and push to Artifact Registry.
 gcloud builds submit --project "$PROJECT" \
   --config service/cloudbuild.yaml \
@@ -29,7 +34,7 @@ gcloud run deploy sec-filing-agent \
   --memory 2Gi --cpu 2 \
   --no-cpu-throttling \
   --timeout 120 --port 8080 \
-  --set-env-vars EMB_MODEL=text-embedding-3-small,GEN_LLM_MODEL=o4-mini,REASONING_EFFORT=low,RERANK=1,DAILY_QUOTA=150,RATE_LIMIT_PER_MIN=6,MAX_INPUT_CHARS=500,LANGFUSE_PUBLIC_KEY="$LANGFUSE_PUBLIC_KEY",LANGFUSE_HOST="$LANGFUSE_HOST",LANGFUSE_TRACING_ENVIRONMENT=community \
+  --set-env-vars EMB_MODEL=text-embedding-3-small,GEN_LLM_MODEL=o4-mini,REASONING_EFFORT=low,RERANK=1,DAILY_QUOTA=150,RATE_LIMIT_PER_MIN=6,MAX_INPUT_CHARS=500,LANGFUSE_PUBLIC_KEY="$LANGFUSE_PUBLIC_KEY",LANGFUSE_HOST="$LANGFUSE_HOST",LANGFUSE_TRACING_ENVIRONMENT=community,GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
   --set-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest,LANGFUSE_SECRET_KEY=SEC_LANGFUSE_SECRET_KEY:latest,DATABASE_URL=DATABASE_URL:latest
 
 echo "Deployed. URL:"
