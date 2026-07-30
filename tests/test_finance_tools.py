@@ -199,12 +199,13 @@ def test_crosscheck_covers_avg_based_pct_ratios():
     assert "[CHECK" not in compute_formula("net_income / revenue", "KO", 2023)
 
 
-def test_capex_falls_back_to_cash_flow_statement():
-    # Verizon tags capex as PaymentsToAcquireOtherProductiveAssets, which the flat companyfacts API
-    # omits; get_financials must fall back to the cash-flow statement rather than report it missing,
-    # and that fallback must flow through the ratio path too (not abstain).
+def test_capex_resolved_for_uncommon_concept_filer():
+    # Verizon tags capex as PaymentsToAcquireOtherProductiveAssets (an uncommon concept). It now
+    # resolves either via that added companyfacts concept OR the cash-flow-statement fallback (when
+    # companyfacts omits it) — the test checks the OUTCOME, not the path: the figure is returned and
+    # the ratio path no longer abstains (both previously failed).
     out = get_financials("VZ", "capex", 2023)
-    assert "cash-flow statement" in out and "No capex" not in out
+    assert "18,767" in out and "No capex" not in out
     assert "Abstain" not in get_ratio("capex_pct_revenue", "VZ", 2023)
 
 
