@@ -1,9 +1,12 @@
-# Runtime deps for the deployed demo (no edgartools/ragas — those are build/eval only).
-# Reranker (CrossEncoder) kept so quality matches the evaluated baseline; torch is
-# installed CPU-only in the Dockerfile.
+# Runtime deps for the deployed demo (ragas is build/eval only). edgartools IS needed at runtime:
+# the statement-level tools (get_statement, largest_line_item, get_segment_breakdown/growth, and the
+# capex cash-flow fallback) read the XBRL presentation linkbase through it — without it they return a
+# misleading "not reported" instead of the real breakdown. Reranker (CrossEncoder) kept so quality
+# matches the evaluated baseline; torch is installed CPU-only in the Dockerfile.
 numpy==1.26.4
 fastapi==0.115.14
 uvicorn==0.35.0
+python-multipart==0.0.30   # required by FastAPI for the /upload form/file endpoint
 langchain-openai==0.3.17
 langchain-community==0.3.24
 langchain-core
@@ -15,5 +18,7 @@ sentence-transformers==5.2.2
 openai==1.75.0
 psycopg[binary]==3.3.4
 pgvector==0.4.2
+# statement-level tools: XBRL presentation linkbase (financials, segments, cash-flow capex fallback)
+edgartools==5.35.1
 # audit-trail observability (key-gated; activates in the container via LANGFUSE_* env)
 langfuse==4.7.1
