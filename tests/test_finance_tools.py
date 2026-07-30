@@ -199,6 +199,15 @@ def test_crosscheck_covers_avg_based_pct_ratios():
     assert "[CHECK" not in compute_formula("net_income / revenue", "KO", 2023)
 
 
+def test_capex_falls_back_to_cash_flow_statement():
+    # Verizon tags capex as PaymentsToAcquireOtherProductiveAssets, which the flat companyfacts API
+    # omits; get_financials must fall back to the cash-flow statement rather than report it missing,
+    # and that fallback must flow through the ratio path too (not abstain).
+    out = get_financials("VZ", "capex", 2023)
+    assert "cash-flow statement" in out and "No capex" not in out
+    assert "Abstain" not in get_ratio("capex_pct_revenue", "VZ", 2023)
+
+
 def test_compute_formula_rejects_bad_periods():
     # years-back must be a positive integer literal, never a metric or 0/negative
     assert "Abstain" in compute_formula("prev(revenue, 0)", "AAPL", 2024)

@@ -102,6 +102,30 @@ def get_statement(ticker: str, statement: str = "balance_sheet", fiscal_year: in
     return src + "\n" + "\n".join(lines)
 
 
+_CAPEX_CONCEPTS = ("PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets",
+                   "PaymentsToAcquireOtherProductiveAssets", "PaymentsForCapitalImprovements")
+
+
+def capex_from_cashflow(ticker: str, fiscal_year: int = None):
+    """Capital expenditures read from the cash-flow statement (edgartools linkbase) — the fallback for
+    filers whose capex isn't in the flat companyfacts API (e.g. Verizon tags it as
+    PaymentsToAcquireOtherProductiveAssets, which companyfacts omits). Returns (value, accession, fy)
+    or None. Capex is a cash OUTFLOW (stored negative); returned as a positive magnitude."""
+    import pandas as pd
+    df, col, fy, accn = _load(ticker, "cash_flow", fiscal_year)
+    if df is None or col is None:
+        return None
+    for _, r in df.iterrows():
+        concept, label = str(r.get("concept") or ""), str(r.get("label") or "").lower()
+        if (any(c in concept for c in _CAPEX_CONCEPTS)
+                or "capital expenditure" in label
+                or "acquire property, plant and equipment" in label):
+            v = r.get(col)
+            if v is not None and not pd.isna(v) and float(v) != 0:
+                return abs(float(v)), accn, fy
+    return None
+
+
 def _pick_line_item(df, col, section, smallest=False):
     """Pure selection (unit-testable, no network): the largest/smallest LEAF line item (label, value)
     in a balance-sheet section, excluding abstract headers, dimensional rows, and subtotals ("Total …").
