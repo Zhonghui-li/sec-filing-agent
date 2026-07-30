@@ -56,6 +56,7 @@ METRICS = {
     # added after FinanceBench validation flagged these as the top missing line items:
     "capex":               (["PaymentsToAcquirePropertyPlantAndEquipment",
                              "PaymentsToAcquireProductiveAssets",
+                             "PaymentsToAcquireOtherProductiveAssets",
                              "PaymentsForCapitalImprovements"], "duration"),
     "depreciation_amortization": (["DepreciationDepletionAndAmortization",
                              "DepreciationAmortizationAndAccretionNet",

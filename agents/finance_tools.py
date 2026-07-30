@@ -167,6 +167,33 @@ def _quarterly_answer(tk, ticker, key, metric, fiscal_year, quarter):
             f"{edgar_url(r['cik'], r['accession'])}]")
 
 
+def _capex_row_from_cashflow(ticker, fiscal_year):
+    """Capex from the cash-flow statement (edgartools linkbase) — the fallback for filers whose capex
+    isn't in the flat companyfacts API (e.g. Verizon tags it as PaymentsToAcquireOtherProductiveAssets,
+    which companyfacts omits). Returns a row dict shaped like a companyfacts row, so get_financials,
+    get_ratio and compute_formula can all read and cite it uniformly. None if absent."""
+    try:
+        from agents.statements import capex_from_cashflow
+        hit = capex_from_cashflow(ticker, fiscal_year)
+    except Exception:
+        return None
+    if not hit:
+        return None
+    val, accn, fy = hit
+    return {"metric": "capex", "value": val, "fiscal_year": fy, "accession": accn,
+            "cik": cik_for(ticker), "period_end": f"{fy}-12-31", "unit": "USD", "entity_name": None}
+
+
+def _capex_cashflow_fallback(tk, ticker, fiscal_year):
+    """Formatted get_financials answer for the cash-flow capex fallback (None if absent)."""
+    row = _capex_row_from_cashflow(ticker, fiscal_year)
+    if not row:
+        return None
+    return (f"{tk} capex for FY{row['fiscal_year']}: ${row['value']:,.0f} (read from the cash-flow "
+            f"statement; this filer's capex isn't in the flat companyfacts data). "
+            f"[source: 10-K accession {row['accession']}, {edgar_url(row['cik'], row['accession'])}]")
+
+
 def get_financials(ticker: str, metric: str, fiscal_year: int = None, quarter: int = None) -> str:
     """Return an EXACT financial figure for a company from SEC XBRL data, with its
     source filing. Use this for ANY financial number (revenue, net income, total assets,
@@ -187,6 +214,10 @@ def get_financials(ticker: str, metric: str, fiscal_year: int = None, quarter: i
                 f"NAME instead of a ticker.")
     hits = [r for r in rows if r["metric"] == key]
     if not hits:
+        if key == "capex":                         # companyfacts omits some filers' capex -> statement
+            fb = _capex_cashflow_fallback(tk, ticker, fiscal_year)
+            if fb:
+                return fb
         _log_miss(tk, key, fiscal_year, "metric_absent")
         avail = sorted({r["metric"] for r in rows})
         # an unrecognized metric NAME (not a known metric, not reported) -> suggest the closest,
@@ -201,6 +232,10 @@ def get_financials(ticker: str, metric: str, fiscal_year: int = None, quarter: i
     if fiscal_year is not None:
         hits = [r for r in hits if r["fiscal_year"] == int(fiscal_year)]
         if not hits:
+            if key == "capex":                     # year present in the filing but not companyfacts
+                fb = _capex_cashflow_fallback(tk, ticker, fiscal_year)
+                if fb:
+                    return fb
             yrs = sorted({r["fiscal_year"] for r in rows if r["metric"] == key})
             return (f"No {key} for {tk} FY{fiscal_year}. Available years: "
                     f"{yrs[0]}–{yrs[-1]}.")
@@ -220,6 +255,10 @@ def _value(ticker, metric, year=None):
     if year is not None:
         hits = [r for r in hits if r["fiscal_year"] == int(year)]
     if not hits:
+        if key == "capex":                         # companyfacts omits some filers' capex -> statement
+            row = _capex_row_from_cashflow(ticker, year)
+            if row:
+                return row["value"], row
         return None, None
     r = max(hits, key=lambda x: x["period_end"])
     return r["value"], r
@@ -344,12 +383,13 @@ def _spec_metrics(spec):
     return {p.strip() for p in spec.replace("avg:", "").split("-") if p.strip()}
 
 
-# base-metric SET -> named ratio, ONLY for raw-scale ratios (turns/ratio, so a compute_formula's
-# a/b is on the same scale as our value) and ONLY unambiguous sets — lets compute_formula cross-check
-# a hand-written formula against our standard convention without false comparisons.
+# base-metric SET -> named ratio, for turnover/ratio AND average-based percentage ratios (roe, roa —
+# the ones most often hand-computed with ending instead of averaged balance-sheet values). ONLY
+# unambiguous metric sets. Lets compute_formula cross-check a hand-written formula against our standard
+# convention; the cross-check's scale-alignment keeps a ×100-vs-decimal formula from false-matching.
 _RATIO_BY_METRICS, _amb = {}, set()
 for _rn, ((_ns, _op2, _ds), _k, _d) in RATIOS.items():
-    if _k not in ("turns", "ratio"):
+    if _k not in ("turns", "ratio", "pct"):
         continue
     _key = frozenset(_spec_metrics(_ns) | _spec_metrics(_ds))
     if _key in _RATIO_BY_METRICS or _key in _amb:
@@ -651,13 +691,20 @@ def compute_formula(expression: str, ticker: str, fiscal_year: int = None) -> st
                       if isinstance(n, ast.Name) and n.id not in _FORMULA_FUNCS)
     rn = _RATIO_BY_METRICS.get(names)
     if rn and year:
-        (ns, _o, ds), _k, defn = RATIOS[rn]
+        (ns, _o, ds), kind, defn = RATIOS[rn]
         onum, _ = _operand(tk, ns, year)
         oden, _ = _operand(tk, ds, year)
         ours = onum / oden if (onum is not None and oden) else None
-        if ours and val and (1 / 3) < abs(val) / abs(ours) < 3 and abs(val - ours) > 0.02 * abs(ours):
-            xcheck = (f" [CHECK: this matches the '{rn}' ratio; on our standard convention ({defn}) "
-                      f"it is {ours:,.2f}. If the question defines it differently, use that value.]")
+        if ours and val:
+            # a PERCENTAGE ratio may be written raw (0.41) or ×100 (41) — align only pct-kind on our
+            # scale. Turnover/ratio kinds have no ×100 convention, so don't try ×100 there (it would let
+            # an inverse or unrelated formula false-match via a coincidental factor of 100).
+            cands = (val, val / 100, val * 100) if kind == "pct" else (val,)
+            cand = min(cands, key=lambda x: abs(abs(x) / abs(ours) - 1))
+            if (1 / 3) < abs(cand) / abs(ours) < 3 and abs(cand - ours) > 0.02 * abs(ours):
+                shown_ours = f"{ours:,.2f}" if abs(ours) >= 1 else f"{ours:.4g}"
+                xcheck = (f" [CHECK: this matches the '{rn}' ratio; on our standard convention ({defn}) "
+                          f"it is {shown_ours}. If the question defines it differently, use that value.]")
     shown = f"{val:,.2f}" if abs(val) >= 1 else f"{val:.4g}"
     return (f"{_entity(src, ticker)} formula result for FY{year} = {shown}  (formula: {expression}). {cite}"
             + _restatement_note(srcs) + xcheck)

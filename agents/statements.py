@@ -102,6 +102,30 @@ def get_statement(ticker: str, statement: str = "balance_sheet", fiscal_year: in
     return src + "\n" + "\n".join(lines)
 
 
+_CAPEX_CONCEPTS = ("PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets",
+                   "PaymentsToAcquireOtherProductiveAssets", "PaymentsForCapitalImprovements")
+
+
+def capex_from_cashflow(ticker: str, fiscal_year: int = None):
+    """Capital expenditures read from the cash-flow statement (edgartools linkbase) — the fallback for
+    filers whose capex isn't in the flat companyfacts API (e.g. Verizon tags it as
+    PaymentsToAcquireOtherProductiveAssets, which companyfacts omits). Returns (value, accession, fy)
+    or None. Capex is a cash OUTFLOW (stored negative); returned as a positive magnitude."""
+    import pandas as pd
+    df, col, fy, accn = _load(ticker, "cash_flow", fiscal_year)
+    if df is None or col is None:
+        return None
+    for _, r in df.iterrows():
+        concept, label = str(r.get("concept") or ""), str(r.get("label") or "").lower()
+        if (any(c in concept for c in _CAPEX_CONCEPTS)
+                or "capital expenditure" in label
+                or "acquire property, plant and equipment" in label):
+            v = r.get(col)
+            if v is not None and not pd.isna(v) and float(v) != 0:
+                return abs(float(v)), accn, fy
+    return None
+
+
 def _pick_line_item(df, col, section, smallest=False):
     """Pure selection (unit-testable, no network): the largest/smallest LEAF line item (label, value)
     in a balance-sheet section, excluding abstract headers, dimensional rows, and subtotals ("Total …").
@@ -226,7 +250,26 @@ def get_segment_breakdown(ticker: str, dimension: str = "segment", metric: str =
         return f"No {dimension} {metric} breakdown found for {ticker} FY{fy}."
     mname = "revenue" if metric == "revenue" else "operating income"
     lines = "\n".join(f"  {m}: {_fmt(v)}" for m, v in sorted(out.items(), key=lambda x: -x[1]))
-    return (f"{ticker.upper()} FY{fy} {mname} by {dimension} (from the XBRL segment disclosure):\n{lines}\n"
+    # DQC-0150 sum-check: segments should sum to the consolidated total. Self-report it (finance-bar
+    # honesty) so a breakdown that doesn't tie out — intersegment eliminations, incomplete extraction —
+    # is flagged rather than presented as complete. Best-effort; silent if the consolidated figure is
+    # unavailable (segment metric = geography still checks against consolidated revenue/operating income).
+    check = ""
+    try:
+        from agents.finance_tools import _operand
+        total, _ = _operand(ticker.upper(), "revenue" if metric == "revenue" else "operating_income", fy)
+        if total:
+            seg_sum = sum(out.values())
+            off = abs(seg_sum - total) / abs(total)
+            if off <= 0.005:
+                check = (f"\nSum-check: segments total {_fmt(seg_sum)} = consolidated {mname} "
+                         f"{_fmt(total)} (ties out, DQC 0150).")
+            else:
+                check = (f"\nSum-check: segments total {_fmt(seg_sum)} vs consolidated {mname} {_fmt(total)} "
+                         f"({off * 100:.0f}% apart) — may exclude intersegment eliminations or be incomplete.")
+    except Exception:
+        pass
+    return (f"{ticker.upper()} FY{fy} {mname} by {dimension} (from the XBRL segment disclosure):\n{lines}{check}\n"
             f"[source: FY{fy} 10-K · {f.accession_no} · {edgar_url(cik, f.accession_no)}]")
 
 
