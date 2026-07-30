@@ -226,7 +226,26 @@ def get_segment_breakdown(ticker: str, dimension: str = "segment", metric: str =
         return f"No {dimension} {metric} breakdown found for {ticker} FY{fy}."
     mname = "revenue" if metric == "revenue" else "operating income"
     lines = "\n".join(f"  {m}: {_fmt(v)}" for m, v in sorted(out.items(), key=lambda x: -x[1]))
-    return (f"{ticker.upper()} FY{fy} {mname} by {dimension} (from the XBRL segment disclosure):\n{lines}\n"
+    # DQC-0150 sum-check: segments should sum to the consolidated total. Self-report it (finance-bar
+    # honesty) so a breakdown that doesn't tie out — intersegment eliminations, incomplete extraction —
+    # is flagged rather than presented as complete. Best-effort; silent if the consolidated figure is
+    # unavailable (segment metric = geography still checks against consolidated revenue/operating income).
+    check = ""
+    try:
+        from agents.finance_tools import _operand
+        total, _ = _operand(ticker.upper(), "revenue" if metric == "revenue" else "operating_income", fy)
+        if total:
+            seg_sum = sum(out.values())
+            off = abs(seg_sum - total) / abs(total)
+            if off <= 0.005:
+                check = (f"\nSum-check: segments total {_fmt(seg_sum)} = consolidated {mname} "
+                         f"{_fmt(total)} (ties out, DQC 0150).")
+            else:
+                check = (f"\nSum-check: segments total {_fmt(seg_sum)} vs consolidated {mname} {_fmt(total)} "
+                         f"({off * 100:.0f}% apart) — may exclude intersegment eliminations or be incomplete.")
+    except Exception:
+        pass
+    return (f"{ticker.upper()} FY{fy} {mname} by {dimension} (from the XBRL segment disclosure):\n{lines}{check}\n"
             f"[source: FY{fy} 10-K · {f.accession_no} · {edgar_url(cik, f.accession_no)}]")
 
 

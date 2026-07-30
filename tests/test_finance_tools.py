@@ -189,6 +189,16 @@ def test_compute_formula_crosschecks_named_ratio_convention():
     assert "[CHECK" not in compute_formula("ppe_net / revenue", "AAPL", 2024)
 
 
+def test_crosscheck_covers_avg_based_pct_ratios():
+    # ROE/ROA are average-based percentage ratios, the ones most often hand-computed with ENDING
+    # balance-sheet values. Both the raw decimal and the ×100 form must be caught (scale-aligned).
+    assert "roe" in compute_formula("net_income / stockholders_equity", "KO", 2023)
+    assert "[CHECK" in compute_formula("net_income / stockholders_equity * 100", "KO", 2023)
+    assert "[CHECK" in compute_formula("net_income / total_assets", "KO", 2023)          # roa, ending
+    # net_margin has no averaging (net_income / revenue) -> ending == our value -> never a false flag
+    assert "[CHECK" not in compute_formula("net_income / revenue", "KO", 2023)
+
+
 def test_compute_formula_rejects_bad_periods():
     # years-back must be a positive integer literal, never a metric or 0/negative
     assert "Abstain" in compute_formula("prev(revenue, 0)", "AAPL", 2024)

@@ -344,12 +344,13 @@ def _spec_metrics(spec):
     return {p.strip() for p in spec.replace("avg:", "").split("-") if p.strip()}
 
 
-# base-metric SET -> named ratio, ONLY for raw-scale ratios (turns/ratio, so a compute_formula's
-# a/b is on the same scale as our value) and ONLY unambiguous sets — lets compute_formula cross-check
-# a hand-written formula against our standard convention without false comparisons.
+# base-metric SET -> named ratio, for turnover/ratio AND average-based percentage ratios (roe, roa —
+# the ones most often hand-computed with ending instead of averaged balance-sheet values). ONLY
+# unambiguous metric sets. Lets compute_formula cross-check a hand-written formula against our standard
+# convention; the cross-check's scale-alignment keeps a ×100-vs-decimal formula from false-matching.
 _RATIO_BY_METRICS, _amb = {}, set()
 for _rn, ((_ns, _op2, _ds), _k, _d) in RATIOS.items():
-    if _k not in ("turns", "ratio"):
+    if _k not in ("turns", "ratio", "pct"):
         continue
     _key = frozenset(_spec_metrics(_ns) | _spec_metrics(_ds))
     if _key in _RATIO_BY_METRICS or _key in _amb:
@@ -651,13 +652,20 @@ def compute_formula(expression: str, ticker: str, fiscal_year: int = None) -> st
                       if isinstance(n, ast.Name) and n.id not in _FORMULA_FUNCS)
     rn = _RATIO_BY_METRICS.get(names)
     if rn and year:
-        (ns, _o, ds), _k, defn = RATIOS[rn]
+        (ns, _o, ds), kind, defn = RATIOS[rn]
         onum, _ = _operand(tk, ns, year)
         oden, _ = _operand(tk, ds, year)
         ours = onum / oden if (onum is not None and oden) else None
-        if ours and val and (1 / 3) < abs(val) / abs(ours) < 3 and abs(val - ours) > 0.02 * abs(ours):
-            xcheck = (f" [CHECK: this matches the '{rn}' ratio; on our standard convention ({defn}) "
-                      f"it is {ours:,.2f}. If the question defines it differently, use that value.]")
+        if ours and val:
+            # a PERCENTAGE ratio may be written raw (0.41) or ×100 (41) — align only pct-kind on our
+            # scale. Turnover/ratio kinds have no ×100 convention, so don't try ×100 there (it would let
+            # an inverse or unrelated formula false-match via a coincidental factor of 100).
+            cands = (val, val / 100, val * 100) if kind == "pct" else (val,)
+            cand = min(cands, key=lambda x: abs(abs(x) / abs(ours) - 1))
+            if (1 / 3) < abs(cand) / abs(ours) < 3 and abs(cand - ours) > 0.02 * abs(ours):
+                shown_ours = f"{ours:,.2f}" if abs(ours) >= 1 else f"{ours:.4g}"
+                xcheck = (f" [CHECK: this matches the '{rn}' ratio; on our standard convention ({defn}) "
+                          f"it is {shown_ours}. If the question defines it differently, use that value.]")
     shown = f"{val:,.2f}" if abs(val) >= 1 else f"{val:.4g}"
     return (f"{_entity(src, ticker)} formula result for FY{year} = {shown}  (formula: {expression}). {cite}"
             + _restatement_note(srcs) + xcheck)
