@@ -1,7 +1,12 @@
-# SEC Filing Agent
-*A finance-grade tool-calling agent over SEC filings, and your own documents.*
+# Vouch
+
+*Financial answers you can audit — a finance-grade tool-calling agent over SEC filings and your own documents.*
 
 [![Eval](https://github.com/Zhonghui-li/sec-filing-agent/actions/workflows/eval.yml/badge.svg)](https://github.com/Zhonghui-li/sec-filing-agent/actions/workflows/eval.yml)
+
+![Vouch — an exact figure cited to the filing, shown with its tool-call audit trail](docs/demo-cited-answer.png)
+
+![Vouch — a segment breakdown with a DQC-0150 sum-check, and an honest abstention on a non-GAAP figure](docs/demo-segment-abstention.png)
 
 Answers financial questions about **any U.S. public company** from its SEC filings, built to the
 **finance bar**: a wrong or unsupported number is unacceptable.
