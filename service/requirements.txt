@@ -7,6 +7,8 @@ numpy==1.26.4
 fastapi==0.115.14
 uvicorn==0.35.0
 python-multipart==0.0.30   # required by FastAPI for the /upload form/file endpoint
+google-auth>=2.35,<3       # verify Google ID tokens for optional sign-in (per-account isolation)
+requests>=2.31             # used by google.auth.transport.requests to verify the ID token
 langchain-openai==0.3.17
 langchain-community==0.3.24
 langchain-core
