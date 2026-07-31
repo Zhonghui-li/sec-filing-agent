@@ -2,6 +2,8 @@
 
 *Financial answers you can audit — a finance-grade tool-calling agent over SEC filings and your own documents.*
 
+**▶ [Try the live demo](https://sec-filing-agent-759005971862.us-central1.run.app)** — sign in with Google, then ask about any U.S. public company or upload your own document.
+
 [![Eval](https://github.com/Zhonghui-li/sec-filing-agent/actions/workflows/eval.yml/badge.svg)](https://github.com/Zhonghui-li/sec-filing-agent/actions/workflows/eval.yml)
 
 ![Vouch — an exact figure cited to the filing, shown with its tool-call audit trail](docs/demo-cited-answer.png)
