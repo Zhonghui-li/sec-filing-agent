@@ -555,6 +555,10 @@ function onGoogle(resp){
   document.getElementById('userchip').innerHTML =
     esc(userEmail || '') + '<a id="logout">sign out</a>';
   document.getElementById('logout').onclick = () => {
+    // tell Google Identity Services the user signed out, so it stops auto-selecting / showing the
+    // personalized "Sign in as <email>" button (our sign-out only clears OUR token, not the Google
+    // session — without this, GIS re-offers the remembered account and looks like a stale login).
+    try { google.accounts.id.disableAutoSelect(); } catch (e) {}
     localStorage.removeItem('gtok'); location.reload(); };
   showApp();
 }
