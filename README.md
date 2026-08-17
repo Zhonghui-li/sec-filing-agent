@@ -58,6 +58,7 @@ figure XBRL doesn't carry, like a debt issuance) a cited 8-K passage the number 
 |---|---|
 | **Numbers only from tools** | every figure from structured XBRL, never LLM arithmetic |
 | **Every claim cited** | a clickable EDGAR link to the source filing |
+| **Every answer re-verifiable** | re-run the deterministic tool calls from the audit trail and confirm the figures still reproduce from source (`agents/replay.py`) |
 | **Abstains, never fabricates** | a structured signal when a metric isn't reported or is out of scope |
 | **Same bar for your docs** | uploaded statements → table-cell extraction, cell-level citations |
 
@@ -114,6 +115,15 @@ iterations, hallucination ≈ 0** (numeric). The qualitative side is scored too 
 where the evidence is in indexed narrative** (real agent, year-controlled). Reproducible harness with
 a tracked runs log.
 → [`eval/financebench/`](eval/financebench/) · [REPORT.md](eval/financebench/REPORT.md)
+
+**4 · Adversarial red-team.** A 50-question trust suite — 15 failure modes that *tempt* fabrication
+(nonexistent metrics, false premises, prompt injection, unit/precision traps, hand-computable derived
+metrics) plus answerable controls — scored three ways: fabrication vs *safe over-abstention* vs pass,
+so declining a trap counts as a pass, not a miss. It drove the fabrication rate **from 11% to 0**
+(the two real leaks — hand-computing CCC/EBITDA-margin/FCF, and dropping restatement caveats — are
+fixed), and each answer is **re-verifiable**: `agents/replay.py` re-runs the deterministic tool calls
+from the audit trail and confirms the figures still reproduce from source.
+→ [`eval/redteam/`](eval/redteam/)
 
 > Built eval-driven: the eval surfaced the failures that drove the agent. It once *guessed* fiscal
 > years, *substituted revenue as a proxy for gross profit*, and *over-refused* answerable questions.
