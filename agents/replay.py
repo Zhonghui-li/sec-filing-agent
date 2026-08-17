@@ -95,7 +95,10 @@ def replay(trace, answer, tools=None):
             continue
         fresh_nums += _nums(fresh)
         stored, f = _nums(step.get("output") or ""), _nums(fresh)
-        reproduced = _covered(stored, f) and _covered(f, stored)
+        # one-directional: every figure the stored output relied on must still appear now. Fresh may
+        # carry MORE numbers (untrimmed vs the UI-trimmed stored, added dates/context) — that's fine;
+        # only a stored figure that no longer reproduces means the source moved.
+        reproduced = _covered(stored, f)
         checks.append({"tool": step["tool"], "args": step.get("args"),
                        "status": "reproduced" if reproduced else "source_changed",
                        "stored": (step.get("output") or "")[:150], "fresh": fresh[:150]})

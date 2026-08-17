@@ -231,6 +231,25 @@ def ask(q: Query, request: Request):
             "trace_id": out.get("trace_id")}
 
 
+class VerifyReq(BaseModel):
+    trace: List[dict] = []
+    answer: str = ""
+
+
+@app.post("/verify")
+def verify(v: VerifyReq, request: Request):
+    """Re-run the deterministic tool calls in a stored answer's trace and re-verify the answer
+    (reproducibility + grounding). On-demand (a button), so it doesn't cost anything per question."""
+    if not check_rate_limit(_client_ip(request)):
+        raise HTTPException(429, "Too many requests — please wait a minute and try again.")
+    from agents.replay import replay
+    try:
+        return replay(v.trace, v.answer)
+    except Exception as e:
+        print(f"[/verify] error: {type(e).__name__}: {e}")
+        return {"verdict": "ERROR", "checks": [], "numbers_grounded": None, "ungrounded": []}
+
+
 @app.get("/export")
 def export_table(request: Request, ticker: str, metrics: str, start: int, end: int):
     """Deterministic CSV of metrics/ratios × fiscal years, straight from the XBRL tools (no LLM in
