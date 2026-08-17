@@ -158,11 +158,14 @@ def name_to_cik(name):
 # if the caller passes the company NAME). The value is resolved through name_to_cik (which validates
 # against SEC's data and returns None if ambiguous), so a stale/wrong entry can't mis-resolve.
 _RETIRED_TICKERS = {
+    # NOTE: only include tickers that are truly RETIRED — never one that has been REASSIGNED to a
+    # live issuer (e.g. FB, once Facebook, now trades as First Banks; Facebook is META / CIK1326801).
+    # A reassigned ticker resolves via the current ticker map to the WRONG company. Each entry below
+    # is verified to resolve to the intended issuer, not a name collision.
     "ATVI": "Activision Blizzard",   # acquired by Microsoft (2023)
     "TWTR": "Twitter",               # taken private / renamed X (2022)
     "XLNX": "Xilinx",                # acquired by AMD (2022)
-    "FB": "Meta Platforms",          # renamed (2021)
-    "SQ": "Block",                   # renamed from Square (2021)
+    "SQ": "Block",                   # renamed from Square (2021); ticker later XYZ
     "FISV": "Fiserv",                # ticker changed to FI (2023)
 }
 
