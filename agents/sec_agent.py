@@ -31,7 +31,7 @@ from agents.statements import (get_statement as _get_statement,
                                largest_line_item as _largest_line_item,
                                get_segment_breakdown as _get_segment_breakdown,
                                get_segment_growth as _get_segment_growth)
-from agents.guardrail import guardrail
+from agents.guardrail import guardrail, guardrail_check
 from agents import observability
 
 DEFAULT_RECURSION_LIMIT = 15
@@ -480,6 +480,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
         tools_used = [t["tool"] for t in trace]
         # full_trace (untrimmed): the guardrail must see the whole retrieved passage to confirm a $
         # figure traces to it — the 600-char UI trim would starve the check and false-abstain.
+        guardrail_reason = guardrail_check(answer, tools_used, full_trace)  # capture the decision
         answer = guardrail(answer, tools_used, full_trace)   # hard backstop against bad numbers
         # audit trail: which filings were cited + whether/why it abstained
         accns = sorted({a for _, c in tool_outputs
@@ -498,6 +499,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
         audit = {"accessions_cited": accns, "abstained": "abstain" in tools_used,
                  "abstain_reason": next((t["args"].get("reason")
                                          for t in trace if t["tool"] == "abstain"), None),
+                 "guardrail": {"fired": bool(guardrail_reason), "reason": guardrail_reason},
                  "contexts": contexts}
         trace_id = record(answer=answer, tools_used=tools_used, usage=usage, audit=audit)
     if verbose:
