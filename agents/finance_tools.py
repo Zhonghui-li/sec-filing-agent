@@ -116,6 +116,19 @@ def cik_for(ticker):
     return hits[0]["cik"] if hits else None
 
 
+def _no_company_msg(ticker):
+    """The 'not found' message — upgraded to explain a FOREIGN PRIVATE ISSUER (a 20-F filer whose
+    ticker resolves but whose us-GAAP 10-K figures aren't in the data) instead of the misleading
+    'no company found'. Falls back to the delisted/renamed hint otherwise."""
+    from agents.companyfacts import foreign_filer_note
+    note = foreign_filer_note(ticker)
+    if note:
+        return note
+    return (f"No company found for '{ticker}'. If it is delisted or renamed (its ticker no longer "
+            f"trades — e.g. Activision, or Square/Block), retry with the full COMPANY NAME instead "
+            f"of a ticker.")
+
+
 def _canon(metric: str) -> str:
     # normalize punctuation/spacing (commas, hyphens, underscores -> spaces) so surface-form
     # variants of one name collapse before the alias lookup — one general rule, not per-variant
@@ -214,9 +227,7 @@ def get_financials(ticker: str, metric: str, fiscal_year: int = None, quarter: i
         return _quarterly_answer(tk, ticker, key, metric, fiscal_year, quarter)
     rows = _rows_for(tk)
     if not rows:                                   # ticker didn't resolve to any filer at all
-        return (f"No company found for '{ticker}'. If it is delisted or renamed (its ticker no "
-                f"longer trades — e.g. Activision, or Square/Block), retry with the full COMPANY "
-                f"NAME instead of a ticker.")
+        return _no_company_msg(ticker)
     hits = [r for r in rows if r["metric"] == key]
     if not hits:
         if key == "capex":                         # companyfacts omits some filers' capex -> statement
@@ -526,8 +537,7 @@ def get_ratio(ratio: str, ticker: str, fiscal_year: int = None) -> str:
     den, _ = _resolve_operand(den_spec, fiscal_year, _getval)
     if num is None or den is None:
         if not _rows_for(tk):                      # ticker didn't resolve to any filer at all
-            return (f"No company found for '{ticker}'. If it is delisted or renamed, retry with "
-                    f"the full COMPANY NAME instead of a ticker.")
+            return _no_company_msg(ticker)
         missing = num_spec if num is None else den_spec
         _log_miss(tk, missing.replace("avg:", ""), fiscal_year, f"ratio_base_absent:{name}")
         return (f"Cannot compute {name} for {tk}"

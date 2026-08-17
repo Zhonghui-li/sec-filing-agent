@@ -159,6 +159,32 @@ def cik_for(ticker):
     return ticker_to_cik_map().get(q.upper()) or name_to_cik(q)
 
 
+_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
+_FOREIGN_ANNUAL_FORMS = {"20-F", "40-F"}
+
+
+def foreign_filer_note(query):
+    """A one-line explanation if `query` is a FOREIGN PRIVATE ISSUER (files a 20-F/40-F annual
+    report, not a 10-K), else None. A ticker like TM (Toyota) resolves fine, but its annual figures
+    aren't in the us-GAAP 10-K path — so a tool can say WHY instead of a misleading 'no company
+    found'. Resolve via the ticker map (the current filer), not the name (which can hit an alternate
+    registration)."""
+    cik = ticker_to_cik_map().get(query.strip().upper())
+    if not cik:
+        return None
+    try:
+        forms = set(_get_json(_SUBMISSIONS_URL.format(cik=cik), timeout=30)
+                    .get("filings", {}).get("recent", {}).get("form", []))
+    except Exception:
+        return None
+    if "10-K" in forms or not (forms & _FOREIGN_ANNUAL_FORMS):
+        return None
+    form = "40-F" if "40-F" in forms else "20-F"
+    name = fetch_company(cik)[0].rstrip("/") or query
+    return (f"{name} is a foreign private issuer — it files a Form {form} annual report, not a "
+            f"10-K, so its annual figures aren't in the us-GAAP 10-K XBRL data this tool uses.")
+
+
 # --- extraction (identical logic to the offline script) --------------------------------------
 def annual_values(units, kind):
     """{fiscal_year_end -> {val, accn, restated_val, restated_accn}} for 10-K annual facts. A
