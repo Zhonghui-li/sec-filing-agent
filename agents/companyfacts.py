@@ -152,11 +152,28 @@ def name_to_cik(name):
     return next(iter(found)) if found else None
 
 
+# Well-known RETIRED tickers (delisted via acquisition, or renamed) -> the issuer's SEC name.
+# company_tickers.json is current-only, so these no longer resolve by ticker; SEC has no clean
+# former-ticker file, so a small curated map covers the famous cases (the long tail still resolves
+# if the caller passes the company NAME). The value is resolved through name_to_cik (which validates
+# against SEC's data and returns None if ambiguous), so a stale/wrong entry can't mis-resolve.
+_RETIRED_TICKERS = {
+    "ATVI": "Activision Blizzard",   # acquired by Microsoft (2023)
+    "TWTR": "Twitter",               # taken private / renamed X (2022)
+    "XLNX": "Xilinx",                # acquired by AMD (2022)
+    "FB": "Meta Platforms",          # renamed (2021)
+    "SQ": "Block",                   # renamed from Square (2021)
+    "FISV": "Fiserv",                # ticker changed to FI (2023)
+}
+
+
 def cik_for(ticker):
     """Resolve to a CIK. Tries the current-issuer ticker map first, then a name lookup that also
-    covers delisted/renamed issuers (former names) — so the caller may pass a ticker OR a name."""
+    covers delisted/renamed issuers (former names), then a curated retired-ticker map — so the
+    caller may pass a live ticker, a company NAME, or a well-known retired ticker (e.g. ATVI)."""
     q = ticker.strip()
-    return ticker_to_cik_map().get(q.upper()) or name_to_cik(q)
+    return (ticker_to_cik_map().get(q.upper()) or name_to_cik(q)
+            or (name_to_cik(_RETIRED_TICKERS[q.upper()]) if q.upper() in _RETIRED_TICKERS else None))
 
 
 _SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
