@@ -31,7 +31,7 @@ from agents.statements import (get_statement as _get_statement,
                                largest_line_item as _largest_line_item,
                                get_segment_breakdown as _get_segment_breakdown,
                                get_segment_growth as _get_segment_growth)
-from agents.guardrail import guardrail
+from agents.guardrail import guardrail, guardrail_check
 from agents import observability
 
 DEFAULT_RECURSION_LIMIT = 15
@@ -219,21 +219,26 @@ and the user's new message just continues the same line of questions without a n
 consistency — do NOT switch to the latest. (An explicit year, or "latest"/"most recent", still \
 overrides.) E.g. after "Apple's revenue in fiscal 2024", "and Microsoft?" means Microsoft FY2024.
 
-8. DERIVED / MULTI-STEP metrics: use get_ratio if it lists the metric. If it does NOT — e.g. cash \
-conversion cycle, EBITDA / EBITDA margin, or a formula spelled out in the question — use \
-compute_formula: write the WHOLE formula ONCE with our metric names as variables plus the helpers \
-avg() / delta() / prev() (it fetches every figure from XBRL and evaluates the whole expression \
-deterministically). For a MULTI-YEAR span (an N-year CAGR or an N-year average) the helpers take a \
-years-back argument — prev(metric, n), avg(metric, n) — so use compute_formula for these too (a \
-2-year CAGR to FY2022 is "(revenue / prev(revenue, 2)) ** (1/2) - 1" with fiscal_year=2022); \
-get_growth is adjacent-year only. Do NOT hand-assemble a metric by fetching parts and chaining \
-several compute calls — that mis-orders operands (e.g. 365 / ratio instead of 365 x, or sum \
-instead of average) and produces wrong numbers. Abstain (not_reported) ONLY if \
-get_ratio/compute_formula reports a required figure isn't available. A wrong number is worse than \
-an honest abstention.
+8. DERIVED / MULTI-STEP metrics — NEVER compute one yourself in prose. Do not write "calculated \
+as ..." with your own arithmetic; every figure you report must come from a tool call. get_ratio \
+covers the standard ratios PLUS cash conversion cycle (CCC) and EBITDA margin; get_financials \
+covers EBITDA and free cash flow — call these by NAME, do not write their formula. For a metric \
+NONE of the tools cover, or a formula spelled out in the question, use compute_formula: write the \
+WHOLE formula ONCE with our metric names as variables plus the helpers avg() / delta() / prev() (it \
+fetches every figure from XBRL and evaluates the whole expression deterministically). For a \
+MULTI-YEAR span (an N-year CAGR or an N-year average) the helpers take a years-back argument — \
+prev(metric, n), avg(metric, n) — so use compute_formula for these too (a 2-year CAGR to FY2022 is \
+"(revenue / prev(revenue, 2)) ** (1/2) - 1" with fiscal_year=2022); get_growth is adjacent-year \
+only. Do NOT hand-assemble a metric by fetching parts and doing the arithmetic yourself — that \
+mis-orders operands (e.g. 365 / ratio instead of 365 x, or sum instead of average) and produces \
+wrong numbers. Abstain (not_reported) ONLY if a tool reports a required figure isn't available. A \
+wrong number is worse than an honest abstention.
 9. SANITY-CHECK every number before reporting it: if it is implausible for its kind (a \
 days-outstanding ratio over a few hundred days, a turnover above ~20x, a margin above 100%), you \
 have made an error — do NOT report that number; abstain instead.
+10. RESTATEMENTS: if a tool's output includes a "[NOTE: ... a later filing restated ...]" caveat, \
+you MUST relay it in your answer — state the as-reported figure AND that a later filing restated it \
+to <the restated value>. Never drop or silently compress away a restatement note.
 
 Notes: map a plain year to the fiscal year (e.g. "2024" -> FY2024); fiscal years differ \
 across companies (NVDA's fiscal year ends in January). Be concise and always cite tickers \
@@ -475,6 +480,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
         tools_used = [t["tool"] for t in trace]
         # full_trace (untrimmed): the guardrail must see the whole retrieved passage to confirm a $
         # figure traces to it — the 600-char UI trim would starve the check and false-abstain.
+        guardrail_reason = guardrail_check(answer, tools_used, full_trace)  # capture the decision
         answer = guardrail(answer, tools_used, full_trace)   # hard backstop against bad numbers
         # audit trail: which filings were cited + whether/why it abstained
         accns = sorted({a for _, c in tool_outputs
@@ -493,6 +499,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
         audit = {"accessions_cited": accns, "abstained": "abstain" in tools_used,
                  "abstain_reason": next((t["args"].get("reason")
                                          for t in trace if t["tool"] == "abstain"), None),
+                 "guardrail": {"fired": bool(guardrail_reason), "reason": guardrail_reason},
                  "contexts": contexts}
         trace_id = record(answer=answer, tools_used=tools_used, usage=usage, audit=audit)
     if verbose:

@@ -101,19 +101,19 @@ def _hand_typed_operand(trace) -> bool:
     return False
 
 
-def guardrail(answer: str, tools_used: List[str], trace: List[Dict] = None) -> str:
-    """Return the answer, or a safe abstention if it reports an untrustworthy number:
+def guardrail_check(answer: str, tools_used: List[str], trace: List[Dict] = None):
+    """The reason an answer's number is untrustworthy (-> abstain), or None if it passes:
     (a) a physically-impossible magnitude (the model mis-composed a formula by hand),
     (b) a dollar figure asserted with NO data tool called at all (fabricated from memory), or
     (c) a `compute` whose operands don't trace to a fetched figure (a hand-typed number laundered
         into a fresh result). Percentages are never thresholded (growth can exceed 100%)."""
     if "abstain" in tools_used:
-        return answer
+        return None
     for rx, limit in _IMPLAUSIBLE:
         for m in rx.finditer(answer):
             try:
                 if abs(float(m.group(1).replace(",", ""))) > limit:
-                    return _SAFE
+                    return "implausible magnitude — a ratio out of its natural bound (hand-composed formula)"
             except ValueError:
                 continue
     if not (set(tools_used) & _DATA_TOOLS) and re.search(r"\$\s?\d", answer):
@@ -125,7 +125,12 @@ def guardrail(answer: str, tools_used: List[str], trace: List[Dict] = None) -> s
                  for v in _parse_money(t["output"])]
         for a in _parse_money(answer):
             if not any(abs(a - s) <= _MONEY_TOL * max(a, s, 1.0) for s in prose):
-                return _SAFE
+                return "dollar figure not traced to any tool output or cited passage (recalled from memory)"
     if _hand_typed_operand(trace):
-        return _SAFE
-    return answer
+        return "a compute operand did not trace to a fetched figure (hand-typed number)"
+    return None
+
+
+def guardrail(answer: str, tools_used: List[str], trace: List[Dict] = None) -> str:
+    """Return the answer, or a safe abstention if guardrail_check flags an untrustworthy number."""
+    return _SAFE if guardrail_check(answer, tools_used, trace) else answer

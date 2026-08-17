@@ -116,6 +116,19 @@ def cik_for(ticker):
     return hits[0]["cik"] if hits else None
 
 
+def _no_company_msg(ticker):
+    """The 'not found' message — upgraded to explain a FOREIGN PRIVATE ISSUER (a 20-F filer whose
+    ticker resolves but whose us-GAAP 10-K figures aren't in the data) instead of the misleading
+    'no company found'. Falls back to the delisted/renamed hint otherwise."""
+    from agents.companyfacts import foreign_filer_note
+    note = foreign_filer_note(ticker)
+    if note:
+        return note
+    return (f"No company found for '{ticker}'. If it is delisted or renamed (its ticker no longer "
+            f"trades — e.g. Activision, or Square/Block), retry with the full COMPANY NAME instead "
+            f"of a ticker.")
+
+
 def _canon(metric: str) -> str:
     # normalize punctuation/spacing (commas, hyphens, underscores -> spaces) so surface-form
     # variants of one name collapse before the alias lookup — one general rule, not per-variant
@@ -197,21 +210,24 @@ def _capex_cashflow_fallback(tk, ticker, fiscal_year):
 def get_financials(ticker: str, metric: str, fiscal_year: int = None, quarter: int = None) -> str:
     """Return an EXACT financial figure for a company from SEC XBRL data, with its
     source filing. Use this for ANY financial number (revenue, net income, total assets,
-    gross profit, EPS, cash, equity, ...) — never recall or estimate a number yourself.
+    gross profit, EPS, cash, equity, EBITDA, free cash flow, ...) — never recall or estimate
+    a number yourself.
     Pass fiscal_year (e.g. 2024) for a specific year, or omit it for the latest ANNUAL (10-K)
     figure. For a QUARTERLY figure pass quarter=1/2/3 (from 10-Q; Q4 isn't filed alone — use the
     full year). For a delisted or renamed company whose ticker no longer trades (e.g. Activision,
     or Square/Block), pass the company NAME as `ticker` instead. If the company doesn't report the
     metric, this says so (do not fabricate a value)."""
     tk = ticker.strip().upper()
+    kf = _known_formula_key(metric)
+    if kf and quarter is None:
+        # a derived $ metric (EBITDA, free cash flow) — compute deterministically, never hand-derive
+        return _eval_known_formula(kf, tk, fiscal_year)
     key = _canon(metric)
     if quarter is not None:
         return _quarterly_answer(tk, ticker, key, metric, fiscal_year, quarter)
     rows = _rows_for(tk)
     if not rows:                                   # ticker didn't resolve to any filer at all
-        return (f"No company found for '{ticker}'. If it is delisted or renamed (its ticker no "
-                f"longer trades — e.g. Activision, or Square/Block), retry with the full COMPANY "
-                f"NAME instead of a ticker.")
+        return _no_company_msg(ticker)
     hits = [r for r in rows if r["metric"] == key]
     if not hits:
         if key == "capex":                         # companyfacts omits some filers' capex -> statement
@@ -428,14 +444,76 @@ def _operand(ticker, spec, year):
     return _resolve_operand(spec, year, lambda m, y: _value(ticker, m, y))
 
 
+# Common DERIVED metrics with no single "numerator OP denominator" form — a composite of several
+# ratios (cash conversion cycle) or a dollar-valued difference (FCF, EBITDA). Stored as canonical
+# formulas and evaluated by the compute_formula AST engine, so the model routes to the NAME and
+# NEVER hand-computes them in prose (the finance-bar failure red-teamed on CCC / EBITDA margin / FCF).
+# Day-metrics use the fractional form with kind "days" (the formatter applies x365, as dpo/dso/dio do).
+KNOWN_FORMULAS = {
+    "cash_conversion_cycle": (
+        "avg(accounts_receivable)/revenue + avg(inventory)/cost_of_revenue "
+        "- avg(accounts_payable)/cost_of_revenue", "days", "DSO + DIO - DPO"),
+    "ebitda_margin": (
+        "(operating_income + depreciation_amortization) / revenue", "pct",
+        "(operating income + D&A) / revenue"),
+    "ebitda": (
+        "operating_income + depreciation_amortization", "usd", "operating income + D&A"),
+    "free_cash_flow": (
+        "operating_cash_flow - capex", "usd", "operating cash flow - capex"),
+}
+_KF_ALIASES = {
+    "cash conversion cycle": "cash_conversion_cycle", "ccc": "cash_conversion_cycle",
+    "ebitda margin": "ebitda_margin", "ebitda": "ebitda",
+    "free cash flow": "free_cash_flow", "free cash flows": "free_cash_flow", "fcf": "free_cash_flow",
+}
+
+
+def _known_formula_key(name):
+    """Resolve a metric/ratio name to a KNOWN_FORMULAS key, or None."""
+    n = name.strip().lower()
+    return _KF_ALIASES.get(n) or (n.replace(" ", "_") if n.replace(" ", "_") in KNOWN_FORMULAS else None)
+
+
+def _eval_known_formula(key, ticker, fiscal_year):
+    """Evaluate a KNOWN_FORMULAS metric with the compute_formula AST engine (deterministic, cited,
+    avg() handled), so the number is a tool output — never the model's own arithmetic."""
+    expr, kind, definition = KNOWN_FORMULAS[key]
+    tk = ticker.strip().upper()
+    tree = ast.parse(expr, mode="eval")
+    year = int(fiscal_year) if fiscal_year else None
+    if year is None:
+        for nm in [n.id for n in ast.walk(tree) if isinstance(n, ast.Name) and n.id not in _FORMULA_FUNCS]:
+            _, r = _value(tk, nm)
+            if r:
+                year = r["fiscal_year"]
+                break
+        if year is None:
+            return f"Provide a fiscal_year to compute {key.replace('_', ' ')} for {tk}. Abstain."
+    srcs = []
+    try:
+        raw = _eval_node(tree, tk, year, srcs)
+    except (KeyError, ValueError, ZeroDivisionError) as e:
+        return f"Cannot compute {key.replace('_', ' ')} for {tk} FY{year}: {e}. Abstain rather than guess."
+    out = f"${raw:,.0f}" if kind == "usd" else _fmt_ratio(raw, kind)
+    src = srcs[0] if srcs else None
+    accns = sorted({r["accession"] for r in srcs if r})
+    cite = (f" [sources: 10-K accessions {', '.join(accns)}, {edgar_url(src['cik'], src['accession'])}]"
+            if src else "")
+    return (f"{_entity(src, ticker)} {key.replace('_', ' ')} for FY{year} = {out} "
+            f"({definition}).{cite}" + _restatement_note(srcs))
+
+
 def get_ratio(ratio: str, ticker: str, fiscal_year: int = None) -> str:
     """Compute a standard financial RATIO deterministically (the formula is fixed in code, so
     the right base metrics and conventions are always used). Supports: gross_margin,
     operating_margin, net_margin, cogs_pct, roa, roe, current_ratio, quick_ratio, payout_ratio,
     debt_to_equity, effective_tax_rate, dpo, dso, dio, asset_turnover, fixed_asset_turnover,
-    inventory_turnover, capex_pct_revenue, interest_coverage. Use this for ANY ratio (incl. days-outstanding and
-    turnover ratios) instead
+    inventory_turnover, capex_pct_revenue, interest_coverage, cash_conversion_cycle (CCC),
+    ebitda_margin. Use this for ANY ratio (incl. days-outstanding and turnover ratios) instead
     of fetching pieces and dividing yourself — it returns the exact value, the formula, and source."""
+    kf = _known_formula_key(ratio)
+    if kf:
+        return _eval_known_formula(kf, ticker, fiscal_year)
     name = _RATIO_ALIASES.get(ratio.strip().lower(), ratio.strip().lower().replace(" ", "_"))
     if name not in RATIOS:
         # Not a standard ratio: log it (so the miss surfaces for later curation into RATIOS) and
@@ -459,8 +537,7 @@ def get_ratio(ratio: str, ticker: str, fiscal_year: int = None) -> str:
     den, _ = _resolve_operand(den_spec, fiscal_year, _getval)
     if num is None or den is None:
         if not _rows_for(tk):                      # ticker didn't resolve to any filer at all
-            return (f"No company found for '{ticker}'. If it is delisted or renamed, retry with "
-                    f"the full COMPANY NAME instead of a ticker.")
+            return _no_company_msg(ticker)
         missing = num_spec if num is None else den_spec
         _log_miss(tk, missing.replace("avg:", ""), fiscal_year, f"ratio_base_absent:{name}")
         return (f"Cannot compute {name} for {tk}"

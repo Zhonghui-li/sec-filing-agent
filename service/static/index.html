@@ -100,6 +100,18 @@
   .audit-out { margin-top:5px; padding-left:11px; border-left:2px solid var(--line);
                color:var(--muted); font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere;
                font-variant-numeric:tabular-nums; line-height:1.5; }
+  .audit-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:9px;
+                   padding-top:9px; border-top:1px solid var(--line); }
+  .audit-actions button { font-family:inherit; font-size:11.5px; color:var(--muted);
+                   background:var(--panel); border:1px solid var(--line); border-radius:6px;
+                   padding:3px 9px; cursor:pointer; }
+  .audit-actions button:hover { color:var(--ink); border-color:var(--accent-line); }
+  .audit-actions button:disabled { opacity:.6; cursor:default; }
+  .verdict { font-size:11.5px; padding:2px 8px; border-radius:5px; }
+  .verdict.ok { color:var(--accent); background:var(--accent-dim); border:1px solid var(--accent-line); }
+  .verdict.warn { color:var(--amber); background:var(--amber-dim); border:1px solid var(--amber-line); }
+  .verdict.bad { color:#ff8a8a; background:rgba(255,80,80,.08); border:1px solid rgba(255,80,80,.25); }
+  .verdict.muted { color:var(--faint); }
   .check { position:relative; display:inline-block; color:var(--amber); background:var(--amber-dim);
            border:1px solid var(--amber-line); border-radius:5px; padding:0 6px; font-size:11.5px; cursor:help; }
   .check[data-tip]::after { content:attr(data-tip); position:absolute; left:0; bottom:calc(100% + 7px);
@@ -388,7 +400,12 @@ form.addEventListener('submit', async (e) => {
         '<span class="lock">🔒</span> Audit trail · <b>' + n + '</b> ' + verb +
         ' · figures traced to source' +
         '<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>' +
-        '</summary><div class="audit-body">' + steps + '</div></details>';
+        '</summary><div class="audit-body">' + steps +
+        '<div class="audit-actions">' +
+          '<button class="reverify" type="button">Re-verify from source</button>' +
+          '<span class="verdict"></span>' +
+          '<button class="export-audit" type="button">⬇ Audit record</button>' +
+        '</div></div></details>';
     }
 
     if (d.trace_id) {
@@ -407,6 +424,34 @@ form.addEventListener('submit', async (e) => {
                 question: q, answer: d.answer, ...idFields() }) }); } catch(e){}
       fb.querySelector('.fbmsg').textContent = ' Thanks — feedback recorded.';
     }));
+    const rv = wait.querySelector('.reverify');
+    if (rv) rv.addEventListener('click', async () => {
+      const vslot = wait.querySelector('.verdict');
+      const orig = rv.textContent; rv.disabled = true; rv.textContent = 'Verifying…';
+      vslot.className = 'verdict muted'; vslot.textContent = '';
+      try {
+        const rr = await fetch('/verify', { method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ trace: d.trace, answer: d.answer }) });
+        const vd = await rr.json();
+        const M = { VERIFIED:['ok','✓ Verified · figures reproduced from source'],
+          SOURCE_CHANGED:['warn','⚠ Source changed since this answer'],
+          UNGROUNDED:['bad','✗ A figure did not trace to source'],
+          IRREPRODUCIBLE:['bad','✗ Could not re-run a tool'],
+          NO_DETERMINISTIC_EVIDENCE:['muted','— no numeric tools to replay'] };
+        const [cls, label] = M[vd.verdict] || ['muted', vd.verdict || 'error'];
+        vslot.className = 'verdict ' + cls; vslot.textContent = label;
+      } catch (e) { vslot.className = 'verdict bad'; vslot.textContent = 'verify failed'; }
+      rv.textContent = orig; rv.disabled = false;
+    });
+    const ex = wait.querySelector('.export-audit');
+    if (ex) ex.addEventListener('click', () => {
+      const rec = { question:q, answer:d.answer, trace:d.trace, tools_used:d.tools_used,
+        trace_id:d.trace_id, exported_at:new Date().toISOString() };
+      const blob = new Blob([JSON.stringify(rec, null, 2)], { type:'application/json' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = 'vouch-audit-' + (d.trace_id || Date.now()) + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+    });
   } catch (err) { wait.querySelector('.bubble').innerHTML = '<span class="hint">Network error.</span>'; }
   send.disabled = false; window.scrollTo(0, document.body.scrollHeight);
 });

@@ -1,0 +1,8 @@
+{"ts": "2026-08-15T22:24:30.044711+00:00", "model": "o4-mini", "reasoning_effort": "low", "limit": 5, "traps": 5, "controls": 0, "fabrications": 0, "over_abstentions": 0, "fabrication_rate": 0.0}
+{"ts": "2026-08-15T22:36:08.404816+00:00", "model": "o4-mini", "reasoning_effort": "low", "limit": null, "traps": 46, "controls": 4, "fabrications": 13, "over_abstentions": 0, "fabrication_rate": 0.2826}
+{"ts": "2026-08-17T02:26:58.585663+00:00", "mode": "rescore", "model": "gpt-4o-mini", "traps": 46, "controls": 4, "fabrications": 7, "over_abstentions": 5, "control_miss": 0, "fabrication_rate": 0.1522}
+{"ts": "2026-08-17T02:34:23.065588+00:00", "mode": "rescore", "model": "gpt-4o-mini", "traps": 46, "controls": 4, "fabrications": 5, "over_abstentions": 5, "control_miss": 0, "fabrication_rate": 0.1087}
+{"ts": "2026-08-17T03:13:41.892972+00:00", "mode": "full", "model": "o4-mini", "traps": 46, "controls": 4, "fabrications": 6, "over_abstentions": 3, "control_miss": 0, "fabrication_rate": 0.1304}
+{"ts": "2026-08-17T03:24:43.487380+00:00", "mode": "full", "model": "o4-mini", "traps": 46, "controls": 4, "fabrications": 4, "over_abstentions": 3, "control_miss": 0, "fabrication_rate": 0.087}
+{"ts": "2026-08-17T03:30:52.268367+00:00", "mode": "rescore", "model": "gpt-4o-mini", "traps": 46, "controls": 4, "fabrications": 1, "over_abstentions": 3, "control_miss": 0, "fabrication_rate": 0.0217}
+{"ts": "2026-08-17T03:54:34.186152+00:00", "mode": "rescore", "model": "gpt-4o-mini", "traps": 46, "controls": 4, "fabrications": 0, "over_abstentions": 3, "control_miss": 0, "fabrication_rate": 0.0}
