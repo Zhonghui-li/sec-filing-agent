@@ -63,8 +63,10 @@ def main():
         if numeric:
             correct = bool(_nums(gold)) and _num_match(answer, _nums(gold)[0])
             verdict = "abstain" if abstained else ("correct" if correct else "wrong")
-            if verdict == "correct" and call and call["name"] in _DATA_TOOLS:
-                train.append({"question": q, "tool": call})
+            # LEAK GUARD: the metrics-generated numeric questions ARE the eval set
+            # (finetune.fb_routing_eval scores exactly these). Never rejection-sample them into
+            # training, or the fine-tuned model would train on its own test — inflated, invalid.
+            # These questions still get a routing reference; they just never become training pairs.
             ref_tool = call["name"] if call else ("abstain" if abstained else None)
         else:  # narrative: PURE narrative -> search_filings; a "judgment on a metric" question
             # (capital-intensive? improving margin?) legitimately routes to a numeric tool + reasoning,
