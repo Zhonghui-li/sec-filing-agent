@@ -48,6 +48,8 @@ METRICS = {
     "cost_of_revenue":     (["CostOfRevenue", "CostOfGoodsAndServicesSold", "CostOfGoodsSold"],
                             "duration"),
     "dividends_paid":      (["PaymentsOfDividendsCommonStock", "PaymentsOfDividends"], "duration"),
+    "dividends_per_share": (["CommonStockDividendsPerShareDeclared",
+                             "CommonStockDividendsPerShareCashPaid"], "duration"),
     "accounts_payable":    (["AccountsPayableCurrent", "AccountsPayableTradeCurrent"], "instant"),
     "inventory":           (["InventoryNet", "InventoryFinishedGoodsNetOfReserves"], "instant"),
     "current_assets":      (["AssetsCurrent"], "instant"),
@@ -78,7 +80,7 @@ METRICS = {
 # Per-share metrics where a later filing's RETROACTIVE STOCK-SPLIT adjustment is the standard,
 # comparable basis (not a restatement to warn about). For these we use the current/split-adjusted
 # value, not the as-originally-reported (pre-split) one. Everything else defaults to as-reported.
-_SPLIT_ADJUSTED_METRICS = {"eps_diluted"}
+_SPLIT_ADJUSTED_METRICS = {"eps_diluted", "dividends_per_share"}
 
 
 def _get_json(url, timeout=90):

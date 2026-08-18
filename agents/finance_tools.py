@@ -34,6 +34,8 @@ _ALIASES = {
     "cogs": "cost_of_revenue", "cost of sales": "cost_of_revenue",
     "dividends paid": "dividends_paid", "dividends": "dividends_paid",
     "total dividends": "dividends_paid", "cash dividends": "dividends_paid",
+    "dividends per share": "dividends_per_share", "dividend per share": "dividends_per_share",
+    "dps": "dividends_per_share", "dividends declared per share": "dividends_per_share",
     "accounts payable": "accounts_payable", "trade payables": "accounts_payable",
     "inventory": "inventory", "inventories": "inventory",
     "current assets": "current_assets", "total current assets": "current_assets",
