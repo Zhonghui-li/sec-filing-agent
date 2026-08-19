@@ -1,0 +1,178 @@
+[
+ {
+  "question": "What drove operating margin change as of FY2022 for 3M? If operating margin is not a useful metric for a company like this, then please state that and explain why.",
+  "grounded": "good"
+ },
+ {
+  "question": "If we exclude the impact of M&A, which segment has dragged down 3M's overall growth in 2022?",
+  "grounded": "good"
+ },
+ {
+  "question": "Which debt securities are registered to trade on a national securities exchange under 3M's name as of Q2 of 2023?",
+  "grounded": "good"
+ },
+ {
+  "question": "What was the key agenda of the AMCOR's 8k filing dated 1st July 2022?",
+  "grounded": "good"
+ },
+ {
+  "question": "What are major acquisitions that AMCOR has done in FY2023, FY2022 and FY2021?",
+  "grounded": "good"
+ },
+ {
+  "question": "What industry does AMCOR primarily operate in?",
+  "grounded": "bad"
+ },
+ {
+  "question": "What is the nature & purpose of AMCOR's restructuring liability as oF Q2 of FY2023 close?",
+  "grounded": "good"
+ },
+ {
+  "question": "How much was the Real change in Sales for AMCOR in FY 2023 vs FY 2022, if we exclude the impact of FX movement, passthrough costs and one-off items?",
+  "grounded": "good"
+ },
+ {
+  "question": "What are the major products and services that AMD sells as of FY22?",
+  "grounded": "good"
+ },
+ {
+  "question": "What drove revenue change as of the FY22 for AMD?",
+  "grounded": "good"
+ },
+ {
+  "question": "What drove operating margin change as of the FY22 for AMD? If operating margin is not a useful metric for a company like this, then please state that and explain why.",
+  "grounded": "bad"
+ },
+ {
+  "question": "Did AMD report customer concentration in FY22?",
+  "grounded": "bad"
+ },
+ {
+  "question": "Which debt securities are registered to trade on a national securities exchange under American Express' name as of 2022?",
+  "grounded": "good"
+ },
+ {
+  "question": "Was American Express able to retain card members during 2022?",
+  "grounded": "good"
+ },
+ {
+  "question": "What are major acquisitions that Best Buy has done in FY2023, FY2022 and FY2021?",
+  "grounded": "good"
+ },
+ {
+  "question": "Was there any change in the number of Best Buy stores between Q2 of FY2024 and FY2023?",
+  "grounded": "good"
+ },
+ {
+  "question": "Has Boeing reported any materially important ongoing legal battles from FY2022?",
+  "grounded": "good"
+ },
+ {
+  "question": "Who are the primary customers of Boeing as of FY2022?",
+  "grounded": "good"
+ },
+ {
+  "question": "Is Boeing's business subject to cyclicality?",
+  "grounded": "good"
+ },
+ {
+  "question": "What production rate changes is Boeing forecasting for FY2023?",
+  "grounded": "bad"
+ },
+ {
+  "question": "Has CVS Health reported any materially important ongoing legal battles from 2022, 2021 and 2020?",
+  "grounded": "good"
+ },
+ {
+  "question": "Does Foot Locker's new CEO have previous CEO experience in a similar company to Footlocker?",
+  "grounded": "good"
+ },
+ {
+  "question": "What drove gross margin change as of FY2022 for JnJ? If gross margin is not a useful metric for a company like this, then please state that and explain why.",
+  "grounded": "good"
+ },
+ {
+  "question": "Is growth in JnJ's adjusted EPS expected to accelerate in FY2023?",
+  "grounded": "good"
+ },
+ {
+  "question": "Which business segment of JnJ will be treated as a discontinued operation from August 30, 2023 onward?",
+  "grounded": "good"
+ },
+ {
+  "question": "What is the amount of the gain accruing to JnJ as a result of the separation of its Consumer Health business segment, as of August 30, 2023?",
+  "grounded": "bad"
+ },
+ {
+  "question": "What is the amount of the cash proceeds that JnJ realised from the separation of Kenvue (formerly Consumer Health business segment), as of August 30, 2023?",
+  "grounded": "good"
+ },
+ {
+  "question": "Looking at VaR, did the risk that JPM faced in the second fiscal quarter of 2023 decrease compared to the same period in the prior year?",
+  "grounded": "good"
+ },
+ {
+  "question": "Has MGM Resorts paid dividends to common shareholders in FY2022?",
+  "grounded": "bad"
+ },
+ {
+  "question": "Which type of debt received the largest investment among the short term investments for MGM in H1 FY2023?",
+  "grounded": "good"
+ },
+ {
+  "question": "Has Pepsico reported any materially important ongoing legal battles from FY2022 and FY2021?",
+  "grounded": "good"
+ },
+ {
+  "question": "At the Pepsico AGM held on May 3, 2023, what was the outcome of the shareholder vote on the shareholder proposal for a congruency report by Pepsico on net-zero emissions policies?",
+  "grounded": "good"
+ },
+ {
+  "question": "By how much did Pepsico increase its unsecured five year revolving credit agreement on May 26, 2023?",
+  "grounded": "good"
+ },
+ {
+  "question": "As of May 26, 2023, what is the total amount Pepsico may borrow under its unsecured revolving credit agreements?",
+  "grounded": "good"
+ },
+ {
+  "question": "As of FY2023Q1, why did Pepsico raise full year guidance for FY2023?",
+  "grounded": "good"
+ },
+ {
+  "question": "As of FY2023Q1, by how many percentage points did Pepsico raise full year guidance in respect of core constant currency EPS growth?",
+  "grounded": "good"
+ },
+ {
+  "question": "Were there any potential events that are not in Pfizer's standard business operations that substantially increased net income in 2019?",
+  "grounded": "good"
+ },
+ {
+  "question": "What are three main companies acquired by Pfizer mentioned in this 10K report?",
+  "grounded": "good"
+ },
+ {
+  "question": "How much does Pfizer expect to pay to spin off Upjohn in the future in USD million?",
+  "grounded": "good"
+ },
+ {
+  "question": "As of Q2'2023, is Pfizer spinning off any large business segments?",
+  "grounded": "good"
+ },
+ {
+  "question": "Which debt securities are registered to trade on a national securities exchange under Ulta Beauty's name as of FY2023?",
+  "grounded": "good"
+ },
+ {
+  "question": "What are major acquisitions that Ulta Beauty has done in FY2023 and FY2022?",
+  "grounded": "good"
+ },
+ {
+  "question": "What drove the increase in Ulta Beauty's merchandise inventories balance at end of FY2023?",
+  "grounded": "good"
+ },
+ {
+  "question": "As of FY 2021, how much did Verizon expect to pay for its retirees in 2024?",
+  "grounded": "good"
+ }
+]
