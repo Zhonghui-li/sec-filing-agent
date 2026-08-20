@@ -76,12 +76,18 @@ def capture(limit=None):
     rows = []
     for i, c in enumerate(narrative, 1):
         out = run_agent(c["question"], agent=agent)
-        ctxs = []
+        ctxs, tool_outs = [], []
         for step in out.get("trace", []):
-            if step["tool"] == "search_filings" and step.get("output"):
-                ctxs.append(str(step["output"]))
+            o = step.get("output")
+            if not o:
+                continue
+            if step["tool"] == "search_filings":
+                ctxs.append(str(o))                       # retrieved prose
+            elif step["tool"] != "abstain":
+                tool_outs.append(f"[{step['tool']}] {o}")  # numeric/deterministic tool output (grounds figures)
         rows.append({"question": c["question"], "question_type": c.get("question_type"),
-                     "gold": str(c["answer"]), "answer": out["answer"], "contexts": ctxs})
+                     "gold": str(c["answer"]), "answer": out["answer"],
+                     "contexts": ctxs, "tool_outputs": tool_outs})
         print(f"  captured [{i}/{len(narrative)}] {c['question'][:60]}")
     _CAP.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
     print(f"wrote {_CAP.name} ({len(rows)} full narrative answers)")
@@ -101,8 +107,11 @@ def main():
 
     from eval.judge import domain_judge
     corr = correctness_judge(rows)
+    # grounding: feed BOTH retrieved prose AND numeric tool outputs, so a figure grounded in a tool
+    # (get_ratio/get_financials) isn't falsely judged ungrounded just because it's not in the prose.
     grnd = domain_judge([{"question": r["question"], "answer": r["answer"],
-                          "contexts": r["contexts"]} for r in rows])
+                          "contexts": (r["contexts"] or []) + (r.get("tool_outputs") or [])}
+                         for r in rows])
 
     from collections import Counter
     cc = Counter(c["verdict"] for c in corr)
