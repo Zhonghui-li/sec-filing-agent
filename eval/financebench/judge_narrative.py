@@ -30,17 +30,32 @@ CORRECTNESS_RUBRIC = """You are grading an AI assistant's answer to a question a
 filings, against a reference (GOLD) answer written by financial analysts. Decide whether the \
 assistant's ANSWER is factually correct RELATIVE TO THE GOLD answer.
 
-Judge on substance, not wording or extra detail:
-- CORRECT: the answer reaches the same conclusion / reports the same key fact as gold. For a \
-yes/no or directional question (improving? healthy? capital-intensive?), the DIRECTION/verdict must \
-match. For a figure, it must match gold within a small rounding/convention tolerance (~2-3%), OR a \
-larger gap is acceptable ONLY if it clearly stems from a stated, defensible convention difference \
-(e.g. average vs ending balance) and the conclusion is unchanged.
-- PARTIAL: the main conclusion matches but a material number is off beyond convention, OR it answers \
-only part of a multi-part question.
-- INCORRECT: the conclusion/direction contradicts gold, the key figure is materially wrong, or it \
-answers a different thing. An abstention/refusal ("I can't determine…") when gold HAS an answer is \
-INCORRECT (it failed to answer).
+Grade the SUBSTANTIVE PROPOSITION the question asks about — NOT string/number exact-match to gold.
+Identify what the question actually asks for, then apply the matching rule:
+
+1. YES/NO or DIRECTIONAL question (improving? healthy? capital-intensive? high-growth? consistent?):
+   ONLY the verdict/direction decides correctness. If the answer's yes/no (or up/down) matches gold,
+   it is CORRECT — EVEN IF a supporting number is imprecise or uses a different but defensible
+   convention. Example: gold "not healthy, quick ratio 0.54"; answer "quick ratio 0.71, below 1.0 so
+   not healthy" = CORRECT (both say NOT healthy; 0.71 vs 0.54 is a quick-ratio-definition difference,
+   irrelevant to the verdict). Do NOT mark it incorrect just because the number differs.
+
+2. FIGURE question (a specific number is the answer): CORRECT if within a small rounding/convention
+   tolerance, OR the gap clearly stems from a defensible convention (avg vs ending, ratio definition)
+   with the conclusion unchanged. If gold itself says "approximately / ~ / roughly $X", an answer
+   within ~5-10% is CORRECT (e.g. gold "approximately $20B", answer "$21.0B" = CORRECT).
+
+3. DRIVER / "what drove X" question: the answer target is the CAUSE(S), not the magnitude.
+   - Names ≥1 genuine causal driver from gold → at least PARTIAL (fully covers gold's drivers → CORRECT).
+   - Only restates the result/magnitude ("revenue grew 43.6%") with NO driver → INCORRECT.
+
+INCORRECT also when: the verdict/direction contradicts gold; a figure is materially wrong beyond
+convention; it answers a different thing; it ABSTAINS/refuses when gold HAS an answer; or it gives
+only generic boilerplate ("routinely subject to litigation") instead of the substantive fact gold
+asks for (that is failing to answer, not a minor omission).
+
+PARTIAL: main conclusion matches but a material component is missing/off (e.g. a driver question that
+hits some but not all drivers), or only part of a multi-part question is answered.
 
 Respond ONLY with JSON: {"reasoning":"<1-3 sentences>","verdict":"CORRECT"|"PARTIAL"|"INCORRECT"}"""
 
