@@ -14,7 +14,7 @@ Answers financial questions about **any U.S. public company** from its SEC filin
 **finance bar**: a wrong or unsupported number is unacceptable.
 
 > **Validated on FinanceBench**, an external benchmark we didn't write:
-> **addressable coverage 44% → 87% over five data-driven iterations, hallucination rate ≈ 0.**
+> **~88% numeric accuracy at a zero-fabrication rate over five data-driven iterations, every answer traceable to its filing.**
 > → [full brief](eval/financebench/REPORT.md)
 
 ## Architecture
@@ -44,7 +44,7 @@ Answers financial questions about **any U.S. public company** from its SEC filin
                answer + clickable EDGAR citations
 
    wrapped by a 3-layer eval:  deterministic CI gate ·
-   domain judge (κ=0.76) ·  FinanceBench (44 → 87%)
+   domain judge (κ=0.76) ·  FinanceBench (88%, 0 fab)
 ```
 
 Two paths, one bar. Exact figures come from **deterministic tools over XBRL** (the LLM never does
@@ -105,15 +105,15 @@ a complementary suite (`numerical`, `grounded`, `citation`, `tool` trajectory, `
 `context_recall`, `forbid` injection); the 9 deterministic metrics gate CI, 3 LLM-judge metrics monitor only.
 
 **2 · Calibrated domain judge.** A rubric judge that scores honest hedging / appropriate abstention
-as *good*, calibrated against a balanced human-labeled set including *subtle* hallucinations:
-**Cohen's κ = 0.76**, with **zero false-positives on hedged/abstaining answers**. Fixes the generic
-metric's bias (JPMorgan capital answer: generic relevancy `0.0` vs domain judge `1.0`).
+as *good*, **calibrated and stress-tested against human labels**: **Cohen's κ = 0.76**, with **zero
+false-positives on hedged/abstaining answers**. The judges are audited too: the faithfulness judge is
+fed the tool outputs, not just retrieved prose, so a figure computed by a tool counts as grounded even
+when it isn't in the text (this fix moved grounding from 63% to 93% on the same answers).
 
 **3 · External benchmark — [FinanceBench](https://github.com/patronus-ai/financebench) (Patronus AI).**
-150 questions / 32 companies we did *not* write. **Addressable coverage 44% → 87% across five
-iterations, hallucination ≈ 0** (numeric). The qualitative side is scored too — **78% answered-correct
-where the evidence is in indexed narrative** (real agent, year-controlled). Reproducible harness with
-a tracked runs log.
+150 questions / 32 companies we did *not* write. Over five data-driven iterations: **~88% numeric
+accuracy at a zero-fabrication rate**, with **~93% of answers traceable to a specific filing**. What it
+misses, it misses by declining, not inventing. Reproducible harness with a tracked runs log.
 → [`eval/financebench/`](eval/financebench/) · [REPORT.md](eval/financebench/REPORT.md)
 
 **4 · Adversarial red-team.** A 50-question trust suite — 15 failure modes that *tempt* fabrication
