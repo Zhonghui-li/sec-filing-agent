@@ -1,10 +1,28 @@
 # Validating the SEC filing agent on FinanceBench
 
-A brief on how we measured the agent against an **independent external benchmark**, and what five
-data-driven iterations achieved: **addressable coverage 44% → 87%, real hallucination rate ≈ 0**
-(the numeric side). A **narrative scorecard** (78% answered-correct where the evidence is in the text
-we index) and an eval-gated retrieval study — whose honest conclusion was to *not* ship a
-+22pp-recall technique that hurt end-to-end answers — follow below.
+A brief on how we measured the agent against an **independent external benchmark**. Over five
+data-driven iterations the agent reached **~88% numeric accuracy at a zero-fabrication rate, with
+~93% of answers traceable to a specific filing**. What it misses, it misses by declining, not by
+inventing. A narrative scorecard and an eval-gated retrieval study — whose honest conclusion was to
+*not* ship a +22pp-recall technique that hurt end-to-end answers — follow below.
+
+> **Update (2026-08).** A second full run of the improved agent, plus calibration of both eval
+> judges, refined the picture and is the current headline:
+> - **Numeric accuracy ~88%** (cross-validated: a strict LLM judge and a deterministic
+>   number-extraction check agree at 86–88%; a looser scale-tolerant matcher read 96% and was set
+>   aside as it can produce coincidental false positives).
+> - **Zero fabrications**, verified case by case (the only real numeric error in 150 was a
+>   ticker mix-up, BBY vs BBBY; the rest are convention differences or over-abstention).
+> - **~93% grounded / traceable.** This surfaced a bug in the *measurement*: the faithfulness judge
+>   was fed only retrieved prose, so a figure computed by a tool was scored ungrounded because the
+>   number wasn't in the text. Feeding the judge the tool outputs moved the same answers from 63% to
+>   93%. **A judge you haven't audited is just one more model you're trusting.**
+> - The **correctness judge** was calibrated against human labels on a difficulty-stratified set
+>   (Cohen's κ = 0.61) and found *systematically over-strict* on defensible convention differences,
+>   so the reported narrative-correctness is a lower bound.
+>
+> The "addressable coverage 44% → 87%" framing below is the original five-round improvement story and
+> is kept for the history; the numbers above are the current, cross-validated headline.
 
 ---
 
