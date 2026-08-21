@@ -31,7 +31,8 @@ Answers financial questions about **any U.S. public company** from its SEC filin
         ┌─────────────────┐  ┌────────────────────┐
         │ XBRL tools      │  │ search_filings     │
         │ figures·ratios· │  │ pgvector dense     │
-        │ growth·formulas │  │ retrieval, EDGAR   │
+        │ growth·formulas │  │ retrieval over     │
+        │ statements·segs │  │ 10-K / 10-Q / 8-K  │
         └────────┬────────┘  └─────────┬──────────┘
           figures │                    │ cited passages
                   └──────────┬─────────┘
@@ -49,8 +50,8 @@ Answers financial questions about **any U.S. public company** from its SEC filin
 
 Two paths, one bar. Exact figures come from **deterministic tools over XBRL** (the LLM never does
 arithmetic on financials); narrative goes through **retrieval** with citations. An **output
-guardrail** blocks any number that doesn't trace to its source: an XBRL tool, or (for an event
-figure XBRL doesn't carry, like a debt issuance) a cited 8-K passage the number matches verbatim.
+guardrail** blocks any number that doesn't trace to its source, whether that source is an XBRL tool
+or a cited filing passage the number matches verbatim.
 
 ## The finance bar
 
@@ -58,13 +59,13 @@ figure XBRL doesn't carry, like a debt issuance) a cited 8-K passage the number 
 |---|---|
 | **Numbers only from tools** | every figure from structured XBRL, never LLM arithmetic |
 | **Every claim cited** | a clickable EDGAR link to the source filing |
-| **Every answer re-verifiable** | re-run the deterministic tool calls from the audit trail and confirm the figures still reproduce from source (`agents/replay.py`) |
+| **Every answer re-verifiable** | one click re-runs the deterministic tool calls from the audit trail and confirms the figures still reproduce from source; the full audit record is exportable (`agents/replay.py`) |
 | **Abstains, never fabricates** | a structured signal when a metric isn't reported or is out of scope |
 | **Same bar for your docs** | uploaded statements → table-cell extraction, cell-level citations |
 
-Covers **23 statement line-items + 18 ratios**, annual or by quarter, plus any spelled-out formula,
-for any public company. Delisted or renamed firms resolve by **name** (Activision, Square→Block),
-not a dead ticker.
+Covers a broad, growing set of **statement line-items and standard ratios** (annual or by quarter),
+any spelled-out formula, plus **full-statement and segment/geography breakdowns**, for any public
+company. Delisted or renamed firms resolve by **name** (Activision, Square→Block), not a dead ticker.
 
 ## Example
 
@@ -87,9 +88,13 @@ A: 🔧 get_financials(JPM, gross_profit) → not reported · abstain(not_report
 | Tool | What it does |
 |---|---|
 | `get_financials` | an exact figure from XBRL (full-year or a specific quarter), any public company, fetched live |
-| `get_ratio` | 18 standard ratios from fixed formulas, the right base metric baked in |
+| `get_ratio` | standard financial ratios from fixed formulas, the right base metric baked in |
 | `get_growth` | YoY change, always consecutive years, so no multi-year span is mislabeled as YoY |
 | `compute_formula` | a spelled-out formula, **Program-of-Thought**: the model writes it once, code fetches every figure and evaluates, so the model never transcribes a number |
+| `get_statement` | a full statement (balance sheet, income, cash flow) reconstructed from XBRL, with every line item |
+| `largest_line_item` | the largest (or smallest) line item on a statement, so "biggest liability" is computed, not guessed |
+| `get_segment_breakdown` | revenue or operating income by **business segment or geography**, with a sum-check against the consolidated total |
+| `get_segment_growth` | YoY growth by segment or geography, using the filing's own restated comparatives so a reorganization doesn't corrupt it |
 | `search_filings` | qualitative context from a 10-K (any fiscal year), recent 10-Q MD&A, and 8-K events, via pgvector dense retrieval |
 | `abstain(reason)` | a structured, machine-readable refusal |
 
@@ -104,11 +109,11 @@ over 7 curated companies, plus 27 narrative cases with gold evidence across ~20 
 a complementary suite (`numerical`, `grounded`, `citation`, `tool` trajectory, `abstain`,
 `context_recall`, `forbid` injection); the 9 deterministic metrics gate CI, 3 LLM-judge metrics monitor only.
 
-**2 · Calibrated domain judge.** A rubric judge that scores honest hedging / appropriate abstention
-as *good*, **calibrated and stress-tested against human labels**: **Cohen's κ = 0.76**, with **zero
-false-positives on hedged/abstaining answers**. The judges are audited too: the faithfulness judge is
-fed the tool outputs, not just retrieved prose, so a figure computed by a tool counts as grounded even
-when it isn't in the text (this fix moved grounding from 63% to 93% on the same answers).
+**2 · Calibrated judges.** Both the **faithfulness** judge and the **answer-correctness** judge are
+calibrated and stress-tested against human labels (faithfulness at **Cohen's κ = 0.76**, with **zero
+false-positives on hedged/abstaining answers**). The judges are audited too, not just the agent: the
+faithfulness judge is fed the tool outputs, not only retrieved prose, so a figure from a tool counts
+as grounded even when it isn't in the text.
 
 **3 · External benchmark — [FinanceBench](https://github.com/patronus-ai/financebench) (Patronus AI).**
 150 questions / 32 companies we did *not* write. Over five data-driven iterations: **~88% numeric
