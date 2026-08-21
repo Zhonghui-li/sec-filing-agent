@@ -6,7 +6,7 @@
 
 [![Eval](https://github.com/Zhonghui-li/sec-filing-agent/actions/workflows/eval.yml/badge.svg)](https://github.com/Zhonghui-li/sec-filing-agent/actions/workflows/eval.yml)
 
-![Vouch — an exact figure cited to the filing, shown with its tool-call audit trail](docs/demo-cited-answer.png)
+![Vouch — an exact figure cited to the filing, with its tool-call audit trail and a one-click re-verify that reproduces the number from source](docs/demo-cited-answer.png)
 
 ![Vouch — a segment breakdown with a DQC-0150 sum-check, and an honest abstention on a non-GAAP figure](docs/demo-segment-abstention.png)
 
