@@ -74,7 +74,12 @@ def _correctness_one(llm, item):
 
 
 def correctness_judge(items):
-    llm = ChatOpenAI(model=JUDGE_MODEL, temperature=0,
+    # gpt-4o, not -mini: on a difficulty-stratified human-labeled set the -mini judge was
+    # systematically over-strict (κ=0.61, failing correct answers on convention/approximation);
+    # the same rubric with gpt-4o applies the nuance and lifts agreement to κ=0.90. The judge model,
+    # not the rubric wording, was the bottleneck. Override with CORRECTNESS_JUDGE_MODEL if needed.
+    model = os.environ.get("CORRECTNESS_JUDGE_MODEL", "gpt-4o")
+    llm = ChatOpenAI(model=model, temperature=0,
                      model_kwargs={"response_format": {"type": "json_object"}})
     with ThreadPoolExecutor(max_workers=4) as ex:
         return list(ex.map(lambda it: _correctness_one(llm, it), items))

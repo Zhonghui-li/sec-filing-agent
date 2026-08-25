@@ -9,7 +9,9 @@
   ],
   "tier": "HARD",
   "_judge": "correct",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "correct",
+  "judge_4o": "correct"
  },
  {
   "id": 2,
@@ -21,7 +23,9 @@
   ],
   "tier": "HARD",
   "_judge": "correct",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "correct",
+  "judge_4o": "correct"
  },
  {
   "id": 3,
@@ -33,7 +37,9 @@
   ],
   "tier": "HARD",
   "_judge": "incorrect",
-  "human": "incorrect"
+  "human": "incorrect",
+  "judge2": "partial",
+  "judge_4o": "incorrect"
  },
  {
   "id": 4,
@@ -45,7 +51,9 @@
   ],
   "tier": "HARD",
   "_judge": "incorrect",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "partial",
+  "judge_4o": "correct"
  },
  {
   "id": 5,
@@ -59,7 +67,9 @@
   ],
   "tier": "HARD",
   "_judge": "incorrect",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "partial",
+  "judge_4o": "correct"
  },
  {
   "id": 6,
@@ -71,7 +81,9 @@
   ],
   "tier": "HARD",
   "_judge": "correct",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "correct",
+  "judge_4o": "correct"
  },
  {
   "id": 7,
@@ -81,7 +93,9 @@
   "types": [],
   "tier": "CLEAR",
   "_judge": "correct",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "partial",
+  "judge_4o": "correct"
  },
  {
   "id": 8,
@@ -95,7 +109,9 @@
   ],
   "tier": "HARD",
   "_judge": "correct",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "correct",
+  "judge_4o": "correct"
  },
  {
   "id": 9,
@@ -105,7 +121,9 @@
   "types": [],
   "tier": "CLEAR",
   "_judge": "correct",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "correct",
+  "judge_4o": "correct"
  },
  {
   "id": 10,
@@ -118,7 +136,9 @@
   ],
   "tier": "HARD",
   "_judge": "correct",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "correct",
+  "judge_4o": "correct"
  },
  {
   "id": 11,
@@ -130,7 +150,9 @@
   ],
   "tier": "HARD",
   "_judge": "incorrect",
-  "human": "incorrect"
+  "human": "incorrect",
+  "judge2": "incorrect",
+  "judge_4o": "incorrect"
  },
  {
   "id": 12,
@@ -140,7 +162,9 @@
   "types": [],
   "tier": "CLEAR",
   "_judge": "incorrect",
-  "human": "incorrect"
+  "human": "incorrect",
+  "judge2": "incorrect",
+  "judge_4o": "incorrect"
  },
  {
   "id": 13,
@@ -150,7 +174,9 @@
   "types": [],
   "tier": "CLEAR",
   "_judge": "incorrect",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "incorrect",
+  "judge_4o": "incorrect"
  },
  {
   "id": 14,
@@ -162,7 +188,9 @@
   ],
   "tier": "HARD",
   "_judge": "incorrect",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "incorrect",
+  "judge_4o": "correct"
  },
  {
   "id": 15,
@@ -172,7 +200,9 @@
   "types": [],
   "tier": "CLEAR",
   "_judge": "incorrect",
-  "human": "incorrect"
+  "human": "incorrect",
+  "judge2": "incorrect",
+  "judge_4o": "incorrect"
  },
  {
   "id": 16,
@@ -184,7 +214,9 @@
   ],
   "tier": "HARD",
   "_judge": "incorrect",
-  "human": "partial"
+  "human": "partial",
+  "judge2": "partial",
+  "judge_4o": "partial"
  },
  {
   "id": 17,
@@ -197,7 +229,9 @@
   ],
   "tier": "HARD",
   "_judge": "incorrect",
-  "human": "incorrect"
+  "human": "incorrect",
+  "judge2": "incorrect",
+  "judge_4o": "incorrect"
  },
  {
   "id": 18,
@@ -207,7 +241,9 @@
   "types": [],
   "tier": "CLEAR",
   "_judge": "correct",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "correct",
+  "judge_4o": "correct"
  },
  {
   "id": 19,
@@ -219,7 +255,9 @@
   ],
   "tier": "HARD",
   "_judge": "incorrect",
-  "human": "incorrect"
+  "human": "incorrect",
+  "judge2": "incorrect",
+  "judge_4o": "incorrect"
  },
  {
   "id": 20,
@@ -231,7 +269,9 @@
   ],
   "tier": "HARD",
   "_judge": "correct",
-  "human": "incorrect"
+  "human": "incorrect",
+  "judge2": "correct",
+  "judge_4o": "correct"
  },
  {
   "id": 21,
@@ -243,7 +283,9 @@
   ],
   "tier": "HARD",
   "_judge": "correct",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "correct",
+  "judge_4o": "correct"
  },
  {
   "id": 22,
@@ -253,7 +295,9 @@
   "types": [],
   "tier": "CLEAR",
   "_judge": "incorrect",
-  "human": "incorrect"
+  "human": "incorrect",
+  "judge2": "incorrect",
+  "judge_4o": "incorrect"
  },
  {
   "id": 23,
@@ -265,7 +309,9 @@
   ],
   "tier": "HARD",
   "_judge": "incorrect",
-  "human": "incorrect"
+  "human": "incorrect",
+  "judge2": "incorrect",
+  "judge_4o": "partial"
  },
  {
   "id": 24,
@@ -275,7 +321,9 @@
   "types": [],
   "tier": "CLEAR",
   "_judge": "correct",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "correct",
+  "judge_4o": "correct"
  },
  {
   "id": 25,
@@ -285,7 +333,9 @@
   "types": [],
   "tier": "CLEAR",
   "_judge": "incorrect",
-  "human": "incorrect"
+  "human": "incorrect",
+  "judge2": "incorrect",
+  "judge_4o": "incorrect"
  },
  {
   "id": 26,
@@ -295,7 +345,9 @@
   "types": [],
   "tier": "CLEAR",
   "_judge": "incorrect",
-  "human": "incorrect"
+  "human": "incorrect",
+  "judge2": "incorrect",
+  "judge_4o": "incorrect"
  },
  {
   "id": 27,
@@ -308,7 +360,9 @@
   ],
   "tier": "HARD",
   "_judge": "correct",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "correct",
+  "judge_4o": "correct"
  },
  {
   "id": 28,
@@ -318,7 +372,9 @@
   "types": [],
   "tier": "CLEAR",
   "_judge": "correct",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "correct",
+  "judge_4o": "correct"
  },
  {
   "id": 29,
@@ -331,7 +387,9 @@
   ],
   "tier": "HARD",
   "_judge": "incorrect",
-  "human": "incorrect"
+  "human": "incorrect",
+  "judge2": "incorrect",
+  "judge_4o": "incorrect"
  },
  {
   "id": 30,
@@ -341,7 +399,9 @@
   "types": [],
   "tier": "CLEAR",
   "_judge": "correct",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "correct",
+  "judge_4o": "correct"
  },
  {
   "id": 31,
@@ -353,7 +413,9 @@
   ],
   "tier": "HARD",
   "_judge": "incorrect",
-  "human": "incorrect"
+  "human": "incorrect",
+  "judge2": "incorrect",
+  "judge_4o": "incorrect"
  },
  {
   "id": 32,
@@ -366,7 +428,9 @@
   ],
   "tier": "HARD",
   "_judge": "incorrect",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "partial",
+  "judge_4o": "correct"
  },
  {
   "id": 33,
@@ -379,7 +443,9 @@
   ],
   "tier": "HARD",
   "_judge": "incorrect",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "incorrect",
+  "judge_4o": "correct"
  },
  {
   "id": 34,
@@ -391,7 +457,9 @@
   ],
   "tier": "HARD",
   "_judge": "correct",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "correct",
+  "judge_4o": "correct"
  },
  {
   "id": 35,
@@ -403,7 +471,9 @@
   ],
   "tier": "HARD",
   "_judge": "correct",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "correct",
+  "judge_4o": "correct"
  },
  {
   "id": 36,
@@ -413,7 +483,9 @@
   "types": [],
   "tier": "CLEAR",
   "_judge": "incorrect",
-  "human": "incorrect"
+  "human": "incorrect",
+  "judge2": "incorrect",
+  "judge_4o": "incorrect"
  },
  {
   "id": 37,
@@ -423,7 +495,9 @@
   "types": [],
   "tier": "CLEAR",
   "_judge": "incorrect",
-  "human": "incorrect"
+  "human": "incorrect",
+  "judge2": "incorrect",
+  "judge_4o": "incorrect"
  },
  {
   "id": 38,
@@ -435,7 +509,9 @@
   ],
   "tier": "HARD",
   "_judge": "incorrect",
-  "human": "correct"
+  "human": "correct",
+  "judge2": "correct",
+  "judge_4o": "correct"
  },
  {
   "id": 39,
@@ -447,7 +523,9 @@
   ],
   "tier": "HARD",
   "_judge": "incorrect",
-  "human": "incorrect"
+  "human": "incorrect",
+  "judge2": "incorrect",
+  "judge_4o": "incorrect"
  },
  {
   "id": 40,
@@ -457,6 +535,8 @@
   "types": [],
   "tier": "CLEAR",
   "_judge": "incorrect",
-  "human": "incorrect"
+  "human": "incorrect",
+  "judge2": "incorrect",
+  "judge_4o": "incorrect"
  }
 ]
