@@ -23,7 +23,11 @@ from pathlib import Path
 
 from langchain_openai import ChatOpenAI
 
-JUDGE_MODEL = os.environ.get("DOMAIN_JUDGE_MODEL", "gpt-4o-mini")
+# gpt-4o, not -mini: on the balanced (harder) calibration set the -mini judge lands at κ=0.76 while
+# gpt-4o reaches 0.94 — the stronger model applies the nuanced grounding rubric that -mini can't.
+# (The mini/4o gap only shows on the balanced set; the good-heavy default set masks it at 0.947 for
+# both.) Override with DOMAIN_JUDGE_MODEL for cheaper high-volume monitoring if needed.
+JUDGE_MODEL = os.environ.get("DOMAIN_JUDGE_MODEL", "gpt-4o")
 ROOT = Path(__file__).resolve().parent.parent
 
 RUBRIC = """You are a senior financial-compliance reviewer auditing an AI assistant that \
@@ -98,11 +102,11 @@ def _kappa(gold, pred):
 
 
 def main():
-    real = json.loads((ROOT / "eval/labeling/judge_calibration.json").read_text())
-    syn = json.loads((ROOT / "eval/labeling/synthetic_bad.json").read_text())
-    # gold: real cases use the adjudicated draft_label (39 good + C18 bad); synthetic are bad.
-    items = real + syn
-    gold = [r["draft_label"] for r in real] + [s["label"] for s in syn]
+    # Use the BALANCED set (15 good / 18 bad) — it is the honest calibration number. The alternative
+    # real+synthetic set is good-heavy (39/13) and inflates kappa (0.76 balanced vs 0.947 imbalanced,
+    # the same easy-set inflation seen on the correctness judge).
+    items = json.loads((ROOT / "eval/labeling/judge_calibration_balanced.json").read_text())
+    gold = [r["label"] for r in items]
 
     print(f"judging {len(items)} items ({gold.count('good')} good / {gold.count('bad')} bad) "
           f"with {JUDGE_MODEL}...")
