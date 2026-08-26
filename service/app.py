@@ -207,19 +207,22 @@ def delete_doc(ref: DocRef):
     return {"ok": True}
 
 
-# Response cache: an identical public single-turn question returns the already-built answer instead of
-# re-running the agent (the slow, costly LLM step). Keyed on the normalized question; a short TTL bounds
-# staleness so a newly-filed or restated figure isn't served from an old entry. Cached only when the
-# request is safely shareable: no conversation history (multi-turn answers depend on it) and no private
-# uploaded-doc scope (those answers are user-specific). In-memory suffices at single-instance scale; a
-# distributed store (Redis) would only be needed once serving fans out across instances.
+# Response cache: an identical public question returns the already-built answer instead of re-running
+# the agent (the slow, costly LLM step). Keyed on the normalized question ALONE — a public answer is
+# the same for everyone, so it's shared across users. A short TTL bounds staleness so a newly-filed or
+# restated figure isn't served from an old entry. Cached only when the answer is public and
+# self-contained: served by the SHARED agent (the user uploaded no private docs, so no per-user tools),
+# no doc scope, and no conversation history (multi-turn answers depend on it). In-memory suffices at
+# single-instance scale; a distributed store (Redis) would only be needed once serving fans out.
 _RESP_CACHE = {}                                              # normalized question -> (expires_at, response)
 _RESP_CACHE_TTL = int(os.environ.get("RESPONSE_CACHE_TTL", "3600"))
 _RESP_CACHE_MAX = 1000
 
 
-def _cache_key(q: "Query", user_id):
-    if q.history or user_id or q.doc:                         # not safely shareable -> don't cache
+def _cache_key(q: "Query", agent):
+    # `agent is _agent` means the shared public-only agent (no private-doc tools) -> the answer is
+    # public and shareable. A per-user agent, a doc scope, or history all make it non-shareable.
+    if agent is not _agent or q.history or q.doc:
         return None
     return " ".join(q.question.lower().split())               # normalize whitespace/case
 
@@ -231,7 +234,8 @@ def ask(q: Query, request: Request):
     if not check_rate_limit(_client_ip(request)):
         raise HTTPException(429, "Too many requests — please wait a minute and try again.")
     user_id = _user_id(q.token, q.session_id)
-    key = _cache_key(q, user_id)
+    agent = _agent_for(user_id, scope_doc=q.doc)
+    key = _cache_key(q, agent)
     if key is not None:
         hit = _RESP_CACHE.get(key)
         if hit and hit[0] > time.time():
@@ -241,7 +245,7 @@ def ask(q: Query, request: Request):
     # sync def -> FastAPI runs it in a threadpool, so the blocking LangGraph/LLM calls
     # don't block the event loop
     try:
-        out = run_agent(q.question, agent=_agent_for(user_id, scope_doc=q.doc), history=q.history)
+        out = run_agent(q.question, agent=agent, history=q.history)
     except Exception as e:
         # public testing: an LLM/timeout error should be a friendly bubble, not a 500
         print(f"[/ask] agent error: {type(e).__name__}: {e}")
