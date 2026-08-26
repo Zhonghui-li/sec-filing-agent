@@ -207,15 +207,37 @@ def delete_doc(ref: DocRef):
     return {"ok": True}
 
 
+# Response cache: an identical public single-turn question returns the already-built answer instead of
+# re-running the agent (the slow, costly LLM step). Keyed on the normalized question; a short TTL bounds
+# staleness so a newly-filed or restated figure isn't served from an old entry. Cached only when the
+# request is safely shareable: no conversation history (multi-turn answers depend on it) and no private
+# uploaded-doc scope (those answers are user-specific). In-memory suffices at single-instance scale; a
+# distributed store (Redis) would only be needed once serving fans out across instances.
+_RESP_CACHE = {}                                              # normalized question -> (expires_at, response)
+_RESP_CACHE_TTL = int(os.environ.get("RESPONSE_CACHE_TTL", "3600"))
+_RESP_CACHE_MAX = 1000
+
+
+def _cache_key(q: "Query", user_id):
+    if q.history or user_id or q.doc:                         # not safely shareable -> don't cache
+        return None
+    return " ".join(q.question.lower().split())               # normalize whitespace/case
+
+
 @app.post("/ask")
 def ask(q: Query, request: Request):
     if len(q.question) > MAX_INPUT_CHARS:
         raise HTTPException(400, f"Question too long (max {MAX_INPUT_CHARS} characters).")
     if not check_rate_limit(_client_ip(request)):
         raise HTTPException(429, "Too many requests — please wait a minute and try again.")
-    if not check_daily_quota():
-        raise HTTPException(429, "This demo has reached its daily limit. Please try again tomorrow.")
     user_id = _user_id(q.token, q.session_id)
+    key = _cache_key(q, user_id)
+    if key is not None:
+        hit = _RESP_CACHE.get(key)
+        if hit and hit[0] > time.time():
+            return {**hit[1], "cached": True}                 # served without an LLM call
+    if not check_daily_quota():                               # only real (uncached) answers cost budget
+        raise HTTPException(429, "This demo has reached its daily limit. Please try again tomorrow.")
     # sync def -> FastAPI runs it in a threadpool, so the blocking LangGraph/LLM calls
     # don't block the event loop
     try:
@@ -225,10 +247,15 @@ def ask(q: Query, request: Request):
         print(f"[/ask] agent error: {type(e).__name__}: {e}")
         return {"answer": "Sorry — I hit an error answering that. Please try again in a moment.",
                 "trace": [], "tools_used": [], "sources": [], "doc_sources": [], "trace_id": None}
-    return {"answer": out["answer"], "trace": out["trace"], "tools_used": out["tools_used"],
+    resp = {"answer": out["answer"], "trace": out["trace"], "tools_used": out["tools_used"],
             "sources": _sources(out["answer"], out["tool_outputs"]),
             "doc_sources": _private_sources(out["tool_outputs"], user_id),
             "trace_id": out.get("trace_id")}
+    if key is not None:
+        if len(_RESP_CACHE) >= _RESP_CACHE_MAX:
+            _RESP_CACHE.pop(next(iter(_RESP_CACHE)))          # simple bound: evict the oldest entry
+        _RESP_CACHE[key] = (time.time() + _RESP_CACHE_TTL, resp)
+    return resp
 
 
 class VerifyReq(BaseModel):
