@@ -194,11 +194,17 @@ def main():
     agent = build_agent()
     rows = score(run_agent, agent, limit=args.limit)
     summary = report(rows)
-    (HERE / "_open_results.json").write_text(json.dumps(rows, indent=2))
-    print(f"\nwrote {HERE/'_open_results.json'}")
+    # a --limit run is a smoke test, so it must not clobber the full-run artifact (which is
+    # gitignored, i.e. unrecoverable once overwritten)
+    out = HERE / ("_open_results.json" if args.limit is None
+                  else f"_open_results.limit{args.limit}.json")
+    out.write_text(json.dumps(rows, indent=2))
+    print(f"\nwrote {out}")
     # append this run to the history log -> the coverage progression is tracked and reproducible
     record = {"ts": datetime.now(timezone.utc).isoformat(),
-              "model": os.environ.get("GEN_LLM_MODEL", "gpt-4o-mini"),
+              # must match agents.sec_agent.build_agent's default, or a run with GEN_LLM_MODEL
+              # unset is logged under a model it never used
+              "model": os.environ.get("GEN_LLM_MODEL", "o4-mini"),
               "reasoning_effort": os.environ.get("REASONING_EFFORT"),
               "limit": args.limit, "db": bool(os.environ.get("DATABASE_URL")), **summary}
     with (HERE / "runs_log.jsonl").open("a") as f:

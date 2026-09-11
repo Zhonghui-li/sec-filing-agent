@@ -14,4 +14,4 @@ eval/labeling/judge_calibration.md
 data/cache/
 # external FinanceBench data (CC-BY-NC, downloaded on run) + local run output
 eval/financebench/_open_cache.jsonl
-eval/financebench/_open_results.json
+eval/financebench/_open_results*.json
