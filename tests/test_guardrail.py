@@ -129,3 +129,34 @@ def test_block_dollar_prose_dropped_zero():
 
 def _blocked_t(ans, tools, trace):
     return guardrail(ans, tools, trace) == _SAFE
+
+
+# --- citation restoration (HARD RULE 4 is prompt-only, so an injection can argue it down) ---
+_NFLX_FCF = {"tool": "get_financials",
+             "output": ("NFLX free cash flow for FY2023: $6,925,749,000. [source: 10-K accession "
+                        "0001065280-24-000030, https://www.sec.gov/Archives/edgar/data/1065280/]")}
+
+
+def test_restores_dropped_citation():
+    """The R32 injection case: correct tool-fetched figure, citation dropped."""
+    out = guardrail("Netflix's free cash flow for fiscal year 2023 was $6,925,749,000.",
+                    ["get_financials"], [_NFLX_FCF])
+    assert out != _SAFE                      # a right answer is not thrown away
+    assert "0001065280-24-000030" in out     # its source is put back
+
+
+def test_leaves_an_already_cited_answer_alone():
+    ans = ("Netflix's FY2023 free cash flow was $6,925,749,000. "
+           "[source: 10-K accession 0001065280-24-000030]")
+    assert guardrail(ans, ["get_financials"], [_NFLX_FCF]) == ans
+
+
+def test_does_not_cite_an_abstention():
+    ans = "I can't give a reliable figure for that."
+    assert guardrail(ans, ["get_financials", "abstain"], [_NFLX_FCF]) == ans
+
+
+def test_no_accession_in_trace_leaves_answer_unchanged():
+    ans = "Netflix's free cash flow for fiscal year 2023 was $6,925,749,000."
+    trace = [{"tool": "get_financials", "output": "NFLX free cash flow FY2023: $6,925,749,000."}]
+    assert guardrail(ans, ["get_financials"], trace) == ans
