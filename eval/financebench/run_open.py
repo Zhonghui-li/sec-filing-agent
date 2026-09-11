@@ -25,7 +25,18 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-from eval.financebench.run import _nums, _has_number_match, _abstained
+from eval.financebench.run import _nums, _has_number_match, _abstained, _answer_slot
+
+# Asked only at eval time, the way GSM8K/MATH prompt for a parseable final answer. It is
+# how the benchmark is ADMINISTERED, not a change to the agent — but it does mean the
+# evaluated prompt differs from production by this suffix, which REPORT.md should state.
+SLOT_INSTRUCTION = (
+    "\n\nEnd your reply with a final line in exactly this form:\n"
+    "ANSWER: <number>\n"
+    "— the single number that answers the question, in the unit the question asks for, with "
+    "no commas, currency symbol, or citation on that line. Use `ANSWER: none` if you cannot "
+    "answer."
+)
 
 HERE = Path(__file__).resolve().parent
 _CACHE = HERE / "_open_cache.jsonl"   # gitignored; external CC-BY-NC data
@@ -92,16 +103,18 @@ def score(run_agent, agent, limit=None):
         cases = cases[:limit]
     rows = []
     for i, c in enumerate(cases, 1):
-        out = run_agent(c["question"], agent=agent)
+        out = run_agent(c["question"] + SLOT_INSTRUCTION, agent=agent)
         abstained = _abstained(out)
         gold_numeric = _gold_is_numeric(c["answer"])
         gold = _nums(c["answer"])
         answer = out["answer"]
-        agent_has_num = bool(_nums(answer)) and not abstained
+        slot = _answer_slot(answer)
+        scored = slot if slot is not None else answer   # fall back to the noisy whole-reply path
+        agent_has_num = bool(_nums(scored)) and not abstained
 
         if abstained:
             verdict = "abstain"
-        elif gold_numeric and gold and _has_number_match(answer, gold[0]):
+        elif gold_numeric and gold and _has_number_match(scored, gold[0]):
             verdict = "correct"
         elif gold_numeric and agent_has_num:
             verdict = "hallucinated"      # asserted a wrong number instead of abstaining
@@ -111,7 +124,8 @@ def score(run_agent, agent, limit=None):
             verdict = "other"
         rows.append({"id": c["financebench_id"], "company": c["company"],
                      "type": c["question_type"], "gold_numeric": gold_numeric,
-                     "verdict": verdict, "q": c["question"], "gold": str(c["answer"])[:40],
+                     "verdict": verdict, "slot": slot, "q": c["question"],
+                     "gold": str(c["answer"])[:40],
                      "got": answer[:90].replace("\n", " ")})
         print(f"  [{i:>3}/{len(cases)}] {verdict:13} {c['company'][:14]:14} {c['question'][:60]}")
     return rows
@@ -147,6 +161,12 @@ def report(rows):
     print(f"  raw coverage         (correct / all numeric): {len(correct)}/{n} = {len(correct)/max(n,1):.0%}")
     print(f"  [conditional] when we answered: {len(correct)}/{len(attempted)} "
           f"= {len(correct)/max(len(attempted),1):.0%} (reads high because we abstain, not guess)")
+    # If the model often skips the slot we silently fall back to scanning the whole reply, which is
+    # the noisy path this was built to retire — so the miss rate has to be visible, not assumed.
+    missing = [r for r in rows if r.get("slot") is None]
+    print(f"\n  ANSWER-slot missing : {len(missing)}/{len(rows)} = {len(missing)/max(len(rows),1):.0%}"
+          f"   <- these fell back to whole-reply scanning")
+
     print(f"\n-- Finance bar: hallucinations (wrong number, didn't abstain): {len(halluc)}/{len(rows)} --")
     for r in halluc:
         print(f"      ! {r['company']} — gold {r['gold']} — got: {r['got']}")
