@@ -217,14 +217,19 @@ def main():
     rows = rescore() if args.rescore else run(limit=args.limit)
     summary = report(rows)
     if not args.rescore:
-        RESULTS.write_text(json.dumps(rows, indent=2))
-        print(f"\nwrote {RESULTS}")
+        # a --limit run is a smoke test; it must not overwrite the full-run answers, which
+        # --rescore later re-judges (and which nothing else keeps a copy of)
+        out = RESULTS if args.limit is None else RESULTS.with_name(f"results_v1.limit{args.limit}.json")
+        out.write_text(json.dumps(rows, indent=2))
+        print(f"\nwrote {out}")
     else:
         (HERE / "results_v1_rescored.json").write_text(json.dumps(rows, indent=2))
         print(f"\nwrote {HERE/'results_v1_rescored.json'}")
     record = {"ts": datetime.now(timezone.utc).isoformat(),
               "mode": "rescore" if args.rescore else "full",
-              "model": os.environ.get("GEN_LLM_MODEL", "gpt-4o-mini"), **summary}
+              # must match agents.sec_agent.build_agent's default, or a run with GEN_LLM_MODEL
+              # unset is logged under a model it never used
+              "model": os.environ.get("GEN_LLM_MODEL", "o4-mini"), **summary}
     with (HERE / "runs_log.jsonl").open("a") as f:
         f.write(json.dumps(record) + "\n")
     print(f"logged -> {HERE/'runs_log.jsonl'} (fabrication rate {summary['fabrication_rate']:.0%})")
