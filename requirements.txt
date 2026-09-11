@@ -24,3 +24,5 @@ openai==1.75.0
 ragas==0.2.15
 # audit-trail observability (opt-in, key-gated; no-op without LANGFUSE_* keys)
 langfuse==4.7.1
+# MCP server (opt-in, mcp_server/server.py) — exposes the same tools to any MCP client
+mcp==1.27.2
