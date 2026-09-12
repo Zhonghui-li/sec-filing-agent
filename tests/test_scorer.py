@@ -79,3 +79,20 @@ def test_answer_slot_none_declares_no_number():
 def test_answer_slot_takes_the_last_one():
     from eval.financebench.run import _answer_slot
     assert _answer_slot("ANSWER: 1\nsecond thoughts\nANSWER: 2") == "2"
+
+
+# --- the small-ratio band must not cross zero ---
+def test_small_ratio_band_requires_the_same_sign():
+    """At gold -0.02 the +-0.05 band spans +-250% of the target. A ratio of the opposite sign is
+    a different answer in kind — profit vs loss — not a near miss."""
+    from eval.financebench.run import _has_number_match
+    assert not _has_number_match("ANSWER: 0.03", -0.02)     # opposite sign, inside the band
+    assert not _has_number_match("ANSWER: -0.005", 0.01)
+
+
+def test_small_ratio_band_still_absorbs_golds_rounding():
+    """The real cases it exists for: gold is printed coarser than the answer."""
+    from eval.financebench.run import _has_number_match
+    assert _has_number_match("ANSWER: 0.389", 0.40)         # AWK, gold "$0.40"
+    assert _has_number_match("ANSWER: -0.015", -0.02)       # AES, gold "-0.02"
+    assert _has_number_match("ANSWER: 0.014", 0.01)         # KO, gold "0.01"

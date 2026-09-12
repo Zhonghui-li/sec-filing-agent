@@ -81,7 +81,16 @@ def _has_number_match(answer, target):
     for v in cands:
         if target != 0 and abs(v - target) <= TOL * abs(target):
             return True
-        if abs(target) < 5 and abs(v - target) <= 0.05:  # small ratios (0.79, 1.06)
+        # Small ratios (0.79, 1.06). A percentage tolerance collapses as gold approaches zero —
+        # 2.5% of 0.01 is 0.00025, stricter than the two decimals gold is even printed to — so a
+        # fixed band takes over, sized to gold's own rounding: FinanceBench prints ratio golds to
+        # one or two decimals, and $0.40 is 0.389 rounded. The band must not cross zero, though:
+        # at gold -0.02 it spans +-250% of the target, and a ratio of the opposite sign is a
+        # different answer in kind, not a near miss — profit vs loss, cash collected before paying
+        # vs after. Requiring the same sign costs nothing (no verdict on the saved 55 changes) and
+        # removes that.
+        if (abs(target) < 5 and abs(v - target) <= 0.05
+                and (v == 0 or target == 0 or (v > 0) == (target > 0))):
             return True
     return False
 
