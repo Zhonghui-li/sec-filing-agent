@@ -25,7 +25,18 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-from eval.financebench.run import _nums, _has_number_match, _abstained
+from eval.financebench.run import _nums, _has_number_match, _abstained, _answer_slot
+
+# Asked only at eval time, the way GSM8K/MATH prompt for a parseable final answer. It is
+# how the benchmark is ADMINISTERED, not a change to the agent — but it does mean the
+# evaluated prompt differs from production by this suffix, which REPORT.md should state.
+SLOT_INSTRUCTION = (
+    "\n\nEnd your reply with a final line in exactly this form:\n"
+    "ANSWER: <your answer>\n"
+    "— a single number when the question asks for one (in the unit the question asks for, with "
+    "no commas, currency symbol, or citation on that line); otherwise a short phrase. Use "
+    "`ANSWER: none` only if you cannot answer at all."
+)
 
 HERE = Path(__file__).resolve().parent
 _CACHE = HERE / "_open_cache.jsonl"   # gitignored; external CC-BY-NC data
@@ -92,18 +103,26 @@ def score(run_agent, agent, limit=None):
         cases = cases[:limit]
     rows = []
     for i, c in enumerate(cases, 1):
-        out = run_agent(c["question"], agent=agent)
+        out = run_agent(c["question"] + SLOT_INSTRUCTION, agent=agent)
         abstained = _abstained(out)
         gold_numeric = _gold_is_numeric(c["answer"])
         gold = _nums(c["answer"])
         answer = out["answer"]
-        agent_has_num = bool(_nums(answer)) and not abstained
+        slot = _answer_slot(answer)
+        scored = slot if slot is not None else answer   # fall back to the noisy whole-reply path
+        # Two different questions, so two different sources. "Did it assert a number AS ITS
+        # ANSWER" is what separates a fabrication from a decline, and the slot is where the
+        # agent says so — an explicit `ANSWER: none` alongside prose that happens to contain
+        # "five-year" or "FY 2023" was being scored as a fabrication. "Does the reply contain
+        # numbers at all" is the narrative question, and that still reads the whole reply.
+        asserts_number = bool(_nums(scored)) and not abstained   # numeric path
+        agent_has_num = bool(_nums(answer)) and not abstained    # narrative path: unchanged
 
         if abstained:
             verdict = "abstain"
-        elif gold_numeric and gold and _has_number_match(answer, gold[0]):
+        elif gold_numeric and gold and _has_number_match(scored, gold[0]):
             verdict = "correct"
-        elif gold_numeric and agent_has_num:
+        elif gold_numeric and asserts_number:
             verdict = "hallucinated"      # asserted a wrong number instead of abstaining
         elif not gold_numeric and not agent_has_num:
             verdict = "narrative_reply"   # non-numeric Q, no fabricated number (not auto-graded)
@@ -111,7 +130,17 @@ def score(run_agent, agent, limit=None):
             verdict = "other"
         rows.append({"id": c["financebench_id"], "company": c["company"],
                      "type": c["question_type"], "gold_numeric": gold_numeric,
-                     "verdict": verdict, "q": c["question"], "gold": str(c["answer"])[:40],
+                     "verdict": verdict, "slot": slot,
+                     # What the model asked each tool FOR. When a numeric answer is wrong, the
+                     # tool was almost always faithful to a call the model composed badly — the
+                     # Amazon DPO miss in the 2026-09-12 run returned 97.70 from compute_formula
+                     # and 93.86 on a re-run, and with only tools_used recorded there was no way
+                     # to see which expression differed. Outputs are deliberately not kept: they
+                     # are large, and they explain the tool rather than the model.
+                     "calls": [{"tool": t.get("tool"), "args": t.get("args")}
+                               for t in (out.get("trace") or [])],
+                     "q": c["question"],
+                     "gold": str(c["answer"])[:40],
                      "got": answer[:90].replace("\n", " ")})
         print(f"  [{i:>3}/{len(cases)}] {verdict:13} {c['company'][:14]:14} {c['question'][:60]}")
     return rows
@@ -147,6 +176,12 @@ def report(rows):
     print(f"  raw coverage         (correct / all numeric): {len(correct)}/{n} = {len(correct)/max(n,1):.0%}")
     print(f"  [conditional] when we answered: {len(correct)}/{len(attempted)} "
           f"= {len(correct)/max(len(attempted),1):.0%} (reads high because we abstain, not guess)")
+    # If the model often skips the slot we silently fall back to scanning the whole reply, which is
+    # the noisy path this was built to retire — so the miss rate has to be visible, not assumed.
+    missing = [r for r in rows if r.get("slot") is None]
+    print(f"\n  ANSWER-slot missing : {len(missing)}/{len(rows)} = {len(missing)/max(len(rows),1):.0%}"
+          f"   <- these fell back to whole-reply scanning")
+
     print(f"\n-- Finance bar: hallucinations (wrong number, didn't abstain): {len(halluc)}/{len(rows)} --")
     for r in halluc:
         print(f"      ! {r['company']} — gold {r['gold']} — got: {r['got']}")
@@ -174,11 +209,17 @@ def main():
     agent = build_agent()
     rows = score(run_agent, agent, limit=args.limit)
     summary = report(rows)
-    (HERE / "_open_results.json").write_text(json.dumps(rows, indent=2))
-    print(f"\nwrote {HERE/'_open_results.json'}")
+    # a --limit run is a smoke test, so it must not clobber the full-run artifact (which is
+    # gitignored, i.e. unrecoverable once overwritten)
+    out = HERE / ("_open_results.json" if args.limit is None
+                  else f"_open_results.limit{args.limit}.json")
+    out.write_text(json.dumps(rows, indent=2))
+    print(f"\nwrote {out}")
     # append this run to the history log -> the coverage progression is tracked and reproducible
     record = {"ts": datetime.now(timezone.utc).isoformat(),
-              "model": os.environ.get("GEN_LLM_MODEL", "gpt-4o-mini"),
+              # must match agents.sec_agent.build_agent's default, or a run with GEN_LLM_MODEL
+              # unset is logged under a model it never used
+              "model": os.environ.get("GEN_LLM_MODEL", "o4-mini"),
               "reasoning_effort": os.environ.get("REASONING_EFFORT"),
               "limit": args.limit, "db": bool(os.environ.get("DATABASE_URL")), **summary}
     with (HERE / "runs_log.jsonl").open("a") as f:

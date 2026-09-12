@@ -1,11 +1,50 @@
 # Validating the SEC filing agent on FinanceBench
 
-A brief on how we measured the agent against an **independent external benchmark**. Over five
-data-driven iterations the agent reached **~88% numeric accuracy at a zero-fabrication rate, with
-~93% of answers traceable to a specific filing**. What it misses, it misses by declining, not by
-inventing. A narrative scorecard and an eval-gated retrieval study — whose honest conclusion was to
+A brief on how we measured the agent against an **independent external benchmark**. The current
+headline is **93% addressable coverage on the numeric set at a zero-fabrication rate, with ~92% of
+narrative answers grounded in a cited filing or tool output** (see the 2026-09 update below; the
+five-round story that reached 87% is kept further down as history). What it misses, it misses by
+declining, not by inventing. A narrative scorecard and an eval-gated retrieval study — whose honest conclusion was to
 *not* ship a +22pp-recall technique that hurt end-to-end answers — follow below.
 
+> **Update (2026-09-12).** Three output-guardrail false positives and a rewritten numeric scorer
+> move the headline. **The agent's capability is unchanged** — it is simply no longer refused, or
+> mis-scored, for answers it got right.
+>
+> - **Addressable coverage 50/54 = 93%** on the numeric set, from 48/55 = 87% on the same 55
+>   questions before the fixes. (The denominator moves too: one question was categorised
+>   abstain-LEGIT in the later run.) Every point came from the guardrail no longer discarding
+>   correct answers:
+>   - a **unit conversion** — `compute(ratio, a=32_780_000_000, b=1e6)` for a question asking "in
+>     USD millions" — was rejected because the divisor traces to no tool output, and the whole
+>     reply was replaced by the safe abstention. Two questions.
+>   - the **turnover guard** matched `(\d+)\s*x` against a bound of 100, so a reply restating its
+>     own formula — "365 x average accounts payable" — read as a turnover of 365. Which
+>     multiplication sign the model happened to write decided the outcome: ASCII `x` blocked, `×`,
+>     `X` and `*` passed, so the same question answered or refused at random (2 of 10 runs on the
+>     Amazon DPO item, each having computed the correct 93.86).
+> - **Scored from a declared answer, not the prose.** The reply is asked to end with an `ANSWER:`
+>   line and only that is parsed. Scanning the whole reply made every incidental figure a
+>   candidate — measured at 9.3 per answer, one of which was the answer: the fiscal year, the form
+>   type (`10-K` → 10, and /100 → 0.1), digits in a company name (`3M` → 3), and the citation's
+>   accession, whose hyphens read as minus signs (`…-24-…` → -24 → -0.24, enough to score a wrong
+>   -0.50 correct against a gold of -0.23). This is how GSM8K (`####`) and MATH (`\boxed{}`) are
+>   graded. **It is an administration change: the evaluated prompt carries this suffix and the
+>   production prompt does not.** Slot emission was 52/52 on answers the agent actually gave.
+> - **Tolerance is 1%**, the bar [FinQA](https://github.com/czyssrs/FinQA) uses for execution
+>   accuracy. Measured twice, 5% / 2.5% / 1% / 0.5% score identically — figures come from
+>   deterministic tools, so an answer either matches to the cent or misses by a mile.
+> - **The small-ratio band is gold's rounding, not slack.** Below |gold| < 5 a relative tolerance
+>   collapses (1% of 0.01 is 0.0001, finer than gold is printed), so a fixed ±0.05 takes over. The
+>   benchmark's own justifications confirm what it absorbs: American Water Works' dividends are
+>   "directly extracted" as $389M while gold records $0.40; Coca-Cola's and AES' ROA golds are 0.01
+>   and −0.02 against answers of 0.014 and −0.015. **All three answers are right and gold is
+>   coarser.** The band now also requires the same sign — at gold −0.02 it spanned ±250% of the
+>   target, and a ratio of the opposite sign is a different answer in kind, not a near miss.
+> - **The one remaining "fabrication" is a benchmark-item shape**, not an agent error: Amcor's gold
+>   is `87% of the total restructuring liability`, prose that begins with a digit, so it is routed
+>   to numeric scoring while the answer it wants is an explanation.
+>
 > **Update (2026-08).** A second full run of the improved agent, plus calibration of both eval
 > judges, refined the picture and is the current headline:
 > - **Numeric accuracy ~88%** (cross-validated: a strict LLM judge and a deterministic
@@ -41,7 +80,7 @@ We never score a numeric answer as simply "answered." Each is one of three outco
 
 | outcome | meaning |
 |---|---|
-| **correct** | matches the gold number within 2.5% |
+| **correct** | matches the gold number within 1% (plus a ±0.05 band below \|gold\| < 5, same sign — see the 2026-09 update) |
 | **abstain** | declined — split into **FIXABLE** (we *should* answer → our gap) and **LEGIT** (needs segment/quarterly data XBRL can't provide → correctly declined) |
 | **hallucinated** | asserted a *wrong* number instead of abstaining — the failure we most want at zero |
 
