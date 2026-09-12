@@ -98,6 +98,11 @@ A: 🔧 get_financials(JPM, gross_profit) → not reported · abstain(not_report
 | `search_filings` | qualitative context from a 10-K (any fiscal year), recent 10-Q MD&A, and 8-K events, via pgvector dense retrieval |
 | `abstain(reason)` | a structured, machine-readable refusal |
 
+The same tools are also exposed over the **Model Context Protocol** — see
+[`mcp_server/`](mcp_server/) — so any MCP client (Claude Desktop, Cursor, …) can let *its own* LLM
+pull grounded figures. Tool-level grounding transfers; the answer-level output guardrail stays with
+our agent, and the README there says so.
+
 *Ratios and growth are computed, not assembled.* LLMs reliably pick the **wrong base metric**: total
 liabilities for "debt", period-end vs average assets for ROA (both surfaced by FinanceBench). Baking
 the conventions into fixed formulas removes that whole class of error.
