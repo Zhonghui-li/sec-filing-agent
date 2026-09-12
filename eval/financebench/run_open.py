@@ -32,10 +32,10 @@ from eval.financebench.run import _nums, _has_number_match, _abstained, _answer_
 # evaluated prompt differs from production by this suffix, which REPORT.md should state.
 SLOT_INSTRUCTION = (
     "\n\nEnd your reply with a final line in exactly this form:\n"
-    "ANSWER: <number>\n"
-    "— the single number that answers the question, in the unit the question asks for, with "
-    "no commas, currency symbol, or citation on that line. Use `ANSWER: none` if you cannot "
-    "answer."
+    "ANSWER: <your answer>\n"
+    "— a single number when the question asks for one (in the unit the question asks for, with "
+    "no commas, currency symbol, or citation on that line); otherwise a short phrase. Use "
+    "`ANSWER: none` only if you cannot answer at all."
 )
 
 HERE = Path(__file__).resolve().parent
@@ -110,7 +110,7 @@ def score(run_agent, agent, limit=None):
         answer = out["answer"]
         slot = _answer_slot(answer)
         scored = slot if slot is not None else answer   # fall back to the noisy whole-reply path
-        agent_has_num = bool(_nums(scored)) and not abstained
+        agent_has_num = bool(_nums(answer)) and not abstained   # narrative path: unchanged
 
         if abstained:
             verdict = "abstain"
