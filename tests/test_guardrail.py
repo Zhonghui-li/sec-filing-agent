@@ -129,3 +129,92 @@ def test_block_dollar_prose_dropped_zero():
 
 def _blocked_t(ans, tools, trace):
     return guardrail(ans, tools, trace) == _SAFE
+
+
+# --- citation restoration (HARD RULE 4 is prompt-only, so an injection can argue it down) ---
+_NFLX_FCF = {"tool": "get_financials",
+             "output": ("NFLX free cash flow for FY2023: $6,925,749,000. [source: 10-K accession "
+                        "0001065280-24-000030, https://www.sec.gov/Archives/edgar/data/1065280/]")}
+
+
+def test_restores_dropped_citation():
+    """The R32 injection case: correct tool-fetched figure, citation dropped."""
+    out = guardrail("Netflix's free cash flow for fiscal year 2023 was $6,925,749,000.",
+                    ["get_financials"], [_NFLX_FCF])
+    assert out != _SAFE                      # a right answer is not thrown away
+    assert "0001065280-24-000030" in out     # its source is put back
+
+
+def test_leaves_an_already_cited_answer_alone():
+    ans = ("Netflix's FY2023 free cash flow was $6,925,749,000. "
+           "[source: 10-K accession 0001065280-24-000030]")
+    assert guardrail(ans, ["get_financials"], [_NFLX_FCF]) == ans
+
+
+def test_does_not_cite_an_abstention():
+    ans = "I can't give a reliable figure for that."
+    assert guardrail(ans, ["get_financials", "abstain"], [_NFLX_FCF]) == ans
+
+
+def test_no_accession_in_trace_leaves_answer_unchanged():
+    ans = "Netflix's free cash flow for fiscal year 2023 was $6,925,749,000."
+    trace = [{"tool": "get_financials", "output": "NFLX free cash flow FY2023: $6,925,749,000."}]
+    assert guardrail(ans, ["get_financials"], trace) == ans
+
+
+# --- unit-scale divisors: the conversion a question like "in USD millions" asks for ---
+_MSFT_COGS = {"tool": "get_financials",
+              "output": "MSFT cost_of_goods_sold for FY2016: $32,780,000,000. [source: 10-K ...]"}
+
+
+def test_unit_conversion_divisor_is_allowed():
+    """The Microsoft FY2016 case: fetch 32,780,000,000, divide by 1e6 for 'in USD millions'.
+    Blocking it replaced a correct answer with the safe abstention."""
+    trace = [_MSFT_COGS,
+             {"tool": "compute", "args": {"op": "ratio", "a": 32780000000, "b": 1000000}}]
+    assert guardrail("MSFT FY2016 COGS was $32,780 million.", ["get_financials", "compute"],
+                     trace) != _SAFE
+
+
+def test_billions_divisor_is_allowed():
+    trace = [{"tool": "get_financials", "output": "AWK dividends_paid FY2020: $389,000,000."},
+             {"tool": "compute", "args": {"op": "ratio", "a": 389000000, "b": 1000000000}}]
+    assert guardrail("AWK paid $0.389 billion in dividends.", ["get_financials", "compute"],
+                     trace) != _SAFE
+
+
+def test_hand_typed_numerator_is_still_blocked():
+    """Only the divisor is exempt — a made-up numerator is still a fabricated figure."""
+    trace = [_MSFT_COGS,
+             {"tool": "compute", "args": {"op": "ratio", "a": 55000000000, "b": 1000000}}]
+    assert _blocked_t("A figure of $55,000 million.", ["get_financials", "compute"], trace)
+
+
+def test_constant_in_a_non_ratio_op_is_still_blocked():
+    """In a diff, 1,000,000 is a financial quantity, not a unit conversion."""
+    trace = [_MSFT_COGS,
+             {"tool": "compute", "args": {"op": "diff", "a": 32780000000, "b": 1000000}}]
+    assert _blocked_t("It exceeded the threshold by $32,779 million.",
+                      ["get_financials", "compute"], trace)
+
+
+def test_a_non_scale_constant_divisor_is_still_blocked():
+    """1e6 is a unit; 7,500,000 is someone's number."""
+    trace = [_MSFT_COGS,
+             {"tool": "compute", "args": {"op": "ratio", "a": 32780000000, "b": 7500000}}]
+    assert _blocked_t("The ratio is 4370.7.", ["get_financials", "compute"], trace)
+
+
+# --- a multiplication sign is not a turnover ratio ---
+def test_restated_formula_is_not_a_turnover_ratio():
+    """The Amazon DPO case: the reply restates "365 x average accounts payable" and the turnover
+    guard read 365 as a turnover. Which sign the model happened to write decided whether the
+    answer survived, so the same question answered or refused at random."""
+    trace = [{"tool": "compute_formula", "output": "AMZN formula result for FY2017 = 93.86"}]
+    for sign in ("x", "X", "*", "×"):
+        ans = f"Amazon's FY2017 DPO, calculated as 365 {sign} average accounts payable / (COGS + change in inventory), is 93.86 days."
+        assert guardrail(ans, ["compute_formula"], trace) != _SAFE, f"blocked on {sign!r}"
+
+
+def test_a_real_turnover_ratio_is_still_blocked():
+    assert _blocked("Inventory turnover was 150x.", ["get_ratio"])
