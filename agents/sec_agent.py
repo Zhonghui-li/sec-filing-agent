@@ -505,8 +505,14 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
     if verbose:
         for step in trace:
             print(f"  🔧 {step['tool']}({step['args']})")
+    # guardrail_reason travels with the answer: line 484 overwrites `answer` with the safe
+    # abstention, so by the time anything downstream sees it the text that was rejected, and the
+    # reason it was rejected, are gone. The audit trail carries them to Langfuse, but an eval run
+    # never sees that — diagnosing the turnover-regex false positive above needed the reason
+    # reconstructed by hand because of it.
     return {"answer": answer, "trace": trace, "tool_outputs": tool_outputs,
-            "tools_used": tools_used, "trace_id": trace_id, "salvaged": salvaged}
+            "tools_used": tools_used, "trace_id": trace_id, "salvaged": salvaged,
+            "guardrail_reason": guardrail_reason}
 
 
 if __name__ == "__main__":

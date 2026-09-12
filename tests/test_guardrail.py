@@ -203,3 +203,18 @@ def test_a_non_scale_constant_divisor_is_still_blocked():
     trace = [_MSFT_COGS,
              {"tool": "compute", "args": {"op": "ratio", "a": 32780000000, "b": 7500000}}]
     assert _blocked_t("The ratio is 4370.7.", ["get_financials", "compute"], trace)
+
+
+# --- a multiplication sign is not a turnover ratio ---
+def test_restated_formula_is_not_a_turnover_ratio():
+    """The Amazon DPO case: the reply restates "365 x average accounts payable" and the turnover
+    guard read 365 as a turnover. Which sign the model happened to write decided whether the
+    answer survived, so the same question answered or refused at random."""
+    trace = [{"tool": "compute_formula", "output": "AMZN formula result for FY2017 = 93.86"}]
+    for sign in ("x", "X", "*", "×"):
+        ans = f"Amazon's FY2017 DPO, calculated as 365 {sign} average accounts payable / (COGS + change in inventory), is 93.86 days."
+        assert guardrail(ans, ["compute_formula"], trace) != _SAFE, f"blocked on {sign!r}"
+
+
+def test_a_real_turnover_ratio_is_still_blocked():
+    assert _blocked("Inventory turnover was 150x.", ["get_ratio"])

@@ -12,7 +12,13 @@ from typing import Dict, List
 
 _IMPLAUSIBLE = [
     (re.compile(r"(-?\d[\d,]*\.?\d*)\s*days\b", re.I), 1000),   # days-outstanding ratios are bounded
-    (re.compile(r"(-?\d[\d,]*\.?\d*)\s*x\b"), 100),             # turnover ratios are bounded
+    # No \s* before the x: a turnover ratio is written "1.09x", never "1.09 x". With the space
+    # allowed, an answer that restates its formula in prose — "365 x average accounts payable" —
+    # read as a turnover of 365, over the bound, and the whole correct reply was replaced by the
+    # safe abstention. It depended on which multiplication sign the model happened to write that
+    # run (ASCII "x" blocked; "×", "X" and "*" passed), so the same question answered or refused
+    # at random: ~20% of runs on the Amazon DPO item.
+    (re.compile(r"(-?\d[\d,]*\.?\d*)x\b"), 100),                # turnover ratios are bounded
 ]
 _DATA_TOOLS = {"get_financials", "get_ratio", "get_growth", "compute_formula",
                "get_statement", "largest_line_item", "get_segment_breakdown", "get_segment_growth",
