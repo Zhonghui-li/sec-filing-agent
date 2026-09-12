@@ -75,6 +75,12 @@ def _scale_exp(x: float, figs: List[float]):
     return best
 
 
+# Dollars -> millions/billions, the conversion a question like "in USD millions" asks for. These
+# are the only constants a `compute` divisor legitimately holds: they are unit scales, not
+# financial quantities, so no tool ever returns one.
+_UNIT_SCALES = {1e3, 1e6, 1e9, 1e12}
+
+
 def _hand_typed_operand(trace) -> bool:
     """True if a `compute` call has an operand that doesn't trace to a fetched figure, or the two
     operands are rescaled INCONSISTENTLY. compute launders a mistyped operand into a fresh result
@@ -85,12 +91,23 @@ def _hand_typed_operand(trace) -> bool:
     for t in trace or []:
         if t.get("tool") != "compute":
             continue
+        args = t.get("args") or {}
         exps = []
         for key in ("a", "b"):
-            v = (t.get("args") or {}).get(key)
+            v = args.get(key)
             try:
                 v = float(v)
             except (ValueError, TypeError):
+                continue
+            # A ratio's DIVISOR may be a unit scale. Blocking it cost real answers: asked for
+            # Microsoft's FY2016 COGS "in USD millions", the agent fetched 32,780,000,000 and
+            # divided by 1e6 — the correct 32,780 — and the whole reply was replaced by the safe
+            # abstention. The numerator still has to trace, so the result stays a fetched figure
+            # at a different scale, which _scale_exp already tolerates. Narrow on purpose: a
+            # hand-typed numerator, or a constant in a `diff`, is a financial quantity and is
+            # still rejected.
+            if (key == "b" and str(args.get("op", "")).lower() == "ratio"
+                    and abs(v) in _UNIT_SCALES):
                 continue
             k = _scale_exp(v, figs)
             if k is None:

@@ -160,3 +160,46 @@ def test_no_accession_in_trace_leaves_answer_unchanged():
     ans = "Netflix's free cash flow for fiscal year 2023 was $6,925,749,000."
     trace = [{"tool": "get_financials", "output": "NFLX free cash flow FY2023: $6,925,749,000."}]
     assert guardrail(ans, ["get_financials"], trace) == ans
+
+
+# --- unit-scale divisors: the conversion a question like "in USD millions" asks for ---
+_MSFT_COGS = {"tool": "get_financials",
+              "output": "MSFT cost_of_goods_sold for FY2016: $32,780,000,000. [source: 10-K ...]"}
+
+
+def test_unit_conversion_divisor_is_allowed():
+    """The Microsoft FY2016 case: fetch 32,780,000,000, divide by 1e6 for 'in USD millions'.
+    Blocking it replaced a correct answer with the safe abstention."""
+    trace = [_MSFT_COGS,
+             {"tool": "compute", "args": {"op": "ratio", "a": 32780000000, "b": 1000000}}]
+    assert guardrail("MSFT FY2016 COGS was $32,780 million.", ["get_financials", "compute"],
+                     trace) != _SAFE
+
+
+def test_billions_divisor_is_allowed():
+    trace = [{"tool": "get_financials", "output": "AWK dividends_paid FY2020: $389,000,000."},
+             {"tool": "compute", "args": {"op": "ratio", "a": 389000000, "b": 1000000000}}]
+    assert guardrail("AWK paid $0.389 billion in dividends.", ["get_financials", "compute"],
+                     trace) != _SAFE
+
+
+def test_hand_typed_numerator_is_still_blocked():
+    """Only the divisor is exempt — a made-up numerator is still a fabricated figure."""
+    trace = [_MSFT_COGS,
+             {"tool": "compute", "args": {"op": "ratio", "a": 55000000000, "b": 1000000}}]
+    assert _blocked_t("A figure of $55,000 million.", ["get_financials", "compute"], trace)
+
+
+def test_constant_in_a_non_ratio_op_is_still_blocked():
+    """In a diff, 1,000,000 is a financial quantity, not a unit conversion."""
+    trace = [_MSFT_COGS,
+             {"tool": "compute", "args": {"op": "diff", "a": 32780000000, "b": 1000000}}]
+    assert _blocked_t("It exceeded the threshold by $32,779 million.",
+                      ["get_financials", "compute"], trace)
+
+
+def test_a_non_scale_constant_divisor_is_still_blocked():
+    """1e6 is a unit; 7,500,000 is someone's number."""
+    trace = [_MSFT_COGS,
+             {"tool": "compute", "args": {"op": "ratio", "a": 32780000000, "b": 7500000}}]
+    assert _blocked_t("The ratio is 4370.7.", ["get_financials", "compute"], trace)
