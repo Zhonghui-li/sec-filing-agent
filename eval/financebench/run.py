@@ -20,9 +20,11 @@ import re
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-TOL = 0.025  # 2.5% relative tolerance on a numeric answer (the bar REPORT.md states).
-# Measured on the saved 50-question metrics set: 5% / 2.5% / 1% all score 48/50, so the
-# band was doing no work — tightening it to the documented bar costs nothing.
+TOL = 0.01  # 1% relative tolerance on a numeric answer — the bar FinQA, the closest published
+# standard for this task, uses for execution accuracy. Measured twice (the 50-question metrics
+# set and the 55-question 2026-09-12 re-run): 5% / 2.5% / 1% / 0.5% all score identically, so
+# the band was never doing work. Figures come from deterministic tools over XBRL, so an answer
+# either matches to the cent or misses by a mile; the tolerance only absorbs how gold is printed.
 
 # An EDGAR accession (CIK-10 / year-2 / sequence-6) is a citation, not a figure, but _nums
 # reads its hyphens as minus signs: 0001065280-24-000030 -> [1065280, -24, -30], and the

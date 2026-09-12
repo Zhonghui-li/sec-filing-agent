@@ -14,7 +14,7 @@ Answers financial questions about **any U.S. public company** from its SEC filin
 **finance bar**: a wrong or unsupported number is unacceptable.
 
 > **Validated on FinanceBench**, an external benchmark we didn't write:
-> **~88% numeric accuracy at a zero-fabrication rate over five data-driven iterations, every answer traceable to its filing.**
+> **93% addressable coverage on the numeric set at a zero-fabrication rate, with ~92% of narrative answers grounded in a cited filing or tool output.**
 > → [full brief](eval/financebench/REPORT.md)
 
 ## Architecture
@@ -45,7 +45,7 @@ Answers financial questions about **any U.S. public company** from its SEC filin
                answer + clickable EDGAR citations
 
    wrapped by a 3-layer eval:  deterministic CI gate ·
-   domain judge (κ=0.76) ·  FinanceBench (88%, 0 fab)
+   domain judge (κ=0.76) ·  FinanceBench (93%, 0 fab)
 ```
 
 Two paths, one bar. Exact figures come from **deterministic tools over XBRL** (the LLM never does
@@ -116,9 +116,11 @@ faithfulness judge is fed the tool outputs, not only retrieved prose, so a figur
 as grounded even when it isn't in the text.
 
 **3 · External benchmark — [FinanceBench](https://github.com/patronus-ai/financebench) (Patronus AI).**
-150 questions / 32 companies we did *not* write. Over five data-driven iterations: **~88% numeric
-accuracy at a zero-fabrication rate**, with **~93% of answers traceable to a specific filing**. What it
-misses, it misses by declining, not inventing. Reproducible harness with a tracked runs log.
+150 questions / 32 companies we did *not* write. **93% addressable coverage on the numeric set at a
+zero-fabrication rate**, with **~92% of narrative answers grounded in a cited filing or tool output**.
+What it misses, it misses by declining, not inventing. Scored from a declared `ANSWER:` line rather
+than by scanning the prose for numbers, at FinQA's 1% tolerance — see the 2026-09 update in the brief
+for why both matter. Reproducible harness with a tracked runs log.
 → [`eval/financebench/`](eval/financebench/) · [REPORT.md](eval/financebench/REPORT.md)
 
 **4 · Adversarial red-team.** A 50-question trust suite — 15 failure modes that *tempt* fabrication
