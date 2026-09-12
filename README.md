@@ -58,7 +58,7 @@ or a cited filing passage the number matches verbatim.
 | Rule | How |
 |---|---|
 | **Numbers only from tools** | every figure from structured XBRL, never LLM arithmetic |
-| **Every claim cited** | a clickable EDGAR link to the source filing |
+| **Every claim cited** | a clickable EDGAR link to the source filing — restored from the trace in code if the model drops it, so the rule does not depend on the model's cooperation |
 | **Every answer re-verifiable** | one click re-runs the deterministic tool calls from the audit trail and confirms the figures still reproduce from source; the full audit record is exportable (`agents/replay.py`) |
 | **Abstains, never fabricates** | a structured signal when a metric isn't reported or is out of scope |
 | **Same bar for your docs** | uploaded statements → table-cell extraction, cell-level citations |
