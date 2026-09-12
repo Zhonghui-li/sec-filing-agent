@@ -110,13 +110,19 @@ def score(run_agent, agent, limit=None):
         answer = out["answer"]
         slot = _answer_slot(answer)
         scored = slot if slot is not None else answer   # fall back to the noisy whole-reply path
-        agent_has_num = bool(_nums(answer)) and not abstained   # narrative path: unchanged
+        # Two different questions, so two different sources. "Did it assert a number AS ITS
+        # ANSWER" is what separates a fabrication from a decline, and the slot is where the
+        # agent says so — an explicit `ANSWER: none` alongside prose that happens to contain
+        # "five-year" or "FY 2023" was being scored as a fabrication. "Does the reply contain
+        # numbers at all" is the narrative question, and that still reads the whole reply.
+        asserts_number = bool(_nums(scored)) and not abstained   # numeric path
+        agent_has_num = bool(_nums(answer)) and not abstained    # narrative path: unchanged
 
         if abstained:
             verdict = "abstain"
         elif gold_numeric and gold and _has_number_match(scored, gold[0]):
             verdict = "correct"
-        elif gold_numeric and agent_has_num:
+        elif gold_numeric and asserts_number:
             verdict = "hallucinated"      # asserted a wrong number instead of abstaining
         elif not gold_numeric and not agent_has_num:
             verdict = "narrative_reply"   # non-numeric Q, no fabricated number (not auto-graded)
@@ -124,7 +130,16 @@ def score(run_agent, agent, limit=None):
             verdict = "other"
         rows.append({"id": c["financebench_id"], "company": c["company"],
                      "type": c["question_type"], "gold_numeric": gold_numeric,
-                     "verdict": verdict, "slot": slot, "q": c["question"],
+                     "verdict": verdict, "slot": slot,
+                     # What the model asked each tool FOR. When a numeric answer is wrong, the
+                     # tool was almost always faithful to a call the model composed badly — the
+                     # Amazon DPO miss in the 2026-09-12 run returned 97.70 from compute_formula
+                     # and 93.86 on a re-run, and with only tools_used recorded there was no way
+                     # to see which expression differed. Outputs are deliberately not kept: they
+                     # are large, and they explain the tool rather than the model.
+                     "calls": [{"tool": t.get("tool"), "args": t.get("args")}
+                               for t in (out.get("trace") or [])],
+                     "q": c["question"],
                      "gold": str(c["answer"])[:40],
                      "got": answer[:90].replace("\n", " ")})
         print(f"  [{i:>3}/{len(cases)}] {verdict:13} {c['company'][:14]:14} {c['question'][:60]}")
