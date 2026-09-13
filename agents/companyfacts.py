@@ -437,8 +437,20 @@ def fiscal_calendar(cik, gaap):
     except Exception:
         pass                                            # behave exactly as before
     cal = _FiscalCalendar(by_end, accn_by_end, offset)
-    _cal_mem[cik] = cal
+    if by_end:                        # only cache a real one, so a transient fetch failure
+        _cal_mem[cik] = cal           # doesn't pin the fallback calendar for the process
     return cal
+
+
+def fiscal_calendar_for(cik):
+    """The calendar for a CIK, fetching the facts it needs when nothing has built it yet. For
+    callers (statements.py) that work off edgartools rather than the companyfacts dict."""
+    if cik in _cal_mem:
+        return _cal_mem[cik]
+    try:
+        return fiscal_calendar(cik, fetch_facts(cik))
+    except Exception:
+        return _FiscalCalendar({}, {}, 0)
 
 
 def _close(a, b, tol=0.01):
