@@ -232,3 +232,40 @@ def test_a_fiscal_year_in_the_metric_name_is_not_a_days_value():
 def test_an_implausible_days_value_is_still_blocked():
     assert _blocked("Amazon's DPO for FY2017 is approximately 1419.68 days.",
                     ["get_financials", "compute"])
+
+
+# --- a get_ratio result is checked against the bound for what it IS -------------------------
+def _ratio_trace(ratio, out):
+    return [{"tool": "get_ratio", "args": {"ratio": ratio, "ticker": "X"}, "output": out}]
+
+
+def test_a_days_ratio_outside_its_bound_is_blocked_from_the_tool_output():
+    """No prose involved: the call says ratio="dpo", RATIOS says dpo is a days ratio, and the
+    tool's own output carries the value."""
+    assert _blocked_t("Amazon's DPO was 1419.68 days.", ["get_ratio"],
+                      _ratio_trace("dpo", "AMZN dpo for FY2017 = 1419.68 days (365 x ...)"))
+
+
+def test_a_turnover_outside_its_bound_is_blocked_from_the_tool_output():
+    assert _blocked_t("Turnover 150x.", ["get_ratio"],
+                      _ratio_trace("asset_turnover", "X asset_turnover for FY2024 = 150.0x (...)"))
+
+
+def test_a_normal_ratio_passes():
+    assert guardrail("AAPL DPO for FY2024 = 114.15 days.", ["get_ratio"],
+                     _ratio_trace("dpo", "AAPL dpo for FY2024 = 114.15 days (...)")) != _SAFE
+
+
+def test_a_percentage_ratio_has_no_bound():
+    """A margin or a growth rate can legitimately exceed any of these numbers."""
+    assert guardrail("Net margin 24.0%.", ["get_ratio"],
+                     _ratio_trace("net_margin", "X net_margin for FY2024 = 240.0% (...)")) != _SAFE
+
+
+def test_the_ratio_check_ignores_the_prose_entirely():
+    """The answer restates its formula and names the metric after a fiscal year — the two shapes
+    that produced false positives — while the tool output is in bounds."""
+    ans = ("Amazon's FY2017 days payable outstanding, computed as 365 x average accounts "
+           "payable, was 108.43 days.")
+    assert guardrail(ans, ["get_ratio"],
+                     _ratio_trace("dpo", "AMZN dpo for FY2017 = 108.43 days (...)")) != _SAFE

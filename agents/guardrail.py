@@ -129,6 +129,41 @@ def _hand_typed_operand(trace) -> bool:
     return False
 
 
+# A bound per KIND of ratio, not per word that might appear next to a number. RATIOS already
+# classifies every standard ratio as days / turns / pct / ratio, so a get_ratio result can be
+# checked against the bound for what it IS, taken from the call's own arguments — no guessing
+# from the prose what a number is a measurement of. Three false positives so far came from that
+# guess (a year in the metric's name, a multiplication sign, an accession's digits); this path
+# cannot produce one, because it never reads the answer.
+_KIND_BOUNDS = {"days": 1000, "turns": 100}
+_RATIO_VALUE_RX = re.compile(r"=\s*(-?[\d,]+\.?\d*)")
+
+
+def _implausible_ratio(trace):
+    """A get_ratio result outside its kind's natural bound, or None. Reads the tool's own output
+    and the ratio it was asked for, so it knows the unit instead of inferring it."""
+    from agents.finance_tools import RATIOS, _RATIO_ALIASES      # local: avoids an import cycle
+    for t in trace or []:
+        if t.get("tool") != "get_ratio":
+            continue
+        raw = str((t.get("args") or {}).get("ratio", "")).strip().lower()
+        name = _RATIO_ALIASES.get(raw, raw.replace(" ", "_"))
+        spec = RATIOS.get(name)
+        bound = _KIND_BOUNDS.get(spec[1]) if spec else None
+        if not bound:
+            continue
+        m = _RATIO_VALUE_RX.search(str(t.get("output") or ""))
+        if not m:
+            continue
+        try:
+            val = float(m.group(1).replace(",", ""))
+        except ValueError:
+            continue
+        if abs(val) > bound:
+            return f"{name} = {val:g} is outside its natural bound ({bound})"
+    return None
+
+
 def guardrail_check(answer: str, tools_used: List[str], trace: List[Dict] = None):
     """The reason an answer's number is untrustworthy (-> abstain), or None if it passes:
     (a) a physically-impossible magnitude (the model mis-composed a formula by hand),
@@ -137,6 +172,9 @@ def guardrail_check(answer: str, tools_used: List[str], trace: List[Dict] = None
         into a fresh result). Percentages are never thresholded (growth can exceed 100%)."""
     if "abstain" in tools_used:
         return None
+    bad_ratio = _implausible_ratio(trace)
+    if bad_ratio:
+        return "implausible magnitude — " + bad_ratio
     for rx, limit in _IMPLAUSIBLE:
         for m in rx.finditer(answer):
             try:
