@@ -137,6 +137,11 @@ def score(run_agent, agent, limit=None):
                      # and 93.86 on a re-run, and with only tools_used recorded there was no way
                      # to see which expression differed. Outputs are deliberately not kept: they
                      # are large, and they explain the tool rather than the model.
+                     # why the output guardrail replaced the answer, when it did. run_agent
+                     # overwrites `answer` with the safe abstention, so without this the row shows
+                     # a refusal with no way to tell a real one from a guardrail false positive —
+                     # which is how three of them survived unnoticed.
+                     "guardrail_reason": out.get("guardrail_reason"),
                      "calls": [{"tool": t.get("tool"), "args": t.get("args")}
                                for t in (out.get("trace") or [])],
                      "q": c["question"],

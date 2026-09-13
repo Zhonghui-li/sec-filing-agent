@@ -218,3 +218,17 @@ def test_restated_formula_is_not_a_turnover_ratio():
 
 def test_a_real_turnover_ratio_is_still_blocked():
     assert _blocked("Inventory turnover was 150x.", ["get_ratio"])
+
+
+def test_a_fiscal_year_in_the_metric_name_is_not_a_days_value():
+    """"days payable outstanding" is the metric's NAME, so an answer that names it after its
+    fiscal year offered "2017 days" to the bound and lost a correct 108.43."""
+    trace = [{"tool": "compute_formula", "output": "AMZN formula result for FY2017 = 108.43"}]
+    ans = ("Amazon's FY2017 days payable outstanding (DPO), computed as 365 x average accounts "
+           "payable over FY2016-FY2017, was 108.43 days.")
+    assert guardrail("%s\n\nANSWER: 108.43" % ans, ["compute_formula"], trace) != _SAFE
+
+
+def test_an_implausible_days_value_is_still_blocked():
+    assert _blocked("Amazon's DPO for FY2017 is approximately 1419.68 days.",
+                    ["get_financials", "compute"])

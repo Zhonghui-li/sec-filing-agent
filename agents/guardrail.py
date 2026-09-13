@@ -11,7 +11,12 @@ import re
 from typing import Dict, List
 
 _IMPLAUSIBLE = [
-    (re.compile(r"(-?\d[\d,]*\.?\d*)\s*days\b", re.I), 1000),   # days-outstanding ratios are bounded
+    # (?<![A-Za-z]) so a year glued to a letter isn't read as a value: "days payable outstanding"
+    # is the metric's NAME, so an answer that names it after its fiscal year — "Amazon's FY2017
+    # days payable outstanding ... was 108.43 days" — offered "2017 days" to this pattern, over
+    # the bound, and the correct answer was replaced by the safe abstention. A real value has a
+    # space or a sentence in front of it, not a letter.
+    (re.compile(r"(?<![A-Za-z])(-?\d[\d,]*\.?\d*)\s*days\b", re.I), 1000),  # days-outstanding ratios are bounded
     # No \s* before the x: a turnover ratio is written "1.09x", never "1.09 x". With the space
     # allowed, an answer that restates its formula in prose — "365 x average accounts payable" —
     # read as a turnover of 365, over the bound, and the whole correct reply was replaced by the
