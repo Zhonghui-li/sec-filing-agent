@@ -487,8 +487,12 @@ def fiscal_calendar(cik, gaap):
                          reason=f"inconsistent_fy_tags:{dict(counts)}")
     except Exception as e:
         # the same miss log the tools use, so a company whose fiscal-year naming we could not
-        # establish leaves a trace instead of quietly answering with calendar years
-        log_miss(str(cik), "fiscal_calendar", reason=f"submissions_unavailable:{type(e).__name__}")
+        # establish leaves a trace instead of quietly answering with calendar years. Skipped for a
+        # placeholder CIK: the L1 tests call extract_rows with 0000000000, and forty entries per
+        # test run would bury the real ones.
+        if str(cik).strip("0"):
+            log_miss(str(cik), "fiscal_calendar",
+                     reason=f"submissions_unavailable:{type(e).__name__}")
     cal = _FiscalCalendar(by_end, accn_by_end, offset, degraded=not by_end)
     if by_end:                        # only cache a real one, so a transient fetch failure
         _cal_mem[cik] = cal           # doesn't pin the fallback calendar for the process
