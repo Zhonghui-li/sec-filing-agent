@@ -366,10 +366,15 @@ class _FiscalCalendar:
     older than the submissions feed reaches fall back to the company's modal offset.
     """
 
-    def __init__(self, by_end, accn_by_end, offset):
+    def __init__(self, by_end, accn_by_end, offset, degraded=False):
         self._by_end = by_end              # period_end -> (fiscal_year, 'FY'|'Q1'..'Q4')
         self._accn_by_end = accn_by_end    # period_end -> accn of the filing it is CURRENT in
-        self.offset = offset               # modal (fy - calendar year), for periods not in the map
+        self.offset = offset               # (fy - calendar year), for periods not in the map
+        # True when nothing could be learned at all — the feed was unreachable. Then `offset` is
+        # 0 by default, which silently reproduces the old, wrong behaviour for a company that
+        # names its years by the start year, so a caller that cares should say it cannot tell
+        # rather than answer. Distinct from "offset happens to be 0", which is a real finding.
+        self.degraded = degraded
 
     def fiscal_year(self, end):
         hit = self._by_end.get(end)
@@ -389,18 +394,48 @@ class _FiscalCalendar:
 _cal_mem = {}   # CIK -> _FiscalCalendar (in-process; the corrected years are baked into cached rows)
 
 
+_MIN_ANNUALS = 5        # below this the recent window is too thin to trust; page back for more
+
+
+def _report_dates(cik):
+    """accn -> the filing's OWN period end, for 10-K/10-Q.
+
+    `filings.recent` is capped at ~1000 entries, and the cap is on ALL forms, so how far back it
+    reaches depends on how much a company files rather than on years. Apple and Target get a
+    decade; JPMorgan, which files thousands of structured-note 8-Ks a year, gets 26,014 entries
+    covering twelve months and four 10-K/10-Qs. Older filings live in `filings.files`, so when the
+    recent window is thin we page back — otherwise a high-volume filer's whole history falls to a
+    fallback derived from one or two data points."""
+    forms = ("10-K", "10-K/A", "10-Q", "10-Q/A")
+    feed = _get_json(_SUBMISSIONS_URL.format(cik=cik))["filings"]
+    out, pages = {}, [feed["recent"]]
+    annuals = sum(1 for f in feed["recent"]["form"] if f.startswith("10-K"))
+    for extra in (feed.get("files") or []):
+        if annuals >= _MIN_ANNUALS:
+            break
+        try:
+            page = _get_json("https://data.sec.gov/submissions/" + extra["name"])
+        except Exception:
+            break
+        pages.append(page)
+        annuals += sum(1 for f in page["form"] if f.startswith("10-K"))
+    for page in pages:
+        for a, f, d in zip(page["accessionNumber"], page["form"], page["reportDate"]):
+            if f in forms and d:
+                out.setdefault(a, d)
+    return out
+
+
 def fiscal_calendar(cik, gaap):
     """The company's own period naming. Fails soft: with no submissions feed (offline, unknown
     CIK) it returns an empty calendar whose offset is 0, which reproduces the previous
-    calendar-year behaviour rather than erroring."""
+    calendar-year behaviour rather than erroring — and says so via .degraded, so a caller can
+    tell "this company names its years normally" from "we could not find out"."""
     if cik in _cal_mem:
         return _cal_mem[cik]
     by_end, accn_by_end, offset = {}, {}, 0
     try:
-        recent = _get_json(_SUBMISSIONS_URL.format(cik=cik))["filings"]["recent"]
-        report = {a: d for a, f, d in zip(recent["accessionNumber"], recent["form"],
-                                          recent["reportDate"])
-                  if f in ("10-K", "10-K/A", "10-Q", "10-Q/A") and d}
+        report = _report_dates(cik)
         need, label = set(report), {}
         for tag in gaap.values():                      # accn -> (fy, fp), stop once all are found
             if not need:
@@ -414,7 +449,7 @@ def fiscal_calendar(cik, gaap):
                         label[a] = (u["fy"], u["fp"])
                         need.discard(a)
         by_accn = {}
-        offs = Counter()
+        offs = []
         for a, end in report.items():
             if a not in label:
                 continue
@@ -428,15 +463,33 @@ def fiscal_calendar(cik, gaap):
             # fallback for an ANNUAL period too old to be in the feed; quarters fall back to
             # _fiscal_period instead.
             if fp == "FY":
-                offs[fy - int(end[:4])] += 1
+                offs.append((end, fy - int(end[:4])))
         # an amendment supersedes the original for "as reported for that period", matching the
         # previous max(accn) choice among a period's own filings
         accn_by_end = {end: max(accns) for end, accns in by_accn.items()}
+        # The MODE, not the oldest. The oldest looks like the better evidence for periods that
+        # predate the map, but early-XBRL filings are the least reliably tagged: Walmart's two
+        # 2013-14 filings say FY2012/FY2013 for years Walmart itself calls fiscal 2013/2014,
+        # against twelve later ones that agree with the company. Taking the oldest would have
+        # adopted the mis-tagged convention for the whole fallback. A majority is robust to a
+        # handful of bad tags in a way any single filing is not.
+        #
+        # A split is worth knowing about either way — Kroger reads -1 through FY2022, 0 for the
+        # next two years, then -1 again, which is a tagging inconsistency rather than a company
+        # changing its mind — so it is logged rather than silently resolved. The periods
+        # themselves are unaffected: each one carries its own filing's label from the map, and
+        # only periods older than all of them ever reach this value.
         if offs:
-            offset = offs.most_common(1)[0][0]
-    except Exception:
-        pass                                            # behave exactly as before
-    cal = _FiscalCalendar(by_end, accn_by_end, offset)
+            counts = Counter(o for _, o in offs)
+            offset = counts.most_common(1)[0][0]
+            if len(counts) > 1:
+                log_miss(str(cik), "fiscal_calendar",
+                         reason=f"inconsistent_fy_tags:{dict(counts)}")
+    except Exception as e:
+        # the same miss log the tools use, so a company whose fiscal-year naming we could not
+        # establish leaves a trace instead of quietly answering with calendar years
+        log_miss(str(cik), "fiscal_calendar", reason=f"submissions_unavailable:{type(e).__name__}")
+    cal = _FiscalCalendar(by_end, accn_by_end, offset, degraded=not by_end)
     if by_end:                        # only cache a real one, so a transient fetch failure
         _cal_mem[cik] = cal           # doesn't pin the fallback calendar for the process
     return cal

@@ -340,3 +340,35 @@ def test_no_calendar_keeps_the_previous_behaviour():
     and everything must behave as it did before."""
     got = annual_values(_TGT_UNITS, "duration", None)
     assert got["2025-02-01"]["accn"] == "tgt-26"      # the old, wrong choice — pinned deliberately
+
+
+def test_fallback_offset_applies_the_companys_convention_to_older_periods():
+    """The map only reaches as far back as the submissions feed. Periods older than it take the
+    company's offset — the path where a wrong offset does its damage invisibly, because every
+    period in the map is labelled from its own filing and never touches this."""
+    cal = _FiscalCalendar(by_end={"2025-02-01": (2024, "FY")},
+                          accn_by_end={"2025-02-01": "tgt-25"}, offset=-1)
+    assert cal.fiscal_year("2025-02-01") == 2024        # from the map
+    assert cal.fiscal_year("2011-01-29") == 2010        # from the offset
+    assert cal.fiscal_year("2008-02-02") == 2007
+
+
+def test_a_degraded_calendar_is_distinguishable_from_offset_zero():
+    """offset 0 means "this company names its years by the year they end in", which is a finding.
+    degraded means "we could not find out", which reproduces the old behaviour and must not be
+    mistaken for the finding."""
+    unknown = _FiscalCalendar({}, {}, 0, degraded=True)
+    known = _FiscalCalendar({"2024-09-28": (2024, "FY")}, {}, 0)
+    assert unknown.fiscal_year("2024-09-28") == known.fiscal_year("2024-09-28") == 2024
+    assert unknown.degraded and not known.degraded
+
+
+def test_quarterly_periods_fall_back_to_the_date_rule_not_the_annual_offset():
+    """The offset is derived from 10-Ks only: a fiscal year spans two calendar years, so a 10-Q's
+    offset differs (Walmart's FY2026 Q1 ends 2025-04-30, +1, while its FY2026 10-K ends
+    2026-01-31, 0). Mixing them let the quarterly offset win the vote, which is why quarterly_rows
+    uses _fiscal_period when the map has no entry rather than cal.fiscal_year."""
+    from agents.companyfacts import _fiscal_period
+    cal = _FiscalCalendar({}, {}, -1)
+    assert cal.period("2025-05-03") is None            # not in the map -> caller must not use it
+    assert _fiscal_period("2024-06-29", 9) == (2024, "Q3")
