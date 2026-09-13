@@ -14,7 +14,7 @@ from edgar import set_identity, Company
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from agents.companyfacts import cik_for
+from agents.companyfacts import cik_for, fiscal_calendar_for
 
 set_identity("Zhonghui Li lizhonghui923@gmail.com")  # SEC requires a contact
 
@@ -93,11 +93,19 @@ def _fetch_sections(ticker, years=1, fiscal_year=None):
     co = _company(ticker)
     if co is None:
         return []
+    # the company's own name for each filing's year, not the calendar year it ends in. Keying by
+    # the latter sent a request for Target FY2024 to the 10-K ending 2024-02-03 — Target's FY2023 —
+    # and then tagged its text with the REQUESTED year, so retrieval filtered correctly to a
+    # correctly-labelled row holding the wrong year's narrative.
+    cal = fiscal_calendar_for(cik_for(ticker) or "")
     for f in co.get_filings(form="10-K"):
         if f.form != "10-K":
             continue
-        yr = str(getattr(f, "period_of_report", "") or "")[:4]
-        if yr.isdigit() and (yr not in by_year or f.accession_no > by_year[yr].accession_no):
+        period = str(getattr(f, "period_of_report", "") or "")
+        if not period[:4].isdigit():
+            continue
+        yr = str(cal.fiscal_year(period))
+        if yr not in by_year or f.accession_no > by_year[yr].accession_no:
             by_year[yr] = f
     if fiscal_year is not None:                       # year-aware: the 10-K for this fiscal year
         fy = int(fiscal_year)
@@ -108,7 +116,7 @@ def _fetch_sections(ticker, years=1, fiscal_year=None):
     out = []
     for tag_fy, f in chosen:
         period = str(getattr(f, "period_of_report", "") or "")
-        fy = tag_fy if tag_fy is not None else (int(period[:4]) if period[:4].isdigit()
+        fy = tag_fy if tag_fy is not None else (cal.fiscal_year(period) if period[:4].isdigit()
                                                 else int(str(f.filing_date)[:4]) - 1)
         tenk = f.obj()
         for name, attr in _SECTIONS.items():
@@ -142,11 +150,15 @@ def _fetch_10q_mda(ticker, quarters, target_year=None):
     co = _company(ticker)
     if co is None:
         return out
+    # the company's own fiscal year for each quarter end — a 10-Q's own fy/fp, not a guess from
+    # the date, which cannot tell Target's naming from Walmart's
+    qcal = fiscal_calendar_for(cik_for(ticker) or "")
     for f in co.get_filings(form="10-Q"):
         if f.form != "10-Q":
             continue
         period = str(getattr(f, "period_of_report", "") or "")
-        fy = int(period[:4]) if period[:4].isdigit() else int(str(f.filing_date)[:4])
+        fy = (qcal.fiscal_year(period) if period[:4].isdigit()
+              else int(str(f.filing_date)[:4]))
         if target_year is not None:
             if fy > target_year:           # newer than target (newest-first) -> keep scanning
                 continue
