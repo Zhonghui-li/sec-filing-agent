@@ -10,6 +10,8 @@ import math
 import re
 from typing import Dict, List
 
+from agents.companyfacts import log_miss
+
 _IMPLAUSIBLE = [
     # (?<![A-Za-z]) so a year glued to a letter isn't read as a value: "days payable outstanding"
     # is the metric's NAME, so an answer that names it after its fiscal year — "Amazon's FY2017
@@ -164,6 +166,42 @@ def _implausible_ratio(trace):
     return None
 
 
+def _note_implausible_prose(answer, tools_used):
+    """Record, do not block, a number in the ANSWER TEXT that sits outside a ratio's natural bound.
+
+    This scan used to replace the whole reply. It was built for the model hand-composing a ratio
+    through `compute` — 365 / x where it meant 365 * x, the DPO-1419 and CCC-4760 cases — and that
+    path no longer exists: get_ratio covers the standard ratios by name and compute_formula
+    evaluates an arbitrary formula in code. Across 150 FinanceBench questions and the 50-item
+    red-team suite, `compute` was called 20 times and never to assemble a days or turnover metric;
+    on the red-team suite, whose "hand-compute" category exists to provoke exactly this, it was
+    called zero times.
+
+    Meanwhile it kept firing on prose. A number next to a unit word is not a measurement often
+    enough: "365 x average accounts payable" is a multiplication sign, "FY2017 days payable
+    outstanding" is the metric's own name, and "In 2024 days sales outstanding rose" is a year.
+    Each fix was another lookbehind, and English keeps supplying spellings. Every firing observed
+    was a false positive, and each one cost a correct answer while telling the user, plausibly,
+    that no reliable figure was available.
+
+    So it moves to detection-only — WAF monitor mode, Kubernetes `audit`, Gatekeeper `dryrun`,
+    CSP-Report-Only. The detection is unchanged; it no longer touches the answer. If the failure
+    mode returns, it lands in the miss log with the tools that produced it, and a `compute`-built
+    ratio out of bounds is the signal to put the block back — this time with a real case to write
+    the rule against, instead of a rule with no case.
+    """
+    for rx, limit in _IMPLAUSIBLE:
+        for m in rx.finditer(answer or ""):
+            try:
+                val = abs(float(m.group(1).replace(",", "")))
+            except ValueError:
+                continue
+            if val > limit:
+                log_miss("-", "implausible_magnitude",
+                         reason=f"{m.group(0).strip()!r} in prose; tools={sorted(tools_used or [])}")
+                return
+
+
 def guardrail_check(answer: str, tools_used: List[str], trace: List[Dict] = None):
     """The reason an answer's number is untrustworthy (-> abstain), or None if it passes:
     (a) a physically-impossible magnitude (the model mis-composed a formula by hand),
@@ -175,13 +213,7 @@ def guardrail_check(answer: str, tools_used: List[str], trace: List[Dict] = None
     bad_ratio = _implausible_ratio(trace)
     if bad_ratio:
         return "implausible magnitude — " + bad_ratio
-    for rx, limit in _IMPLAUSIBLE:
-        for m in rx.finditer(answer):
-            try:
-                if abs(float(m.group(1).replace(",", ""))) > limit:
-                    return "implausible magnitude — a ratio out of its natural bound (hand-composed formula)"
-            except ValueError:
-                continue
+    _note_implausible_prose(answer, tools_used)
     if not (set(tools_used) & _DATA_TOOLS) and re.search(r"\$\s?\d", answer):
         # No numeric tool ran, but a $ amount may still be legitimately quoted from filing prose —
         # an 8-K debt/buyback figure, say, that XBRL doesn't carry. Allow it only if it traces (unit-

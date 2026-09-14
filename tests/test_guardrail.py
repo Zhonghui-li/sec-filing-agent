@@ -9,15 +9,43 @@ def _blocked(ans, tools):
     return guardrail(ans, tools) == _SAFE
 
 
-# --- should block ---
-def test_block_impossible_dpo():
-    assert _blocked("Amazon's DPO for FY2017 is approximately 1419.68 days.",
-                    ["get_financials", "compute"])
+# --- detection-only: recorded, not blocked -------------------------------------------------
+#
+# These two are the cases the prose scan was built for — a ratio the model hand-composed through
+# `compute`. That path is gone: get_ratio covers the standard ratios by name and compute_formula
+# evaluates a formula in code, and across 150 FinanceBench questions plus the 50-item red-team
+# suite `compute` never once assembled a days or turnover metric. Every firing observed was a
+# false positive on prose, each costing a correct answer. The scan now logs instead of blocking
+# (WAF monitor mode / Kubernetes audit / Gatekeeper dryrun), so the signal survives without the
+# cost. If the miss log ever shows one of these alongside `compute` calls, the block goes back.
+def test_an_implausible_dpo_is_recorded_not_blocked(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr("agents.guardrail.log_miss",
+                        lambda t, m, **kw: seen.append((m, kw.get("reason", ""))))
+    ans = "Amazon's DPO for FY2017 is approximately 1419.68 days."
+    assert guardrail(ans, ["get_financials", "compute"]) == ans       # the answer survives
+    assert seen and seen[0][0] == "implausible_magnitude"             # the detection is kept
+    assert "1419.68 days" in seen[0][1]
 
 
-def test_block_impossible_ccc():
-    assert _blocked("The cash conversion cycle is approximately 4760.96 days.",
-                    ["get_financials", "compute"])
+def test_an_implausible_ccc_is_recorded_not_blocked(monkeypatch):
+    seen = []
+    monkeypatch.setattr("agents.guardrail.log_miss",
+                        lambda t, m, **kw: seen.append((m, kw.get("reason", ""))))
+    ans = "The cash conversion cycle is approximately 4760.96 days."
+    assert guardrail(ans, ["get_financials", "compute"]) == ans
+    assert seen and seen[0][0] == "implausible_magnitude"
+
+
+def test_prose_shapes_that_were_never_measurements_are_not_blocked_either(monkeypatch):
+    """The three false-positive shapes: a multiplication sign, a fiscal year in the metric's name,
+    and a bare year before it. Each used to destroy a correct answer."""
+    monkeypatch.setattr("agents.guardrail.log_miss", lambda *a, **k: None)
+    trace = [{"tool": "get_financials", "output": "DSO for FY2024: 45.2"}]
+    for ans in ("DPO computed as 365 x average accounts payable was 45.2 days.",
+                "Amazon's FY2017 days payable outstanding was 45.2 days.",
+                "In 2024 days sales outstanding rose to 45.2 days."):
+        assert guardrail(ans, ["get_financials"], trace) != _SAFE
 
 
 def test_block_dollar_figure_with_no_data_tool():
@@ -216,8 +244,13 @@ def test_restated_formula_is_not_a_turnover_ratio():
         assert guardrail(ans, ["compute_formula"], trace) != _SAFE, f"blocked on {sign!r}"
 
 
-def test_a_real_turnover_ratio_is_still_blocked():
-    assert _blocked("Inventory turnover was 150x.", ["get_ratio"])
+def test_a_real_turnover_ratio_is_recorded_not_blocked(monkeypatch):
+    seen = []
+    monkeypatch.setattr("agents.guardrail.log_miss",
+                        lambda t, m, **kw: seen.append(m))
+    ans = "Inventory turnover was 150x."
+    assert guardrail(ans, ["get_ratio"]) == ans
+    assert seen == ["implausible_magnitude"]
 
 
 def test_a_fiscal_year_in_the_metric_name_is_not_a_days_value():
@@ -229,9 +262,12 @@ def test_a_fiscal_year_in_the_metric_name_is_not_a_days_value():
     assert guardrail("%s\n\nANSWER: 108.43" % ans, ["compute_formula"], trace) != _SAFE
 
 
-def test_an_implausible_days_value_is_still_blocked():
-    assert _blocked("Amazon's DPO for FY2017 is approximately 1419.68 days.",
-                    ["get_financials", "compute"])
+def test_a_get_ratio_result_out_of_bounds_is_still_blocked():
+    """The precise path stays enforcing: the ratio's kind comes from the call's arguments and the
+    value from the tool's own output, so it never reads prose and cannot misjudge it."""
+    assert _blocked_t("Amazon's DPO was 1419.68 days.", ["get_ratio"],
+                      [{"tool": "get_ratio", "args": {"ratio": "dpo", "ticker": "AMZN"},
+                        "output": "AMZN dpo for FY2017 = 1419.68 days (...)"}])
 
 
 # --- a get_ratio result is checked against the bound for what it IS -------------------------
