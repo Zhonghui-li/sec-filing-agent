@@ -14,7 +14,7 @@ Answers financial questions about **any U.S. public company** from its SEC filin
 **finance bar**: a wrong or unsupported number is unacceptable.
 
 > **Validated on FinanceBench**, an external benchmark we didn't write:
-> **94% addressable coverage on the numeric set at a zero-fabrication rate, with 82% of narrative answers grounded in a cited filing or tool output.**
+> **94% addressable coverage on the numeric set at a zero-fabrication rate, with 96% of narrative answers grounded in a cited filing or tool output.**
 > → [full brief](eval/financebench/REPORT.md)
 
 ## Architecture
@@ -123,7 +123,7 @@ as grounded even when it isn't in the text.
 **3 · External benchmark — [FinanceBench](https://github.com/patronus-ai/financebench) (Patronus AI).**
 150 questions / 32 companies we did *not* write. **94% addressable coverage on the numeric set at a
 zero-fabrication rate** (all 50 metrics-generated questions correct), with narrative correctness
-**36/82 = 44% addressable** at **82% grounded**.
+**38/82 = 46% addressable** at **96% grounded**.
 What it misses, it misses by declining, not inventing. Scored from a declared `ANSWER:` line rather
 than by scanning the prose for numbers, at FinQA's 1% tolerance — see the 2026-09 update in the brief
 for why both matter. Reproducible harness with a tracked runs log.

@@ -13,7 +13,7 @@ declining, not by inventing. A narrative scorecard and an eval-gated retrieval s
 > | | | |
 > |---|---|---|
 > | **Numeric** | **51/54 addressable = 94%** | zero fabrications; all 50 metrics-generated correct |
-> | **Narrative** | **36/82 addressable = 44%** | 82% grounded (κ=0.76 judge) |
+> | **Narrative** | **38/82 addressable = 46%** | **96% grounded** (κ=0.76 judge) |
 >
 > - **A fiscal year is what the company calls it, not the year it ends in.** Every annual row was
 >   labelled with the calendar year of its period end, so Target, Ulta, Home Depot, Lowe's and
@@ -35,10 +35,20 @@ declining, not by inventing. A narrative scorecard and an eval-gated retrieval s
 > - **Narrative correctness is now reported addressable**, as the numeric side always was. Thirteen
 >   questions are answered only by an earnings release, which `filings_ingest` skips by design (the
 >   non-GAAP and guidance questions: adjusted EBITDA, adjusted EPS). Excluding what the corpus
->   cannot hold moves 37/95 = 39% to 36/82 = 44%. The criterion is FinanceBench's own evidence
+>   cannot hold moves 39/95 = 41% to 38/82 = 46%. The criterion is FinanceBench's own evidence
 >   labels, never whether we answered correctly — a first attempt excluded questions whose evidence
 >   sits in a financial statement, which would have been a self-issued excuse, since get_statement
 >   and get_segment_breakdown can reach those.
+> - **The groundedness judge was reading half its own evidence.** capture() saved `out["trace"]`,
+>   the UI-facing field, which trims every tool output to 600 characters so the chat interface can
+>   show a tool-call trace; retrieved chunks are ~1000 characters and a cash-flow statement is far
+>   longer. AMD's cash-flow answer cited the statement it had just fetched and scored ungrounded
+>   because the figures sat past the cut. Reading the untruncated `out["tool_outputs"]` instead
+>   moves groundedness from **82% to 96%** on the same answers. This is the second time the same
+>   shape has been found here — the first was the judge not being shown tool outputs at all
+>   (63% → 93%) — and both times it showed up as a lower score rather than an error, so the agent
+>   took the blame. **The 92% recorded in the 2026-08 update was depressed the same way; 96% is the
+>   first measurement of this taken with the judge seeing everything.**
 > - **A fiscal year inside a metric's name read as a value.** `_IMPLAUSIBLE` matched
 >   `(\d+)\s*days` against a bound of 1000, so "Amazon's FY2017 days payable outstanding … was
 >   108.43 days" offered *2017 days* and a correct answer was replaced by the safe abstention —

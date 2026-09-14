@@ -101,15 +101,22 @@ def capture(limit=None):
     rows = []
     for i, c in enumerate(narrative, 1):
         out = run_agent(c["question"], agent=agent)
+        # out["tool_outputs"], not out["trace"]. `trace` is the UI-facing field: _extract_trace
+        # trims every output to 600 characters so the chat interface can show the tool calls.
+        # Retrieved chunks are ~1000 characters and a cash-flow statement is far longer, so the
+        # judge was being shown roughly the first half of its own evidence and marking correct,
+        # properly-cited answers ungrounded — AMD's cash-flow question cited the statement it had
+        # just fetched and was scored bad because the figures sat past the cut. Same shape as the
+        # bug this file already fixed once (the judge not seeing tool outputs at all, 63% -> 93%);
+        # this time it saw them truncated. This function exists to save the FULL text.
         ctxs, tool_outs = [], []
-        for step in out.get("trace", []):
-            o = step.get("output")
+        for name, o in (out.get("tool_outputs") or []):
             if not o:
                 continue
-            if step["tool"] == "search_filings":
+            if name == "search_filings":
                 ctxs.append(str(o))                       # retrieved prose
-            elif step["tool"] != "abstain":
-                tool_outs.append(f"[{step['tool']}] {o}")  # numeric/deterministic tool output (grounds figures)
+            elif name != "abstain":
+                tool_outs.append(f"[{name}] {o}")         # numeric/deterministic tool output (grounds figures)
         # Whether FinanceBench's own evidence for this question lives entirely in a document we
         # deliberately do not ingest. filings_ingest skips the large earnings exhibits, so a
         # question answered only by an earnings release — non-GAAP EBITDA, adjusted EPS, guidance
