@@ -372,3 +372,13 @@ def test_quarterly_periods_fall_back_to_the_date_rule_not_the_annual_offset():
     cal = _FiscalCalendar({}, {}, -1)
     assert cal.period("2025-05-03") is None            # not in the map -> caller must not use it
     assert _fiscal_period("2024-06-29", 9) == (2024, "Q3")
+
+
+def test_a_retired_ticker_resolves_through_the_company_name():
+    """Foot Locker left SEC's current-issuer ticker file when it was acquired, so search_filings
+    with ticker="FL" resolved to nothing and could not even trigger ingestion — the agent asked
+    three times and abstained. The numeric side was unaffected because the prompt tells the model
+    to pass a NAME for a delisted issuer; a narrative query just used the obvious ticker."""
+    from agents.companyfacts import cik_for, ticker_to_cik_map
+    assert "FL" not in ticker_to_cik_map()      # still retired, not reassigned to a live issuer
+    assert cik_for("FL") == "0000850209"

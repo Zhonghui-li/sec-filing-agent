@@ -171,6 +171,7 @@ _RETIRED_TICKERS = {
     "XLNX": "Xilinx",                # acquired by AMD (2022)
     "SQ": "Block",                   # renamed from Square (2021); ticker later XYZ
     "FISV": "Fiserv",                # ticker changed to FI (2023)
+    "FL": "Foot Locker",             # acquired by DICK'S Sporting Goods (2025)
 }
 
 
