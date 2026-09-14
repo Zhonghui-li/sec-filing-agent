@@ -1,6 +1,9 @@
-"""L1 deterministic tests for the output guardrail — no LLM, no deps. Pins that it blocks the
-hand-computed impossible numbers seen on FinanceBench (DPO 1419 days, CCC 4760 days) and fabricated
-figures, while never rejecting a legitimate answer (incl. a real outlier that came from a tool).
+"""L1 deterministic tests for the output guardrail — no LLM, no deps. Pins that it blocks a
+fabricated figure and a ratio that left its natural bound IN A TOOL'S OWN OUTPUT, while never
+rejecting a legitimate answer (incl. a real outlier that came from a tool). The scan of the
+answer's PROSE for the same bound is detection-only — recorded, not blocked — so the impossible
+numbers seen on FinanceBench (DPO 1419 days, CCC 4760 days) now pass through and log; see
+_note_implausible_prose for why.
 """
 from agents.guardrail import guardrail, _SAFE
 
@@ -18,7 +21,7 @@ def _blocked(ans, tools):
 # false positive on prose, each costing a correct answer. The scan now logs instead of blocking
 # (WAF monitor mode / Kubernetes audit / Gatekeeper dryrun), so the signal survives without the
 # cost. If the miss log ever shows one of these alongside `compute` calls, the block goes back.
-def test_an_implausible_dpo_is_recorded_not_blocked(tmp_path, monkeypatch):
+def test_an_implausible_dpo_is_recorded_not_blocked(monkeypatch):
     seen = []
     monkeypatch.setattr("agents.guardrail.log_miss",
                         lambda t, m, **kw: seen.append((m, kw.get("reason", ""))))
@@ -37,15 +40,13 @@ def test_an_implausible_ccc_is_recorded_not_blocked(monkeypatch):
     assert seen and seen[0][0] == "implausible_magnitude"
 
 
-def test_prose_shapes_that_were_never_measurements_are_not_blocked_either(monkeypatch):
-    """The three false-positive shapes: a multiplication sign, a fiscal year in the metric's name,
-    and a bare year before it. Each used to destroy a correct answer."""
+def test_a_year_before_the_metrics_name_is_not_a_days_value(monkeypatch):
+    """The shape no lookbehind caught: "In 2024 days sales outstanding rose" — the year belongs to
+    the sentence, the unit word to the metric. It is why patching the regex kept losing to English."""
     monkeypatch.setattr("agents.guardrail.log_miss", lambda *a, **k: None)
     trace = [{"tool": "get_financials", "output": "DSO for FY2024: 45.2"}]
-    for ans in ("DPO computed as 365 x average accounts payable was 45.2 days.",
-                "Amazon's FY2017 days payable outstanding was 45.2 days.",
-                "In 2024 days sales outstanding rose to 45.2 days."):
-        assert guardrail(ans, ["get_financials"], trace) != _SAFE
+    assert guardrail("In 2024 days sales outstanding rose to 45.2 days.",
+                     ["get_financials"], trace) != _SAFE
 
 
 def test_block_dollar_figure_with_no_data_tool():
@@ -260,14 +261,6 @@ def test_a_fiscal_year_in_the_metric_name_is_not_a_days_value():
     ans = ("Amazon's FY2017 days payable outstanding (DPO), computed as 365 x average accounts "
            "payable over FY2016-FY2017, was 108.43 days.")
     assert guardrail("%s\n\nANSWER: 108.43" % ans, ["compute_formula"], trace) != _SAFE
-
-
-def test_a_get_ratio_result_out_of_bounds_is_still_blocked():
-    """The precise path stays enforcing: the ratio's kind comes from the call's arguments and the
-    value from the tool's own output, so it never reads prose and cannot misjudge it."""
-    assert _blocked_t("Amazon's DPO was 1419.68 days.", ["get_ratio"],
-                      [{"tool": "get_ratio", "args": {"ratio": "dpo", "ticker": "AMZN"},
-                        "output": "AMZN dpo for FY2017 = 1419.68 days (...)"}])
 
 
 # --- a get_ratio result is checked against the bound for what it IS -------------------------
