@@ -5,6 +5,8 @@ answer's PROSE for the same bound is detection-only — recorded, not blocked �
 numbers seen on FinanceBench (DPO 1419 days, CCC 4760 days) now pass through and log; see
 _note_implausible_prose for why.
 """
+import json
+
 from agents.guardrail import guardrail, _SAFE
 
 
@@ -21,32 +23,33 @@ def _blocked(ans, tools):
 # false positive on prose, each costing a correct answer. The scan now logs instead of blocking
 # (WAF monitor mode / Kubernetes audit / Gatekeeper dryrun), so the signal survives without the
 # cost. If the miss log ever shows one of these alongside `compute` calls, the block goes back.
-def test_an_implausible_dpo_is_recorded_not_blocked(monkeypatch):
-    seen = []
-    monkeypatch.setattr("agents.guardrail.log_miss",
-                        lambda t, m, **kw: seen.append((m, kw.get("reason", ""))))
+def test_an_implausible_dpo_is_recorded_not_blocked(miss_log):
     ans = "Amazon's DPO for FY2017 is approximately 1419.68 days."
     assert guardrail(ans, ["get_financials", "compute"]) == ans       # the answer survives
-    assert seen and seen[0][0] == "implausible_magnitude"             # the detection is kept
-    assert "1419.68 days" in seen[0][1]
+    rec = json.loads(miss_log.read_text().strip())                    # the detection is kept
+    assert rec["metric"] == "implausible_magnitude"
+    # the value AND the tools: `compute` in this field is what scripts/check_misses.py reads as the
+    # signal to put the block back, so the record has to carry it.
+    assert "1419.68 days" in rec["reason"] and "compute" in rec["reason"]
 
 
-def test_an_implausible_ccc_is_recorded_not_blocked(monkeypatch):
-    seen = []
-    monkeypatch.setattr("agents.guardrail.log_miss",
-                        lambda t, m, **kw: seen.append((m, kw.get("reason", ""))))
+def test_an_implausible_ccc_is_recorded_not_blocked(miss_log):
     ans = "The cash conversion cycle is approximately 4760.96 days."
     assert guardrail(ans, ["get_financials", "compute"]) == ans
-    assert seen and seen[0][0] == "implausible_magnitude"
+    assert json.loads(miss_log.read_text().strip())["metric"] == "implausible_magnitude"
 
 
-def test_a_year_before_the_metrics_name_is_not_a_days_value(monkeypatch):
+def test_a_year_before_the_metrics_name_is_not_a_days_value(miss_log):
     """The shape no lookbehind caught: "In 2024 days sales outstanding rose" — the year belongs to
     the sentence, the unit word to the metric. It is why patching the regex kept losing to English."""
-    monkeypatch.setattr("agents.guardrail.log_miss", lambda *a, **k: None)
     trace = [{"tool": "get_financials", "output": "DSO for FY2024: 45.2"}]
     assert guardrail("In 2024 days sales outstanding rose to 45.2 days.",
                      ["get_financials"], trace) != _SAFE
+    # It still MATCHES — the regex is unchanged, only the blocking is gone — so the miss log
+    # collects these prose false positives. That is why the reversal trigger keys on `compute`
+    # being in the record's tools rather than on the record existing: this one must not count.
+    rec = json.loads(miss_log.read_text().strip())
+    assert "'2024 days'" in rec["reason"] and "compute" not in rec["reason"]
 
 
 def test_block_dollar_figure_with_no_data_tool():
@@ -245,13 +248,10 @@ def test_restated_formula_is_not_a_turnover_ratio():
         assert guardrail(ans, ["compute_formula"], trace) != _SAFE, f"blocked on {sign!r}"
 
 
-def test_a_real_turnover_ratio_is_recorded_not_blocked(monkeypatch):
-    seen = []
-    monkeypatch.setattr("agents.guardrail.log_miss",
-                        lambda t, m, **kw: seen.append(m))
+def test_a_real_turnover_ratio_is_recorded_not_blocked(miss_log):
     ans = "Inventory turnover was 150x."
     assert guardrail(ans, ["get_ratio"]) == ans
-    assert seen == ["implausible_magnitude"]
+    assert json.loads(miss_log.read_text().strip())["metric"] == "implausible_magnitude"
 
 
 def test_a_fiscal_year_in_the_metric_name_is_not_a_days_value():
