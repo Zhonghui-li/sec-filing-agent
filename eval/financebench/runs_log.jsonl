@@ -9,3 +9,4 @@
 {"ts": "2026-09-11T23:29:40.288873+00:00", "model": "gpt-4o-mini", "reasoning_effort": null, "limit": 5, "db": true, "numeric": 2, "correct": 2, "hallucinated": 0, "addressable": 2, "addressable_coverage": 1.0, "raw_coverage": 1.0}
 {"ts": "2026-09-12T02:04:07.309528+00:00", "model": "o4-mini", "reasoning_effort": null, "limit": null, "db": true, "numeric": 55, "correct": 47, "hallucinated": 5, "addressable": 55, "addressable_coverage": 0.8545, "raw_coverage": 0.8545}
 {"ts": "2026-09-12T03:03:14.148391+00:00", "model": "o4-mini", "reasoning_effort": null, "limit": 2, "db": true, "numeric": 2, "correct": 2, "hallucinated": 0, "addressable": 2, "addressable_coverage": 1.0, "raw_coverage": 1.0}
+{"ts": "2026-09-14T00:23:21.172068+00:00", "model": "o4-mini", "reasoning_effort": null, "limit": null, "db": true, "numeric": 55, "correct": 51, "hallucinated": 1, "addressable": 54, "addressable_coverage": 0.9444, "raw_coverage": 0.9273}

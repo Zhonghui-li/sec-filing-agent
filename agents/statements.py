@@ -11,6 +11,7 @@ superlatives ("largest liability") are computed in code — the model never scan
 import os
 import re
 
+from agents.companyfacts import fiscal_calendar_for
 from agents.finance_tools import edgar_url, cik_for
 
 # edgartools is imported lazily (inside _filing) so `import agents.statements` — and its pure-logic
@@ -38,15 +39,24 @@ def _fmt(v):
 
 
 def _filing(cik, fiscal_year):
-    """The 10-K for `fiscal_year` (±1 for non-December year-ends), or the latest 10-K if None."""
+    """The 10-K for `fiscal_year` as the COMPANY names it, or the latest 10-K if None.
+
+    Keying candidates by the calendar year of their period end assumed a fiscal year is named
+    after the year it ends in. Target's year ending 2024-02-03 is Target's FY2023, so asking for
+    FY2024 matched it and returned the year before the one requested — the ±1 sweep below never
+    fired, because the wrong candidate was present under the requested key."""
     from edgar import Company, set_identity
     set_identity("Zhonghui Li lizhonghui923@gmail.com")  # SEC requires a contact; idempotent
+    cal = fiscal_calendar_for(cik)
     cands = {}
     for f in Company(int(cik)).get_filings(form="10-K"):
         if f.form != "10-K":
             continue
-        yr = str(getattr(f, "period_of_report", "") or "")[:4]
-        if yr.isdigit() and (yr not in cands or f.accession_no > cands[yr].accession_no):
+        period = str(getattr(f, "period_of_report", "") or "")
+        if not period[:4].isdigit():
+            continue
+        yr = str(cal.fiscal_year(period))
+        if yr not in cands or f.accession_no > cands[yr].accession_no:
             cands[yr] = f
     if not cands:
         return None
@@ -68,12 +78,16 @@ def _load(ticker, statement, fiscal_year):
     if f is None:
         return None, None, None, None
     period = str(getattr(f, "period_of_report", "") or "")
-    fy = int(period[:4]) if period[:4].isdigit() else None
+    # two different things: the calendar year of the period end, which is what the statement's
+    # column headings are dated by, and the company's own name for that year, which is what we
+    # print and what the numeric tools key on. They differ for Target, Ulta, Home Depot, Lowe's.
+    date_year = int(period[:4]) if period[:4].isdigit() else None
+    fy = fiscal_calendar_for(cik).fiscal_year(period) if date_year else None
     try:
         df = getattr(f.obj().financials, _STMT[statement])().to_dataframe()
     except Exception:
         return None, None, None, None
-    col = next((c for c in df.columns if fy and c.startswith(str(fy))), None) \
+    col = next((c for c in df.columns if date_year and c.startswith(str(date_year))), None) \
         or next((c for c in df.columns if c[:4].isdigit()), None)
     return df, col, fy, f.accession_no
 
@@ -242,8 +256,9 @@ def get_segment_breakdown(ticker: str, dimension: str = "segment", metric: str =
         if f is None:
             return f"No 10-K for {ticker}" + (f" FY{fiscal_year}" if fiscal_year else "") + "."
         period = str(getattr(f, "period_of_report", "") or "")
-        fy = int(period[:4]) if period[:4].isdigit() else fiscal_year
-        out = _breakdown_from_xbrl(f.xbrl(), _AXIS[dimension], _METRIC_CONCEPT[metric], fy)
+        date_year = int(period[:4]) if period[:4].isdigit() else fiscal_year
+        fy = fiscal_calendar_for(cik).fiscal_year(period) if period[:4].isdigit() else fiscal_year
+        out = _breakdown_from_xbrl(f.xbrl(), _AXIS[dimension], _METRIC_CONCEPT[metric], date_year)
     except Exception as e:
         return f"Could not extract {dimension} {metric} for {ticker}: {type(e).__name__}."
     if not out:
@@ -327,8 +342,9 @@ def get_segment_growth(ticker: str, dimension: str = "segment", metric: str = "r
         if f is None:
             return f"No 10-K for {ticker}" + (f" FY{fiscal_year}" if fiscal_year else "") + "."
         period = str(getattr(f, "period_of_report", "") or "")
-        fy = int(period[:4]) if period[:4].isdigit() else fiscal_year
-        g = _segment_growth(f.xbrl(), _AXIS[dimension], _METRIC_CONCEPT[metric], fy)
+        date_year = int(period[:4]) if period[:4].isdigit() else fiscal_year
+        fy = fiscal_calendar_for(cik).fiscal_year(period) if period[:4].isdigit() else fiscal_year
+        g = _segment_growth(f.xbrl(), _AXIS[dimension], _METRIC_CONCEPT[metric], date_year)
     except Exception as e:
         return f"Could not compute {dimension} {metric} growth for {ticker}: {type(e).__name__}."
     rows = [(m, t, p, _growth_pct(t, p)) for m, (t, p) in g.items()]
