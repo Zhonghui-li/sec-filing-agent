@@ -136,8 +136,15 @@ def _judge(rows):
     out = []
     for i, (it, answer, tools, trace) in enumerate(rows, 1):
         j = _judge_one(llm, it, answer, tools, trace)
+        # What the model asked each tool FOR. The prose scan in _IMPLAUSIBLE exists to catch a
+        # ratio the model hand-composed through `compute` — 365 / x where it meant 365 * x, the
+        # DPO-1419 and CCC-4760 cases. Whether that still happens now that get_ratio and
+        # compute_formula cover those metrics decides whether the scan is still earning its
+        # false positives, and nothing recorded the calls to tell.
         out.append({**it, "answer": answer, "tools_used": tools, "outcome": j["outcome"],
-                    "label": j["label"], "why": j["reasoning"]})
+                    "label": j["label"], "why": j["reasoning"],
+                    "calls": [{"tool": t.get("tool"), "args": t.get("args")}
+                              for t in (trace or [])]})
         print(f"  [{i:>2}/{len(rows)}] {j['outcome']:12} {it['id']} "
               f"{it['cat']:22} {it['q'][:46]}")
     return out

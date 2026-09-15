@@ -427,13 +427,20 @@ _MISS_LOG = _CACHE_DIR.parent / "metric_misses.jsonl"
 
 
 def log_miss(ticker, metric, fiscal_year=None, reason="metric_absent"):
-    """Best-effort append of a 'requested metric unavailable' event; never breaks a request."""
+    """Best-effort record of a 'requested metric unavailable' event; never breaks a request.
+
+    Written twice on purpose. The file is the local queue, read by `scripts/check_misses.py`. On
+    Cloud Run the container filesystem is per-instance and goes away with the instance, so the file
+    there records nothing that survives; stdout is what Cloud Logging keeps, and it is the only
+    place a production miss can be read back from.
+    """
+    rec = {"ts": datetime.now(timezone.utc).isoformat(), "ticker": ticker.strip().upper(),
+           "metric": metric, "fiscal_year": fiscal_year, "reason": reason}
+    print("METRIC_MISS " + json.dumps(rec), flush=True)
     try:
         _MISS_LOG.parent.mkdir(parents=True, exist_ok=True)
         with _MISS_LOG.open("a") as f:
-            f.write(json.dumps({"ts": datetime.now(timezone.utc).isoformat(),
-                                "ticker": ticker.strip().upper(), "metric": metric,
-                                "fiscal_year": fiscal_year, "reason": reason}) + "\n")
+            f.write(json.dumps(rec) + "\n")
     except Exception:
         pass
 
