@@ -88,25 +88,45 @@ def correctness_judge(items):
 def capture(limit=None):
     """Re-run the agent over the NARRATIVE questions, saving full answer + contexts."""
     from agents.sec_agent import build_agent, run_agent
+    from eval.financebench.run_open import _gold_is_numeric
     cases = [json.loads(l) for l in _CACHE.read_text().splitlines() if l.strip()]
-    narrative = [c for c in cases if c.get("question_type") != "metrics-generated"]
+    # Split on the SAME predicate run_open uses. Filtering on question_type instead put five
+    # questions with a numeric gold into both harnesses — Amcor's restructuring liability,
+    # PepsiCo's credit agreement, Pfizer's Upjohn, Ulta's Q4 repurchases — each judged once as a
+    # figure and once as prose, and double-counted in any summary of the two.
+    narrative = [c for c in cases if not _gold_is_numeric(c.get("answer", ""))]
     if limit:
         narrative = narrative[:limit]
     agent = build_agent()
     rows = []
     for i, c in enumerate(narrative, 1):
         out = run_agent(c["question"], agent=agent)
+        # out["tool_outputs"], not out["trace"]. `trace` is the UI-facing field: _extract_trace
+        # trims every output to 600 characters so the chat interface can show the tool calls.
+        # Retrieved chunks are ~1000 characters and a cash-flow statement is far longer, so the
+        # judge was being shown roughly the first half of its own evidence and marking correct,
+        # properly-cited answers ungrounded — AMD's cash-flow question cited the statement it had
+        # just fetched and was scored bad because the figures sat past the cut. Same shape as the
+        # bug this file already fixed once (the judge not seeing tool outputs at all, 63% -> 93%);
+        # this time it saw them truncated. This function exists to save the FULL text.
         ctxs, tool_outs = [], []
-        for step in out.get("trace", []):
-            o = step.get("output")
+        for name, o in (out.get("tool_outputs") or []):
             if not o:
                 continue
-            if step["tool"] == "search_filings":
+            if name == "search_filings":
                 ctxs.append(str(o))                       # retrieved prose
-            elif step["tool"] != "abstain":
-                tool_outs.append(f"[{step['tool']}] {o}")  # numeric/deterministic tool output (grounds figures)
+            elif name != "abstain":
+                tool_outs.append(f"[{name}] {o}")         # numeric/deterministic tool output (grounds figures)
+        # Whether FinanceBench's own evidence for this question lives entirely in a document we
+        # deliberately do not ingest. filings_ingest skips the large earnings exhibits, so a
+        # question answered only by an earnings release — non-GAAP EBITDA, adjusted EPS, guidance
+        # — is out of reach by design rather than by failure. Taken from the benchmark's evidence
+        # labels, never from whether we got it right, which is what keeps it from being a
+        # self-issued excuse; it mirrors the STRUCTURAL split run_open applies to abstains.
+        ev = [str(e.get("doc_name", "")).upper() for e in (c.get("evidence") or [])]
         rows.append({"question": c["question"], "question_type": c.get("question_type"),
                      "gold": str(c["answer"]), "answer": out["answer"],
+                     "out_of_corpus": bool(ev) and all("EARNINGS" in d for d in ev),
                      "contexts": ctxs, "tool_outputs": tool_outs})
         print(f"  captured [{i}/{len(narrative)}] {c['question'][:60]}")
     _CAP.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
@@ -144,6 +164,17 @@ def main():
     print(f"    strict (correct/n)          = {strict:.0%}")
     print(f"    lenient (correct+partial/n) = {lenient:.0%}")
     print(f"Y · GROUNDEDNESS (κ=0.76)  good={gg['good']} bad={gg['bad']}  ->  {gg['good']/n:.0%} grounded")
+
+    # Addressable: the same idea as run_open's addressable coverage, on the narrative side —
+    # exclude what the corpus cannot hold, keep everything we merely got wrong.
+    out_rows = [i for i, r in enumerate(rows) if r.get("out_of_corpus")]
+    if out_rows:
+        answerable = n - len(out_rows)
+        got = sum(1 for i, v in enumerate(corr) if v["verdict"] == "correct" and i not in out_rows)
+        print(f"\n    of those, {len(out_rows)} are answered only by an earnings release, which "
+              f"filings_ingest skips by design")
+        print(f"    ADDRESSABLE correctness = {got}/{answerable} = {got/max(answerable,1):.0%}"
+              f"   <- excludes what the corpus cannot hold, not what we got wrong")
 
     out = [{**r, "correctness": corr[i]["verdict"], "correctness_why": corr[i]["reasoning"],
             "grounded": grnd[i]["verdict"]} for i, r in enumerate(rows)]

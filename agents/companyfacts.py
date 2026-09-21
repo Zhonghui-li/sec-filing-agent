@@ -14,6 +14,7 @@ import json
 import os
 import re
 import urllib.request
+from collections import Counter
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -22,6 +23,7 @@ _UA = {"User-Agent": os.environ.get("SEC_USER_AGENT", "Zhonghui Li lizhonghui923
 
 _TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 _FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 
 _CACHE_DIR = Path(__file__).resolve().parent.parent / "data" / "cache" / "companyfacts"
 _CACHE_TTL_DAYS = 7
@@ -169,6 +171,7 @@ _RETIRED_TICKERS = {
     "XLNX": "Xilinx",                # acquired by AMD (2022)
     "SQ": "Block",                   # renamed from Square (2021); ticker later XYZ
     "FISV": "Fiserv",                # ticker changed to FI (2023)
+    "FL": "Foot Locker",             # acquired by DICK'S Sporting Goods (2025)
 }
 
 
@@ -208,7 +211,7 @@ def foreign_filer_note(query):
 
 
 # --- extraction (identical logic to the offline script) --------------------------------------
-def annual_values(units, kind):
+def annual_values(units, kind, cal=None):
     """{fiscal_year_end -> {val, accn, restated_val, restated_accn}} for 10-K annual facts. A
     duration fact must span a full year (350-380 days, dropping quarters/stubs); an instant fact
     has no start (balance sheet).
@@ -236,8 +239,17 @@ def annual_values(units, kind):
         facts.setdefault(end, []).append((u.get("accn", ""), u["val"], u.get("fy")))
     out = {}
     for end, cands in facts.items():
-        year = int(end[:4])
-        same = [c for c in cands if c[2] == year]          # filed by that period's own FY 10-K(/A)
+        # The filing this period was FIRST reported in — the one it is the current period of.
+        # Matching on `fy == calendar year of the end` instead assumed the company names its
+        # fiscal year after the year it ends in; for Target (year ending 2025-02-01 = its FY2024)
+        # that matched NEXT year's 10-K, i.e. the comparative column, so `rep` and `latest` became
+        # the same filing and a restatement could no longer be detected.
+        own = cal.original_accn(end) if cal is not None else None
+        if own is not None:
+            same = [c for c in cands if c[0] == own]
+        else:
+            year = int(end[:4])
+            same = [c for c in cands if c[2] == year]      # filed by that period's own FY 10-K(/A)
         rep = max(same, key=lambda c: c[0]) if same else min(cands, key=lambda c: c[0])
         latest = max(cands, key=lambda c: c[0])            # most-recent re-presentation (current basis)
         info = {"val": rep[1], "accn": rep[0], "restated_val": None, "restated_accn": None}
@@ -299,7 +311,6 @@ def quarterly_rows(gaap, ticker, cik):
     fiscal_year/quarter are derived from each period-end date and the company's fiscal-year-end
     (NOT the fact's fy/fp, which tag the filing and mislabel comparative periods)."""
     # fiscal-year-end month = the most common month of the ANNUAL (10-K) period ends
-    from collections import Counter
     ann_months = []
     for metric, (tags, kind) in METRICS.items():
         if kind != "duration":
@@ -309,6 +320,7 @@ def quarterly_rows(gaap, ticker, cik):
             unit = next(iter(gaap[t]["units"]))
             ann_months += [_rounded_month(e)[1] for e in annual_values(gaap[t]["units"][unit], kind)]
     fye = Counter(ann_months).most_common(1)[0][0] if ann_months else 12
+    cal = fiscal_calendar(cik, gaap)
 
     rows = []
     for metric, (tags, kind) in METRICS.items():
@@ -322,7 +334,14 @@ def quarterly_rows(gaap, ticker, cik):
                 if end not in merged:
                     merged[end] = {**info, "tag": t, "unit": unit}
         for end, info in merged.items():
-            fy, q = _fiscal_period(end, fye)
+            # the 10-Q's own fy/fp when this period is that filing's current quarter (the company
+            # naming itself); _fiscal_period only guesses, and its guess hard-codes naming by the
+            # year the fiscal year ENDS in, which is wrong for Target/Ulta/Home Depot/Lowe's
+            q = cal.period(end)
+            if q in ("Q1", "Q2", "Q3", "Q4"):
+                fy = cal.fiscal_year(end)
+            else:
+                fy, q = _fiscal_period(end, fye)
             if q == "Q4":                            # Q4 has no 10-Q; a stray Q4-dated 10-Q fact is noise
                 continue
             rows.append({"ticker": ticker, "cik": cik, "metric": metric,
@@ -330,6 +349,166 @@ def quarterly_rows(gaap, ticker, cik):
                          "fiscal_year": fy, "quarter": q,
                          "value": info["val"], "unit": info["unit"], "accession": info["accn"]})
     return rows
+
+
+class _FiscalCalendar:
+    """How a company names its own fiscal periods — read from its filings, never assumed.
+
+    A fact's `fy` tags the FILING (it comes from the 10-K cover's DocumentFiscalYearFocus), so
+    every comparative column in that filing carries it too, and the same period picks up a
+    different `fy` in next year's 10-K. Worse, the calendar year of a period end is not the
+    company's own name for it: Target's year ending 2025-02-01 is Target's FY2024, while
+    Walmart's year ending 2025-01-31 is Walmart's FY2025. Same fiscal calendar, opposite
+    convention — so no rule derived from the fiscal-year-end month can be right for both.
+
+    The one place the company states its own name for a period is the filing where that period
+    is CURRENT. The submissions feed gives each filing's own period end (`reportDate`), and the
+    facts give that filing's `fy`/`fp`; joining them is a lookup table, not an inference. Periods
+    older than the submissions feed reaches fall back to the company's modal offset.
+    """
+
+    def __init__(self, by_end, accn_by_end, offset, degraded=False):
+        self._by_end = by_end              # period_end -> (fiscal_year, 'FY'|'Q1'..'Q4')
+        self._accn_by_end = accn_by_end    # period_end -> accn of the filing it is CURRENT in
+        self.offset = offset               # (fy - calendar year), for periods not in the map
+        # True when nothing could be learned at all — the feed was unreachable. Then `offset` is
+        # 0 by default, which silently reproduces the old, wrong behaviour for a company that
+        # names its years by the start year, so a caller that cares should say it cannot tell
+        # rather than answer. Distinct from "offset happens to be 0", which is a real finding.
+        self.degraded = degraded
+
+    def fiscal_year(self, end):
+        hit = self._by_end.get(end)
+        return hit[0] if hit else int(end[:4]) + self.offset
+
+    def period(self, end):
+        """'FY' / 'Q1'..'Q4' as the company labels it, or None when it isn't in the map."""
+        hit = self._by_end.get(end)
+        return hit[1] if hit else None
+
+    def original_accn(self, end):
+        """The filing this period is the CURRENT period of — i.e. where it was first reported,
+        rather than re-presented as a comparative. None when unknown."""
+        return self._accn_by_end.get(end)
+
+
+_cal_mem = {}   # CIK -> _FiscalCalendar (in-process; the corrected years are baked into cached rows)
+
+
+_MIN_ANNUALS = 5        # below this the recent window is too thin to trust; page back for more
+
+
+def _report_dates(cik):
+    """accn -> the filing's OWN period end, for 10-K/10-Q.
+
+    `filings.recent` is capped at ~1000 entries, and the cap is on ALL forms, so how far back it
+    reaches depends on how much a company files rather than on years. Apple and Target get a
+    decade; JPMorgan, which files thousands of structured-note 8-Ks a year, gets 26,014 entries
+    covering twelve months and four 10-K/10-Qs. Older filings live in `filings.files`, so when the
+    recent window is thin we page back — otherwise a high-volume filer's whole history falls to a
+    fallback derived from one or two data points."""
+    forms = ("10-K", "10-K/A", "10-Q", "10-Q/A")
+    feed = _get_json(_SUBMISSIONS_URL.format(cik=cik))["filings"]
+    out, pages = {}, [feed["recent"]]
+    annuals = sum(1 for f in feed["recent"]["form"] if f.startswith("10-K"))
+    for extra in (feed.get("files") or []):
+        if annuals >= _MIN_ANNUALS:
+            break
+        try:
+            page = _get_json("https://data.sec.gov/submissions/" + extra["name"])
+        except Exception:
+            break
+        pages.append(page)
+        annuals += sum(1 for f in page["form"] if f.startswith("10-K"))
+    for page in pages:
+        for a, f, d in zip(page["accessionNumber"], page["form"], page["reportDate"]):
+            if f in forms and d:
+                out.setdefault(a, d)
+    return out
+
+
+def fiscal_calendar(cik, gaap):
+    """The company's own period naming. Fails soft: with no submissions feed (offline, unknown
+    CIK) it returns an empty calendar whose offset is 0, which reproduces the previous
+    calendar-year behaviour rather than erroring — and says so via .degraded, so a caller can
+    tell "this company names its years normally" from "we could not find out"."""
+    if cik in _cal_mem:
+        return _cal_mem[cik]
+    by_end, accn_by_end, offset = {}, {}, 0
+    try:
+        report = _report_dates(cik)
+        need, label = set(report), {}
+        for tag in gaap.values():                      # accn -> (fy, fp), stop once all are found
+            if not need:
+                break
+            for arr in tag.get("units", {}).values():
+                if not need:
+                    break
+                for u in arr:
+                    a = u.get("accn")
+                    if a in need and u.get("fy") is not None and u.get("fp"):
+                        label[a] = (u["fy"], u["fp"])
+                        need.discard(a)
+        by_accn = {}
+        offs = []
+        for a, end in report.items():
+            if a not in label:
+                continue
+            fy, fp = label[a]
+            by_end.setdefault(end, (fy, fp))
+            by_accn.setdefault(end, []).append(a)
+            # ANNUAL filings only. A fiscal year spans two calendar years, so a 10-Q's offset is
+            # not the 10-K's (Walmart: FY2026 Q1 ends 2025-04-30, offset +1, while its FY2026
+            # 10-K ends 2026-01-31, offset 0) — and there are three times as many 10-Qs, so
+            # mixing them lets the quarterly offset win the vote. This value is only ever the
+            # fallback for an ANNUAL period too old to be in the feed; quarters fall back to
+            # _fiscal_period instead.
+            if fp == "FY":
+                offs.append((end, fy - int(end[:4])))
+        # an amendment supersedes the original for "as reported for that period", matching the
+        # previous max(accn) choice among a period's own filings
+        accn_by_end = {end: max(accns) for end, accns in by_accn.items()}
+        # The MODE, not the oldest. The oldest looks like the better evidence for periods that
+        # predate the map, but early-XBRL filings are the least reliably tagged: Walmart's two
+        # 2013-14 filings say FY2012/FY2013 for years Walmart itself calls fiscal 2013/2014,
+        # against twelve later ones that agree with the company. Taking the oldest would have
+        # adopted the mis-tagged convention for the whole fallback. A majority is robust to a
+        # handful of bad tags in a way any single filing is not.
+        #
+        # A split is worth knowing about either way — Kroger reads -1 through FY2022, 0 for the
+        # next two years, then -1 again, which is a tagging inconsistency rather than a company
+        # changing its mind — so it is logged rather than silently resolved. The periods
+        # themselves are unaffected: each one carries its own filing's label from the map, and
+        # only periods older than all of them ever reach this value.
+        if offs:
+            counts = Counter(o for _, o in offs)
+            offset = counts.most_common(1)[0][0]
+            if len(counts) > 1:
+                log_miss(str(cik), "fiscal_calendar",
+                         reason=f"inconsistent_fy_tags:{dict(counts)}")
+    except Exception as e:
+        # the same miss log the tools use, so a company whose fiscal-year naming we could not
+        # establish leaves a trace instead of quietly answering with calendar years. Skipped for a
+        # placeholder CIK: the L1 tests call extract_rows with 0000000000, and forty entries per
+        # test run would bury the real ones.
+        if str(cik).strip("0"):
+            log_miss(str(cik), "fiscal_calendar",
+                     reason=f"submissions_unavailable:{type(e).__name__}")
+    cal = _FiscalCalendar(by_end, accn_by_end, offset, degraded=not by_end)
+    if by_end:                        # only cache a real one, so a transient fetch failure
+        _cal_mem[cik] = cal           # doesn't pin the fallback calendar for the process
+    return cal
+
+
+def fiscal_calendar_for(cik):
+    """The calendar for a CIK, fetching the facts it needs when nothing has built it yet. For
+    callers (statements.py) that work off edgartools rather than the companyfacts dict."""
+    if cik in _cal_mem:
+        return _cal_mem[cik]
+    try:
+        return fiscal_calendar(cik, fetch_facts(cik))
+    except Exception:
+        return _FiscalCalendar({}, {}, 0)
 
 
 def _close(a, b, tol=0.01):
@@ -341,6 +520,7 @@ def _close(a, b, tol=0.01):
 
 def extract_rows(gaap, ticker, cik):
     """Turn a company's us-gaap facts dict into rows matching data/financials.json's schema."""
+    cal = fiscal_calendar(cik, gaap)
     rows = []
     for metric, (tags, kind) in METRICS.items():
         present = [t for t in tags if t in gaap]   # candidate tags, in preference order
@@ -356,7 +536,7 @@ def extract_rows(gaap, ticker, cik):
         merged = {}
         for t in present:
             unit = next(iter(gaap[t]["units"]))     # USD, USD/shares, ...
-            for end, info in annual_values(gaap[t]["units"][unit], kind).items():
+            for end, info in annual_values(gaap[t]["units"][unit], kind, cal).items():
                 if end not in merged:
                     merged[end] = {"val": info["val"], "accn": info["accn"], "tag": t, "unit": unit,
                                    "restated_val": info["restated_val"],
@@ -370,7 +550,7 @@ def extract_rows(gaap, ticker, cik):
                 val, accn, restated_val, restated_accn = restated_val, restated_accn, None, None
             row = {"ticker": ticker, "cik": cik, "metric": metric,
                    "us_gaap_tag": info["tag"], "period_end": end,
-                   "fiscal_year": int(end[:4]), "value": val,
+                   "fiscal_year": cal.fiscal_year(end), "value": val,
                    "unit": info["unit"], "accession": accn}
             if restated_val is not None:                   # only when a real restatement exists
                 row["restated_value"] = restated_val

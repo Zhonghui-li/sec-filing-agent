@@ -7,6 +7,55 @@ five-round story that reached 87% is kept further down as history). What it miss
 declining, not by inventing. A narrative scorecard and an eval-gated retrieval study — whose honest conclusion was to
 *not* ship a +22pp-recall technique that hurt end-to-end answers — follow below.
 
+> **Update (2026-09-13).** A fiscal-year fix, a fourth guardrail false positive, and two scorer
+> boundaries that were wrong. Current headline:
+>
+> | | | |
+> |---|---|---|
+> | **Numeric** | **51/54 addressable = 94%** | zero fabrications; all 50 metrics-generated correct |
+> | **Narrative** | **38/82 addressable = 46%** | **96% grounded** (κ=0.76 judge) |
+>
+> - **A fiscal year is what the company calls it, not the year it ends in.** Every annual row was
+>   labelled with the calendar year of its period end, so Target, Ulta, Home Depot, Lowe's and
+>   Kroger — which name a fiscal year after the year it *starts* — were off by one, and asking for
+>   one returned the year before it. "Target's FY2024 revenue" returned $107,412,000,000 (Target's
+>   FY2023) instead of $106,566,000,000. **Every guard passed**: the figure came from a
+>   deterministic tool, traced to a real filing, carried a real accession, and the audit trail read
+>   "verified · figures reproduced from source". The error was upstream of all of it, in the mapping
+>   from a fiscal year to a period. *Zero fabrication is not the same property as not being wrong.*
+>   The naming is now read from the company's own filings — the submissions feed gives each filing's
+>   period end, the facts give that filing's `fy`, and joining them is a lookup rather than a rule.
+>   Nothing is keyed off the fiscal-year-end month, which cannot separate Target from Walmart: same
+>   fiscal calendar, opposite convention. Verified on nine companies, four never touched while
+>   developing it. The narrative index was rebuilt, since 7.5% of its rows carried the old labels
+>   and `search_filings` re-ingests only when a year is *missing*, never when it is wrong.
+> - **The narrative denominator now matches the numeric one.** It split on `question_type` while
+>   run_open splits on whether gold is a figure, so five questions were judged by both harnesses —
+>   once as a number, once as prose — and double-counted in any summary of the two.
+> - **Narrative correctness is now reported addressable**, as the numeric side always was. Thirteen
+>   questions are answered only by an earnings release, which `filings_ingest` skips by design (the
+>   non-GAAP and guidance questions: adjusted EBITDA, adjusted EPS). Excluding what the corpus
+>   cannot hold moves 39/95 = 41% to 38/82 = 46%. The criterion is FinanceBench's own evidence
+>   labels, never whether we answered correctly — a first attempt excluded questions whose evidence
+>   sits in a financial statement, which would have been a self-issued excuse, since get_statement
+>   and get_segment_breakdown can reach those.
+> - **The groundedness judge was reading half its own evidence.** capture() saved `out["trace"]`,
+>   the UI-facing field, which trims every tool output to 600 characters so the chat interface can
+>   show a tool-call trace; retrieved chunks are ~1000 characters and a cash-flow statement is far
+>   longer. AMD's cash-flow answer cited the statement it had just fetched and scored ungrounded
+>   because the figures sat past the cut. Reading the untruncated `out["tool_outputs"]` instead
+>   moves groundedness from **82% to 96%** on the same answers. This is the second time the same
+>   shape has been found here — the first was the judge not being shown tool outputs at all
+>   (63% → 93%) — and both times it showed up as a lower score rather than an error, so the agent
+>   took the blame. **The 92% recorded in the 2026-08 update was depressed the same way; 96% is the
+>   first measurement of this taken with the judge seeing everything.**
+> - **A fiscal year inside a metric's name read as a value.** `_IMPLAUSIBLE` matched
+>   `(\d+)\s*days` against a bound of 1000, so "Amazon's FY2017 days payable outstanding … was
+>   108.43 days" offered *2017 days* and a correct answer was replaced by the safe abstention —
+>   the fourth false positive of that shape, after an accession's digits and a multiplication sign.
+>   A `get_ratio` result is now bounded by the ratio's KIND, taken from the call's arguments and
+>   the tool's output, which cannot misread prose because it does not read prose.
+>
 > **Update (2026-09-12).** Three output-guardrail false positives and a rewritten numeric scorer
 > move the headline. **The agent's capability is unchanged** — it is simply no longer refused, or
 > mis-scored, for answers it got right.
@@ -134,6 +183,10 @@ transcribes a number.
   Ulta is an honest refusal in prose (no fabricated number).
 
 ## Narrative side (the qualitative questions)
+
+> **Superseded by the 2026-09-13 update above**, which reports the narrative side addressable
+> (36/82 = 44%) on the 95 non-numeric-gold questions rather than overall on a 61-question subset.
+> The reading below is kept for the method.
 
 The 87% above is the **numeric** headline; the questions that need *qualitative* filing text were
 unmeasured in that run (the narrative store was offline). Measured now — the real production agent

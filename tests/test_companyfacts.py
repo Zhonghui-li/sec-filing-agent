@@ -275,3 +275,110 @@ def test_live_tool_echoes_resolved_company_name():
     from agents.finance_tools import get_financials
     assert "BED BATH" in get_financials("BBBY", "net income", 2016).upper()
     assert "BEST BUY" in get_financials("Best Buy", "net income", 2016).upper()
+
+
+# --- fiscal-year naming: read from the company's filings, not assumed from the period end -----
+#
+# A fact's `fy` tags the FILING, so every comparative column carries it too, and the calendar year
+# of a period end is not the company's own name for it: Target's year ending 2025-02-01 is Target's
+# FY2024, while Walmart's year ending 2025-01-31 is Walmart's FY2025. Same fiscal calendar, opposite
+# convention, so no rule based on the fiscal-year-end month can serve both.
+
+from agents.companyfacts import _FiscalCalendar
+
+# Target's shape: the year ending 2025-02-01 is FY2024, first reported in the 10-K filed 2025-03
+# (tgt-25) and re-presented as a comparative in the one filed 2026-03 (tgt-26).
+_TGT_CAL = _FiscalCalendar(
+    by_end={"2024-02-03": (2023, "FY"), "2025-02-01": (2024, "FY")},
+    accn_by_end={"2024-02-03": "tgt-24", "2025-02-01": "tgt-25"},
+    offset=-1,
+)
+
+
+def test_calendar_uses_the_companys_own_year_not_the_calendar_year():
+    assert _TGT_CAL.fiscal_year("2025-02-01") == 2024        # not 2025
+    assert _TGT_CAL.period("2025-02-01") == "FY"
+
+
+def test_calendar_falls_back_to_the_modal_offset_for_periods_it_has_not_seen():
+    """Periods older than the submissions feed reaches still follow the company's convention."""
+    assert _TGT_CAL.fiscal_year("2015-01-31") == 2014
+
+
+def test_calendar_offset_zero_reproduces_the_calendar_year():
+    plain = _FiscalCalendar(by_end={}, accn_by_end={}, offset=0)
+    assert plain.fiscal_year("2024-09-28") == 2024
+    assert plain.period("2024-09-28") is None
+    assert plain.original_accn("2024-09-28") is None
+
+
+_TGT_UNITS = [
+    # the year ending 2025-02-01, as first reported and as re-presented a year later
+    {"form": "10-K", "start": "2024-02-04", "end": "2025-02-01", "val": 106566, "accn": "tgt-25", "fy": 2024},
+    {"form": "10-K", "start": "2024-02-04", "end": "2025-02-01", "val": 101000, "accn": "tgt-26", "fy": 2025},
+]
+
+
+def test_as_reported_comes_from_the_filing_the_period_is_current_in():
+    """Matching on `fy == calendar year of the end` picked tgt-26 — next year's comparative column
+    — as if it were the original, so the restated figure was reported as as-reported."""
+    got = annual_values(_TGT_UNITS, "duration", _TGT_CAL)
+    assert got["2025-02-01"]["val"] == 106566
+    assert got["2025-02-01"]["accn"] == "tgt-25"
+
+
+def test_restatement_is_still_detected_for_an_offset_fiscal_year():
+    """With the wrong filing chosen as `rep`, `rep` and `latest` became the same row and the
+    restatement disappeared silently."""
+    got = annual_values(_TGT_UNITS, "duration", _TGT_CAL)
+    assert got["2025-02-01"]["restated_val"] == 101000
+    assert got["2025-02-01"]["restated_accn"] == "tgt-26"
+
+
+def test_no_calendar_keeps_the_previous_behaviour():
+    """extract_rows is called with a synthetic CIK in these tests; the calendar fetch fails soft
+    and everything must behave as it did before."""
+    got = annual_values(_TGT_UNITS, "duration", None)
+    assert got["2025-02-01"]["accn"] == "tgt-26"      # the old, wrong choice — pinned deliberately
+
+
+def test_fallback_offset_applies_the_companys_convention_to_older_periods():
+    """The map only reaches as far back as the submissions feed. Periods older than it take the
+    company's offset — the path where a wrong offset does its damage invisibly, because every
+    period in the map is labelled from its own filing and never touches this."""
+    cal = _FiscalCalendar(by_end={"2025-02-01": (2024, "FY")},
+                          accn_by_end={"2025-02-01": "tgt-25"}, offset=-1)
+    assert cal.fiscal_year("2025-02-01") == 2024        # from the map
+    assert cal.fiscal_year("2011-01-29") == 2010        # from the offset
+    assert cal.fiscal_year("2008-02-02") == 2007
+
+
+def test_a_degraded_calendar_is_distinguishable_from_offset_zero():
+    """offset 0 means "this company names its years by the year they end in", which is a finding.
+    degraded means "we could not find out", which reproduces the old behaviour and must not be
+    mistaken for the finding."""
+    unknown = _FiscalCalendar({}, {}, 0, degraded=True)
+    known = _FiscalCalendar({"2024-09-28": (2024, "FY")}, {}, 0)
+    assert unknown.fiscal_year("2024-09-28") == known.fiscal_year("2024-09-28") == 2024
+    assert unknown.degraded and not known.degraded
+
+
+def test_quarterly_periods_fall_back_to_the_date_rule_not_the_annual_offset():
+    """The offset is derived from 10-Ks only: a fiscal year spans two calendar years, so a 10-Q's
+    offset differs (Walmart's FY2026 Q1 ends 2025-04-30, +1, while its FY2026 10-K ends
+    2026-01-31, 0). Mixing them let the quarterly offset win the vote, which is why quarterly_rows
+    uses _fiscal_period when the map has no entry rather than cal.fiscal_year."""
+    from agents.companyfacts import _fiscal_period
+    cal = _FiscalCalendar({}, {}, -1)
+    assert cal.period("2025-05-03") is None            # not in the map -> caller must not use it
+    assert _fiscal_period("2024-06-29", 9) == (2024, "Q3")
+
+
+def test_a_retired_ticker_resolves_through_the_company_name():
+    """Foot Locker left SEC's current-issuer ticker file when it was acquired, so search_filings
+    with ticker="FL" resolved to nothing and could not even trigger ingestion — the agent asked
+    three times and abstained. The numeric side was unaffected because the prompt tells the model
+    to pass a NAME for a delisted issuer; a narrative query just used the obvious ticker."""
+    from agents.companyfacts import cik_for, ticker_to_cik_map
+    assert "FL" not in ticker_to_cik_map()      # still retired, not reassigned to a live issuer
+    assert cik_for("FL") == "0000850209"
