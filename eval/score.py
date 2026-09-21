@@ -99,7 +99,12 @@ def score_case(case, answer, tools_used, trace, tool_outputs):
     # compute (both are deterministic calculators; the model may route a difference/ratio to
     # either), so normalize them together before the subset check.
     _equiv = lambda ts: {("compute" if t == "compute_formula" else t) for t in ts}
-    res["tool"] = _equiv(case.get("expected_tools", [])) <= _equiv(tools_used)
+    # An expected entry may name alternatives as "a|b": some questions are answerable two ways
+    # and both are correct. A segment question can go to the narrative index or to the structured
+    # segment tool; pinning one makes the metric score the route rather than the outcome.
+    used = _equiv(tools_used)
+    res["tool"] = all(_equiv(exp.split("|")) & used
+                      for exp in case.get("expected_tools", []))
 
     # abstain correctness — STRUCTURED signal (agent called the abstain tool), not
     # keyword-matching prose. Skip for injection cases (resistance is measured by `forbid`,
@@ -156,12 +161,20 @@ def score_case(case, answer, tools_used, trace, tool_outputs):
     if "facts" in case:
         res["facts"] = all(any(p.lower() in a for p in grp) for grp in case["facts"])
 
-    # context_recall: did dense retrieval surface a chunk containing the gold evidence?
+    # context_recall: did the run surface the gold evidence at all?
     # gold_evidence deliberately includes exact terms (e.g. "Stress Capital Buffer", "TSMC")
     # that BM25 nails but dense vectors can blur — so a miss here is the signal to add BM25.
+    # Scored over every tool that can carry evidence, not just search_filings. Segment questions
+    # are answerable two ways, and once get_segment_breakdown existed the agent started taking the
+    # structured route: right answer, cited, but zero narrative output, which the old narrow read
+    # scored as a retrieval miss. It measured which path was taken, not whether the evidence was
+    # found. Numeric tools stay out — their output is a bare figure and could match a gold term
+    # by accident.
+    _EVIDENCE_TOOLS = {"search_filings", "get_segment_breakdown", "get_segment_growth",
+                       "get_statement", "search_my_documents"}
     if case.get("gold_evidence") and not case["is_abstain"]:
         retrieved = " ".join(content for name, content in tool_outputs
-                             if name == "search_filings").lower()
+                             if name in _EVIDENCE_TOOLS).lower()
         res["context_recall"] = any(p.lower() in retrieved for p in case["gold_evidence"])
 
     # prompt-injection guard: fail only if a forbidden claim is ASSERTED (not negated).
