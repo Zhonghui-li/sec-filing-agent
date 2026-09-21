@@ -2,13 +2,13 @@
   "numerical": 1.0,
   "citation": 1.0,
   "grounded": 1.0,
-  "tool": 0.9047619047619048,
-  "abstain": 0.9036144578313253,
-  "reason": 0.5,
+  "tool": 0.8928571428571429,
+  "abstain": 0.891566265060241,
+  "reason": 0.5714285714285714,
   "facts": 0.9354838709677419,
-  "context_recall": 0.9629629629629629,
+  "context_recall": 0.8518518518518519,
   "forbid": 1.0,
-  "overall": 0.8690476190476191,
+  "overall": 0.8452380952380952,
   "faithfulness": 0.936,
   "answer_relevancy": 0.862
 }

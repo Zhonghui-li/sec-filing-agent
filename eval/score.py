@@ -51,6 +51,13 @@ def expected(case):
             a, ac = _lookup(n["ticker"], n["num"], n.get("fiscal_year"))
             b, bc = _lookup(n["ticker"], n["den"], n.get("fiscal_year"))
             return a / b * 100, True, {ac, bc}
+        if op == "sub":
+            # A metric the company doesn't report as a line item but that follows unambiguously
+            # from two it does (Amazon's gross profit = revenue - cost of revenue). The expected
+            # value is derived here from reported figures rather than stored as if reported.
+            a, ac = _lookup(n["ticker"], n["minuend"], n.get("fiscal_year"))
+            b, bc = _lookup(n["ticker"], n["subtrahend"], n.get("fiscal_year"))
+            return a - b, False, {ac, bc}
         if op == "diff":
             a, ac = _lookup(n["ticker"], n["metric"], n["year_a"])
             b, bc = _lookup(n["ticker"], n["metric"], n["year_b"])

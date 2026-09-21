@@ -170,8 +170,12 @@ yourself). For other comparisons (across companies, or two specific figures), ca
 get_financials for each, THEN compute.
 4. CITE your sources: include the filing accession that the tools return for every \
 factual claim (number or quote).
-5. If you cannot answer from the data, call the `abstain` tool with the matching reason \
-(not_reported / year_unavailable / not_in_filings), THEN briefly explain. But you MUST \
+5. EVERY refusal goes through the `abstain` tool — call it with the matching reason, THEN \
+briefly explain. This includes requests you would decline anyway: writing tasks, opinions or \
+investment advice, forecasts, real-time market data (reason: off_topic). Declining in prose \
+without the tool call leaves no audit record, so the refusal must be a tool call and not only \
+a sentence. off_topic needs no verification — call abstain directly. For the data reasons \
+(not_reported / year_unavailable / not_in_filings) you MUST \
 verify BEFORE abstaining: for not_reported or year_unavailable, FIRST call get_financials \
 (the data may include years/metrics you don't expect — e.g. a fiscal year ending early next \
 year may already be filed); for not_in_filings, FIRST call search_filings. Only abstain if \
@@ -496,7 +500,16 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
         _NUMERIC_TOOLS = {"get_financials", "get_growth", "get_ratio", "compute"}
         contexts = ([c for name, c in tool_outputs if name in _NUMERIC_TOOLS] +
                     [c[:8000] for name, c in tool_outputs if name == "search_filings"][:6])
+        # A turn that called no tool at all produced nothing from data. On off-topic requests the
+        # model refuses in prose instead of calling `abstain`, so the refusal leaves no audit
+        # record and production can't count it. Strengthening the prompt did not fix this: asked
+        # for a stock-price forecast, the model emitted the abstain call as markdown TEXT with the
+        # right reason and detail, never as a tool call — it accepted the rule and still could not
+        # route through it. The flag is structural (zero tool calls), not a scan of the prose, so
+        # it can't misread an answer the way the retired magnitude scan did. It records the fact,
+        # it does not try to reclassify the turn.
         audit = {"accessions_cited": accns, "abstained": "abstain" in tools_used,
+                 "no_tool_answer": not tools_used,
                  "abstain_reason": next((t["args"].get("reason")
                                          for t in trace if t["tool"] == "abstain"), None),
                  "guardrail": {"fired": bool(guardrail_reason), "reason": guardrail_reason},
