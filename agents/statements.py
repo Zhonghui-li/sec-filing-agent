@@ -241,9 +241,19 @@ def _breakdown_from_xbrl(xb, axis, want_concept, fy):
 def get_segment_breakdown(ticker: str, dimension: str = "segment", metric: str = "revenue",
                           fiscal_year: int = None) -> str:
     """Revenue (or operating income) broken down BY BUSINESS SEGMENT or BY GEOGRAPHY for a fiscal year —
-    dimensional XBRL data the flat metric tools (get_financials) can't reach. `dimension` is "segment"
-    or "geography"; `metric` is "revenue" or "operating_income". Values come from XBRL and the answer
-    cites the filing. Use this for "revenue by segment/region", "which segment is largest", etc."""
+    dimensional XBRL data the flat metric tools (get_financials) can't reach. `metric` is "revenue" or
+    "operating_income". Values come from XBRL and the answer cites the filing. Use this for "revenue by
+    segment/region", "which segment is largest", etc.
+
+    Choosing `dimension` — the obvious mapping is wrong more often than not:
+      "segment"   = the REPORTABLE SEGMENTS the company defines and manages by. These are frequently
+                    geographic already (PepsiCo: Latin America Foods, Asia Pacific Foods, Europe Middle
+                    East & Africa), so a question about a company's geographic DIVISIONS or REGIONS
+                    belongs here.
+      "geography" = the XBRL geographic axis, which is INDIVIDUAL COUNTRIES (PepsiCo: Canada, China,
+                    Brazil, United Kingdom). Use it only when the question really is about countries.
+    If a question says "geographic segments" or "regions", start with "segment"; fall back to
+    "geography" only if that comes back empty or the answer clearly needs country-level detail."""
     if dimension not in _AXIS:
         return f"Unknown dimension '{dimension}'. Use 'segment' or 'geography'."
     if metric not in _METRIC_CONCEPT:
