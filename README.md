@@ -167,6 +167,26 @@ The service exposes `/ask` (answer + citations + a collapsible **audit trail** o
 **o4-mini**. Deployed on Cloud Run with `max-instances=1`, so the in-memory daily quota is an exact
 global cap.
 
+## The miss queue — what to check after a deploy
+
+Every metric a user asked for that the tools couldn't return is appended to
+`data/cache/metric_misses.jsonl` **and** printed to stdout (on Cloud Run the container filesystem
+dies with the instance, so Cloud Logging is the only production record).
+
+```bash
+python scripts/check_misses.py                          # local queue
+gcloud logging read 'textPayload:METRIC_MISS' --project sec-filing-agent \
+    --limit 500 --format='value(textPayload)' | python scripts/check_misses.py -
+```
+
+It reports two things. **Which metrics to add next** — real traffic is a better expansion signal
+than guessing at the `METRICS` table. And **whether the prose magnitude guard is needed again**: that
+guard used to reject any answer holding an out-of-bound ratio, and is now detection-only because the
+failure it caught (the model hand-composing a ratio through `compute`) stopped happening once
+`get_ratio` and `compute_formula` covered those metrics, while it kept discarding correct answers
+over a multiplication sign or a fiscal year. An `implausible_magnitude` record whose tools include
+`compute` means that failure is back, and the block goes on again — written against a real case.
+
 ## Under the hood
 
 - **Numbers**: SEC `companyfacts` XBRL, live for any company; 7 companies cached in

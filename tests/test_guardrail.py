@@ -1,7 +1,12 @@
-"""L1 deterministic tests for the output guardrail — no LLM, no deps. Pins that it blocks the
-hand-computed impossible numbers seen on FinanceBench (DPO 1419 days, CCC 4760 days) and fabricated
-figures, while never rejecting a legitimate answer (incl. a real outlier that came from a tool).
+"""L1 deterministic tests for the output guardrail — no LLM, no deps. Pins that it blocks a
+fabricated figure and a ratio that left its natural bound IN A TOOL'S OWN OUTPUT, while never
+rejecting a legitimate answer (incl. a real outlier that came from a tool). The scan of the
+answer's PROSE for the same bound is detection-only — recorded, not blocked — so the impossible
+numbers seen on FinanceBench (DPO 1419 days, CCC 4760 days) now pass through and log; see
+_note_implausible_prose for why.
 """
+import json
+
 from agents.guardrail import guardrail, _SAFE
 
 
@@ -9,15 +14,42 @@ def _blocked(ans, tools):
     return guardrail(ans, tools) == _SAFE
 
 
-# --- should block ---
-def test_block_impossible_dpo():
-    assert _blocked("Amazon's DPO for FY2017 is approximately 1419.68 days.",
-                    ["get_financials", "compute"])
+# --- detection-only: recorded, not blocked -------------------------------------------------
+#
+# These two are the cases the prose scan was built for — a ratio the model hand-composed through
+# `compute`. That path is gone: get_ratio covers the standard ratios by name and compute_formula
+# evaluates a formula in code, and across 150 FinanceBench questions plus the 50-item red-team
+# suite `compute` never once assembled a days or turnover metric. Every firing observed was a
+# false positive on prose, each costing a correct answer. The scan now logs instead of blocking
+# (WAF monitor mode / Kubernetes audit / Gatekeeper dryrun), so the signal survives without the
+# cost. If the miss log ever shows one of these alongside `compute` calls, the block goes back.
+def test_an_implausible_dpo_is_recorded_not_blocked(miss_log):
+    ans = "Amazon's DPO for FY2017 is approximately 1419.68 days."
+    assert guardrail(ans, ["get_financials", "compute"]) == ans       # the answer survives
+    rec = json.loads(miss_log.read_text().strip())                    # the detection is kept
+    assert rec["metric"] == "implausible_magnitude"
+    # the value AND the tools: `compute` in this field is what scripts/check_misses.py reads as the
+    # signal to put the block back, so the record has to carry it.
+    assert "1419.68 days" in rec["reason"] and "compute" in rec["reason"]
 
 
-def test_block_impossible_ccc():
-    assert _blocked("The cash conversion cycle is approximately 4760.96 days.",
-                    ["get_financials", "compute"])
+def test_an_implausible_ccc_is_recorded_not_blocked(miss_log):
+    ans = "The cash conversion cycle is approximately 4760.96 days."
+    assert guardrail(ans, ["get_financials", "compute"]) == ans
+    assert json.loads(miss_log.read_text().strip())["metric"] == "implausible_magnitude"
+
+
+def test_a_year_before_the_metrics_name_is_not_a_days_value(miss_log):
+    """The shape no lookbehind caught: "In 2024 days sales outstanding rose" — the year belongs to
+    the sentence, the unit word to the metric. It is why patching the regex kept losing to English."""
+    trace = [{"tool": "get_financials", "output": "DSO for FY2024: 45.2"}]
+    assert guardrail("In 2024 days sales outstanding rose to 45.2 days.",
+                     ["get_financials"], trace) != _SAFE
+    # It still MATCHES — the regex is unchanged, only the blocking is gone — so the miss log
+    # collects these prose false positives. That is why the reversal trigger keys on `compute`
+    # being in the record's tools rather than on the record existing: this one must not count.
+    rec = json.loads(miss_log.read_text().strip())
+    assert "'2024 days'" in rec["reason"] and "compute" not in rec["reason"]
 
 
 def test_block_dollar_figure_with_no_data_tool():
@@ -216,5 +248,53 @@ def test_restated_formula_is_not_a_turnover_ratio():
         assert guardrail(ans, ["compute_formula"], trace) != _SAFE, f"blocked on {sign!r}"
 
 
-def test_a_real_turnover_ratio_is_still_blocked():
-    assert _blocked("Inventory turnover was 150x.", ["get_ratio"])
+def test_a_real_turnover_ratio_is_recorded_not_blocked(miss_log):
+    ans = "Inventory turnover was 150x."
+    assert guardrail(ans, ["get_ratio"]) == ans
+    assert json.loads(miss_log.read_text().strip())["metric"] == "implausible_magnitude"
+
+
+def test_a_fiscal_year_in_the_metric_name_is_not_a_days_value():
+    """"days payable outstanding" is the metric's NAME, so an answer that names it after its
+    fiscal year offered "2017 days" to the bound and lost a correct 108.43."""
+    trace = [{"tool": "compute_formula", "output": "AMZN formula result for FY2017 = 108.43"}]
+    ans = ("Amazon's FY2017 days payable outstanding (DPO), computed as 365 x average accounts "
+           "payable over FY2016-FY2017, was 108.43 days.")
+    assert guardrail("%s\n\nANSWER: 108.43" % ans, ["compute_formula"], trace) != _SAFE
+
+
+# --- a get_ratio result is checked against the bound for what it IS -------------------------
+def _ratio_trace(ratio, out):
+    return [{"tool": "get_ratio", "args": {"ratio": ratio, "ticker": "X"}, "output": out}]
+
+
+def test_a_days_ratio_outside_its_bound_is_blocked_from_the_tool_output():
+    """No prose involved: the call says ratio="dpo", RATIOS says dpo is a days ratio, and the
+    tool's own output carries the value."""
+    assert _blocked_t("Amazon's DPO was 1419.68 days.", ["get_ratio"],
+                      _ratio_trace("dpo", "AMZN dpo for FY2017 = 1419.68 days (365 x ...)"))
+
+
+def test_a_turnover_outside_its_bound_is_blocked_from_the_tool_output():
+    assert _blocked_t("Turnover 150x.", ["get_ratio"],
+                      _ratio_trace("asset_turnover", "X asset_turnover for FY2024 = 150.0x (...)"))
+
+
+def test_a_normal_ratio_passes():
+    assert guardrail("AAPL DPO for FY2024 = 114.15 days.", ["get_ratio"],
+                     _ratio_trace("dpo", "AAPL dpo for FY2024 = 114.15 days (...)")) != _SAFE
+
+
+def test_a_percentage_ratio_has_no_bound():
+    """A margin or a growth rate can legitimately exceed any of these numbers."""
+    assert guardrail("Net margin 24.0%.", ["get_ratio"],
+                     _ratio_trace("net_margin", "X net_margin for FY2024 = 240.0% (...)")) != _SAFE
+
+
+def test_the_ratio_check_ignores_the_prose_entirely():
+    """The answer restates its formula and names the metric after a fiscal year — the two shapes
+    that produced false positives — while the tool output is in bounds."""
+    ans = ("Amazon's FY2017 days payable outstanding, computed as 365 x average accounts "
+           "payable, was 108.43 days.")
+    assert guardrail(ans, ["get_ratio"],
+                     _ratio_trace("dpo", "AMZN dpo for FY2017 = 108.43 days (...)")) != _SAFE
