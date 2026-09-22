@@ -61,6 +61,18 @@ def _arg_matches(expected: Any, actual: Any) -> bool:
         return expected == actual
 
 
+def _tool_eq(declared: str, actual: str) -> bool:
+    """compute and compute_formula are the same step for scoring purposes.
+
+    Both take figures the tools returned and produce a derived number in code; which one the model
+    reaches for is a style choice, and M06 picked each on successive runs of the same question.
+    score.py's `_equiv` already folds them together for the `tool` metric — doing otherwise here
+    would fail a correct trajectory for a coin flip.
+    """
+    fold = lambda t: "compute" if t == "compute_formula" else t
+    return fold(declared) == fold(actual)
+
+
 def _match_steps(steps: List[Dict], calls: List[Dict]) -> Dict[str, Optional[int]]:
     """Map each declared sid to the index of the call that satisfies it, or None if unmatched.
 
@@ -72,7 +84,7 @@ def _match_steps(steps: List[Dict], calls: List[Dict]) -> Dict[str, Optional[int
     for st in steps:
         hit = None
         for i, c in enumerate(calls):
-            if i in taken or c.get("tool") != st["tool"]:
+            if i in taken or not _tool_eq(st["tool"], c.get("tool")):
                 continue
             if all(_arg_matches(v, (c.get("args") or {}).get(k))
                    for k, v in (st.get("args") or {}).items()):
