@@ -13,10 +13,23 @@ Contract and schema: Obsidian note 33.
 from typing import Any, Dict, List, Optional
 
 # Metrics defined here. Listed so eval/score.py can report them without hardcoding names twice.
-TRAJECTORY_METRICS = ["tool_precision", "arg_correct", "order_ok", "dependency_ok", "call_budget"]
+# `step_recall` is not a rename of score.py's `tool`. That one asks whether the right KINDS of tool
+# were used and is a set comparison, so it can't see that a path wanted two searches and got one.
+# This asks whether every declared STEP happened. They coincide on single-step paths and diverge
+# exactly where a path calls one tool more than once.
+TRAJECTORY_METRICS = ["step_recall", "tool_precision", "arg_correct", "order_ok",
+                      "dependency_ok", "call_budget"]
 # Reported, never gated. Efficiency has no threshold worth setting until there is a real
 # distribution to set it from — the same reason cost stays out of the CI gate.
 EFFICIENCY_METRICS = ["parallel_rate"]
+
+# Trajectory metrics are report-only for now, for the same reason. A run's path carries randomness
+# the answer metrics don't — tool choice, query wording, how many searches it takes to convince
+# itself, which accepted path it lands on — and the 10pp tolerance was calibrated on answer metrics
+# over 84 cases. Inheriting it here would be a guess. Gate them once repeated runs of one unchanged
+# build show what each metric's natural spread actually is; they may well need different tolerances
+# from each other.
+REPORT_ONLY = set(TRAJECTORY_METRICS) | set(EFFICIENCY_METRICS)
 
 
 def _canon(v: Any) -> Any:
@@ -75,57 +88,83 @@ def _match_steps(steps: List[Dict], calls: List[Dict]) -> Dict[str, Optional[int
 
 
 def _score_path(path: Dict, calls: List[Dict], forbidden: List[str], slack: int) -> Dict:
+    """Score one declared path.
+
+    The rule every metric below follows: **a step that never happened is reported once, by
+    step_recall, and does not cascade.** Anything downstream evaluates only the steps that actually
+    ran and matched. Without that rule a single missing search came back as four failures —
+    step_recall, arg_correct, order_ok and dependency_ok all red — which reads as four problems and
+    is one. Constraints are therefore scored individually and aggregated over the evaluable ones,
+    rather than the whole metric collapsing because one endpoint is absent.
+    """
     steps = path["steps"]
     where = _match_steps(steps, calls)
-    by_sid = {st["sid"]: st for st in steps}
     matched = {i for i in where.values() if i is not None}
+    res: Dict[str, Optional[Any]] = {}
 
-    res: Dict[str, Optional[bool]] = {}
-    res["tool_recall"] = all(i is not None for i in where.values())   # internal, for path choice
+    # The only metric that speaks to a missing step.
+    res["step_recall"] = all(i is not None for i in where.values())
 
     extra = [c for i, c in enumerate(calls) if i not in matched]
     res["tool_precision"] = not extra and not any(c.get("tool") in (forbidden or []) for c in calls)
 
-    # arg_correct: only over declared arg keys. A step with no declared args contributes nothing,
-    # so a tool whose only argument is free text (a search query) can't fail on wording.
-    checked = [(st, where[st["sid"]]) for st in steps if st.get("args")]
-    if not checked:
-        res["arg_correct"] = None
-    else:
-        res["arg_correct"] = all(
-            idx is not None and all(_arg_matches(v, (calls[idx].get("args") or {}).get(k))
-                                    for k, v in st["args"].items())
-            for st, idx in checked)
-
-    # order_ok: declared order, minus pairs the case marked interchangeable.
-    free = {frozenset(g) for g in path.get("unordered", [])}
-    pairs = [(a["sid"], b["sid"]) for x, a in enumerate(steps) for b in steps[x + 1:]
-             if not any({a["sid"], b["sid"]} <= g for g in free)]
-    seq = [(where[a], where[b]) for a, b in pairs]
-    res["order_ok"] = None if not seq else all(
-        i is not None and j is not None and i < j for i, j in seq)
-
-    # dependency_ok: three-valued. A dependent step must come after what it depends on, and should
-    # visibly carry something that step produced. When its arguments are free text with no literal
-    # overlap we cannot tell, so we say so instead of guessing — see note 33.
-    verdicts = []
+    # arg_correct: over declared arg keys, plus any `args_differ_from` constraint. A step with
+    # neither contributes nothing, so a tool whose only argument is free text can't fail on wording.
+    #
+    # `args_differ_from` is how a step says its arguments must NOT repeat an earlier step's. A
+    # second search that rephrases the query is verifying a negative — a filing may say "digital
+    # assets" where the question said "crypto mining", and one miss is weak evidence of absence.
+    # A second search with the SAME query adds no information. Both are two calls, so counting
+    # calls can't separate them; whether the second one asked anything new is what does.
+    checks = []
     for st in steps:
-        for dep in st.get("depends_on", []):
-            i, j = where.get(dep), where.get(st["sid"])
-            if i is None or j is None or j < i:
-                verdicts.append(False)
+        idx = where[st["sid"]]
+        if idx is None:
+            continue                                   # missing: step_recall said so already
+        if st.get("args"):
+            checks.append(all(_arg_matches(v, (calls[idx].get("args") or {}).get(k))
+                              for k, v in st["args"].items()))
+        for prior in st.get("args_differ_from", []):
+            j = where.get(prior)
+            if j is None:
+                continue                               # the step to differ from never ran
+            a = {k: str(v).strip().lower() for k, v in (calls[idx].get("args") or {}).items()}
+            b = {k: str(v).strip().lower() for k, v in (calls[j].get("args") or {}).items()}
+            checks.append(a != b)
+    res["arg_correct"] = all(checks) if checks else None
+
+    # order_ok: declared order, minus pairs the case marked interchangeable, minus pairs where
+    # either endpoint is absent — those are unevaluable, not violated.
+    free = {frozenset(g) for g in path.get("unordered", [])}
+    verdicts = [where[a["sid"]] < where[b["sid"]]
+                for x, a in enumerate(steps) for b in steps[x + 1:]
+                if not any({a["sid"], b["sid"]} <= g for g in free)
+                and where[a["sid"]] is not None and where[b["sid"]] is not None]
+    res["order_ok"] = all(verdicts) if verdicts else None
+
+    # dependency_ok: three-valued, per constraint. A dependent step must run after what it depends
+    # on and should visibly carry something that step produced. When its arguments are free text
+    # with no literal overlap we can't tell, so we say so rather than guess — a metric that guesses
+    # when it can't see becomes the next score that drops while nothing has broken.
+    dep: List[Optional[bool]] = []
+    for st in steps:
+        for d in st.get("depends_on", []):
+            i, j = where.get(d), where.get(st["sid"])
+            if i is None or j is None:
+                continue                               # unevaluable, not a violation
+            if j < i:
+                dep.append(False)
                 continue
             src = str(calls[i].get("output") or "")
             dst = " ".join(str(v) for v in (calls[j].get("args") or {}).values())
-            if not dst.strip():
-                verdicts.append(None)         # nothing to look for the dependency in
-                continue
             tokens = [t for t in dst.replace(",", " ").split() if len(t) > 3]
-            verdicts.append(True if any(t.lower() in src.lower() for t in tokens) else None)
-    real = [v for v in verdicts if v is not None]
-    res["dependency_ok"] = None if not verdicts else (False if False in verdicts
-                                                      else (all(real) if real else None))
+            dep.append(True if any(t.lower() in src.lower() for t in tokens) else None)
+    decided = [v for v in dep if v is not None]
+    res["dependency_ok"] = None if not decided else all(decided)
+    res["_dep_decided"], res["_dep_total"] = len(decided), len(dep)
 
+    # call_budget is relative to THIS path. A question answerable two ways has a different
+    # reasonable call count on each, so the budget follows whichever path the run actually took.
     res["call_budget"] = len(calls) <= len(steps) + slack
 
     # parallel_rate: of the groups this case says COULD go out together, how many actually did.
@@ -136,29 +175,32 @@ def _score_path(path: Dict, calls: List[Dict], forbidden: List[str], slack: int)
     if not groups or all(c.get("turn") is None for c in calls):
         # No eligible group, or a trace recorded before `turn` existed. Either way there is nothing
         # to measure — and saying 0.0 would report "never parallelised" for a run we simply cannot
-        # see, which is the failure mode this whole module is built to avoid.
+        # see, which is the failure mode this module exists to avoid.
         res["parallel_rate"] = None
     else:
-        together = 0
-        for g in groups:
-            turns = {calls[where[sid]].get("turn") for sid in g
-                     if where.get(sid) is not None and calls[where[sid]].get("turn") is not None}
-            if len(turns) == 1 and len([sid for sid in g if where.get(sid) is not None]) == len(g):
-                together += 1
+        together = sum(
+            1 for g in groups
+            if all(where.get(sid) is not None for sid in g)
+            and len({calls[where[sid]].get("turn") for sid in g}) == 1)
         res["parallel_rate"] = together / len(groups)
     return res
 
 
-def score_trajectory(case: Dict, trace: List[Dict]) -> Dict[str, Optional[bool]]:
+def score_trajectory(case: Dict, trace: List[Dict]) -> Dict[str, Optional[Any]]:
     """Score a run against the case's declared paths, or all-None when the case declares none.
 
     Cases without a `trajectory` block — every existing case today — are unaffected: each metric
     comes back None and stays out of the denominator. That is also the right answer for an
-    ordinary refusal, where calling no tool is the correct behaviour and has no path to compare.
+    ordinary refusal, where calling no tool is correct behaviour and there is no path to compare.
+
+    Also returns `matched_path_id`: which accepted path the run took. A question answerable two
+    ways will be answered both ways across runs, and both are correct — but a build that shifts
+    from mostly-A to mostly-B has changed strategy, and aggregating this field over runs shows
+    that with no scoring and no extra schema.
     """
     spec = case.get("trajectory")
     if not spec or not spec.get("paths"):
-        return {m: None for m in TRAJECTORY_METRICS + EFFICIENCY_METRICS}
+        return {m: None for m in TRAJECTORY_METRICS + EFFICIENCY_METRICS + ["matched_path_id"]}
 
     calls = [{"tool": t.get("tool"), "args": t.get("args") or {}, "output": t.get("output"),
               "turn": t.get("turn")}          # carried through — parallel_rate reads nothing else
@@ -171,8 +213,11 @@ def score_trajectory(case: Dict, trace: List[Dict]) -> Dict[str, Optional[bool]]
     def rank(p):
         r = _score_path(p, calls, forbidden, slack)
         hit = sum(1 for i in _match_steps(p["steps"], calls).values() if i is not None)
-        return (-hit, len(calls) - hit), r
+        return (-hit, len(calls) - hit), p.get("id"), r
 
-    scored = sorted((rank(p) for p in spec["paths"]), key=lambda x: x[0])
-    best = scored[0][1]
-    return {m: best.get(m) for m in TRAJECTORY_METRICS + EFFICIENCY_METRICS}
+    best = sorted((rank(p) for p in spec["paths"]), key=lambda x: x[0])[0]
+    out = {m: best[2].get(m) for m in TRAJECTORY_METRICS + EFFICIENCY_METRICS}
+    out["matched_path_id"] = best[1]
+    out["_dep_decided"] = best[2].get("_dep_decided", 0)
+    out["_dep_total"] = best[2].get("_dep_total", 0)
+    return out
