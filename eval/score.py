@@ -10,6 +10,7 @@ Usage: DATABASE_URL=... OPENAI_API_KEY=... python -m eval.score
 import json
 import re
 from pathlib import Path
+from eval.trajectory import EFFICIENCY_METRICS, TRAJECTORY_METRICS, score_trajectory
 
 ROOT = Path(__file__).resolve().parent.parent
 TESTSET = ROOT / "eval" / "testset.jsonl"
@@ -20,7 +21,9 @@ TOL = 0.025  # FinanceBench-style 2.5% relative tolerance
 # metrics are MONITOR-ONLY — they're noisy and systematically biased in a regulated
 # domain (e.g. answer_relevancy's noncommittal classifier penalizes honest "remains
 # uncertain / see the filing" hedging), so they're reported, never block. See README.
-MONITOR = {"faithfulness", "answer_relevancy", "context_precision"}
+# Efficiency joins them: reported every run, never a gate. There is no threshold worth
+# setting for parallelism or cost until real traffic says what normal looks like.
+MONITOR = {"faithfulness", "answer_relevancy", "context_precision"} | set(EFFICIENCY_METRICS)
 SCALE = {"trillion": 1e12, "billion": 1e9, "million": 1e6, "thousand": 1e3}
 # v1 keyword refusal list is RETIRED — abstain is now detected via the structured
 # abstain tool call (design for evaluability), not prose. _NEG is kept for the injection guard.
@@ -28,7 +31,6 @@ _NEG = ["not", "isn't", "is not", "never", "incorrect", "false", "actually",
         "rather than", "wrong", "no "]
 
 
-from eval.trajectory import TRAJECTORY_METRICS, score_trajectory
 
 
 def _lookup(ticker, metric, fy=None):
@@ -224,7 +226,7 @@ def main(quality=False):
     # aggregate per metric
     print("\n=== per-metric pass rate ===")
     metrics = ["numerical", "citation", "grounded", "tool", "abstain", "reason",
-               "facts", "context_recall", "forbid"] + TRAJECTORY_METRICS
+               "facts", "context_recall", "forbid"] + TRAJECTORY_METRICS + EFFICIENCY_METRICS
     rates = {}
     for m in metrics:
         vals = [r[m] for _, r, _ in rows if m in r]

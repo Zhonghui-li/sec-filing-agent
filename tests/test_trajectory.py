@@ -4,7 +4,7 @@ The contract these pin is as much about what the scorer REFUSES to judge as what
 metric that guesses when it can't tell becomes the next silent regression, so undecidable cases
 must come back None and stay out of the denominator.
 """
-from eval.trajectory import TRAJECTORY_METRICS, score_trajectory
+from eval.trajectory import EFFICIENCY_METRICS, TRAJECTORY_METRICS, score_trajectory
 
 CASE = {
     "id": "T1",
@@ -76,7 +76,8 @@ def test_repeating_a_lookup_blows_the_budget():
 def test_a_case_with_no_declared_path_scores_nothing():
     """Every case in the suite today. Also an ordinary refusal: calling no tool is correct there
     and there is no path to compare it against, so these must not become five new failures."""
-    assert score_trajectory({"id": "X"}, []) == {m: None for m in TRAJECTORY_METRICS}
+    assert score_trajectory({"id": "X"}, []) == {
+        m: None for m in TRAJECTORY_METRICS + EFFICIENCY_METRICS}
 
 
 def test_a_dependency_carried_in_free_text_is_undecidable_not_wrong():
@@ -142,3 +143,37 @@ def test_a_metric_alias_is_not_a_wrong_argument():
         assert score_trajectory(case, trace)["arg_correct"] is True, spelling
     wrong = [_call("get_financials", {"ticker": "KO", "metric": "revenue"})]
     assert score_trajectory(case, wrong)["arg_correct"] is False
+
+
+# --- parallel_rate ---------------------------------------------------------------------------
+PARALLEL = {"trajectory": {"paths": [{"id": "p", "steps": [
+    {"sid": "s1", "tool": "get_financials", "args": {"ticker": "INTC"}},
+    {"sid": "s2", "tool": "get_financials", "args": {"ticker": "ORCL"}},
+], "unordered": [["s1", "s2"]], "parallelizable": [["s1", "s2"]]}], "call_slack": 1}}
+
+
+def _two(turn_a, turn_b):
+    return [{"tool": "get_financials", "args": {"ticker": "INTC"}, "output": "", "turn": turn_a},
+            {"tool": "get_financials", "args": {"ticker": "ORCL"}, "output": "", "turn": turn_b}]
+
+
+def test_calls_issued_in_one_step_count_as_parallel():
+    assert score_trajectory(PARALLEL, _two(1, 1))["parallel_rate"] == 1.0
+
+
+def test_running_an_eligible_group_in_sequence_is_slower_not_wrong():
+    r = score_trajectory(PARALLEL, _two(1, 3))
+    assert r["parallel_rate"] == 0.0
+    assert r["tool_precision"] and r["arg_correct"] and r["call_budget"]   # correctness untouched
+
+
+def test_a_trace_without_turns_is_unmeasurable_not_zero():
+    """Traces recorded before `turn` existed. Reporting 0.0 would claim a run never parallelised
+    when we simply cannot see whether it did."""
+    trace = [{"tool": "get_financials", "args": {"ticker": "INTC"}, "output": ""},
+             {"tool": "get_financials", "args": {"ticker": "ORCL"}, "output": ""}]
+    assert score_trajectory(PARALLEL, trace)["parallel_rate"] is None
+
+
+def test_a_case_with_no_parallelizable_group_reports_nothing():
+    assert score_trajectory(CASE, GOOD)["parallel_rate"] is None

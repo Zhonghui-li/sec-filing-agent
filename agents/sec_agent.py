@@ -387,12 +387,17 @@ def _extract_trace(messages, max_chars=600) -> List[Dict]:
     # for the full output, which the guardrail needs to verify a $ figure traces to retrieved prose.
     outputs = {getattr(m, "tool_call_id", None): m.content
                for m in messages if isinstance(m, ToolMessage)}
+    # `turn` is the index of the message that emitted the call, so calls the model issued together
+    # in one step share it. That is the only place parallelism is visible: flattening the calls
+    # without it loses the distinction between two lookups fired at once and two fired in sequence.
+    # Indices are not consecutive (tool results sit between assistant turns) and don't need to be —
+    # only equality is ever compared.
     trace = []
-    for m in messages:
+    for turn, m in enumerate(messages):
         for tc in getattr(m, "tool_calls", None) or []:
             out = outputs.get(tc.get("id"))
             out = str(out)[:max_chars] if out is not None else None
-            trace.append({"tool": tc["name"], "args": tc["args"], "output": out})
+            trace.append({"tool": tc["name"], "args": tc["args"], "output": out, "turn": turn})
     return trace
 
 
@@ -523,9 +528,11 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
     # reason it was rejected, are gone. The audit trail carries them to Langfuse, but an eval run
     # never sees that — diagnosing the turnover-regex false positive above needed the reason
     # reconstructed by hand because of it.
+    # usage is already summed for the Langfuse record above; returning it lets an eval run report
+    # token cost without a second pass or a trace fetch. None when observability is disabled.
     return {"answer": answer, "trace": trace, "tool_outputs": tool_outputs,
             "tools_used": tools_used, "trace_id": trace_id, "salvaged": salvaged,
-            "guardrail_reason": guardrail_reason}
+            "guardrail_reason": guardrail_reason, "usage": usage}
 
 
 if __name__ == "__main__":

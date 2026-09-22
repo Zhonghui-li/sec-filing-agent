@@ -14,6 +14,9 @@ from typing import Any, Dict, List, Optional
 
 # Metrics defined here. Listed so eval/score.py can report them without hardcoding names twice.
 TRAJECTORY_METRICS = ["tool_precision", "arg_correct", "order_ok", "dependency_ok", "call_budget"]
+# Reported, never gated. Efficiency has no threshold worth setting until there is a real
+# distribution to set it from — the same reason cost stays out of the CI gate.
+EFFICIENCY_METRICS = ["parallel_rate"]
 
 
 def _canon(v: Any) -> Any:
@@ -124,6 +127,25 @@ def _score_path(path: Dict, calls: List[Dict], forbidden: List[str], slack: int)
                                                       else (all(real) if real else None))
 
     res["call_budget"] = len(calls) <= len(steps) + slack
+
+    # parallel_rate: of the groups this case says COULD go out together, how many actually did.
+    # Not parallel-calls-over-total-calls — most calls have a real dependency and were never
+    # eligible, so that ratio would punish correct sequencing. Serial execution of an eligible
+    # group is slower, not wrong, which is why this is reported and never gated.
+    groups = path.get("parallelizable", [])
+    if not groups or all(c.get("turn") is None for c in calls):
+        # No eligible group, or a trace recorded before `turn` existed. Either way there is nothing
+        # to measure — and saying 0.0 would report "never parallelised" for a run we simply cannot
+        # see, which is the failure mode this whole module is built to avoid.
+        res["parallel_rate"] = None
+    else:
+        together = 0
+        for g in groups:
+            turns = {calls[where[sid]].get("turn") for sid in g
+                     if where.get(sid) is not None and calls[where[sid]].get("turn") is not None}
+            if len(turns) == 1 and len([sid for sid in g if where.get(sid) is not None]) == len(g):
+                together += 1
+        res["parallel_rate"] = together / len(groups)
     return res
 
 
@@ -136,9 +158,10 @@ def score_trajectory(case: Dict, trace: List[Dict]) -> Dict[str, Optional[bool]]
     """
     spec = case.get("trajectory")
     if not spec or not spec.get("paths"):
-        return {m: None for m in TRAJECTORY_METRICS}
+        return {m: None for m in TRAJECTORY_METRICS + EFFICIENCY_METRICS}
 
-    calls = [{"tool": t.get("tool"), "args": t.get("args") or {}, "output": t.get("output")}
+    calls = [{"tool": t.get("tool"), "args": t.get("args") or {}, "output": t.get("output"),
+              "turn": t.get("turn")}          # carried through — parallel_rate reads nothing else
              for t in (trace or [])]
     forbidden, slack = spec.get("forbidden_tools", []), spec.get("call_slack", 1)
 
@@ -152,4 +175,4 @@ def score_trajectory(case: Dict, trace: List[Dict]) -> Dict[str, Optional[bool]]
 
     scored = sorted((rank(p) for p in spec["paths"]), key=lambda x: x[0])
     best = scored[0][1]
-    return {m: best.get(m) for m in TRAJECTORY_METRICS}
+    return {m: best.get(m) for m in TRAJECTORY_METRICS + EFFICIENCY_METRICS}
