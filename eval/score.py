@@ -12,6 +12,21 @@ import re
 from pathlib import Path
 from eval.trajectory import EFFICIENCY_METRICS, TRAJECTORY_METRICS, score_trajectory
 
+# Tools whose output can carry textual evidence. Numeric tools are excluded: their output is a
+# bare figure and could match an expected term by accident.
+_EVIDENCE_TOOLS = {"search_filings", "get_segment_breakdown", "get_segment_growth",
+                   "get_statement", "search_my_documents"}
+
+
+def _evidence_text(tool_outputs):
+    """Everything the run actually retrieved, as one lowercased blob.
+
+    Shared by context_recall and facts_grounded so the two can't drift apart: they ask different
+    questions (was the gold evidence retrieved / is the answer's claim backed by a tool) but they
+    look in the same place, and two copies of that lookup would diverge sooner or later.
+    """
+    return " ".join(c for name, c in tool_outputs if name in _EVIDENCE_TOOLS).lower()
+
 ROOT = Path(__file__).resolve().parent.parent
 TESTSET = ROOT / "eval" / "testset.jsonl"
 FIN = json.loads((ROOT / "data" / "financials.json").read_text())
@@ -166,6 +181,15 @@ def score_case(case, answer, tools_used, trace, tool_outputs):
     if "facts" in case:
         res["facts"] = all(any(p.lower() in a for p in grp) for grp in case["facts"])
 
+        # facts_grounded: the same terms, looked for in what the TOOLS returned rather than in the
+        # answer. `facts` alone passes an answer the model wrote from memory — Q15 named Disney's
+        # segments correctly while the tool it called had returned countries, and `facts` was
+        # satisfied. That is the lucky pass: right words, no source. Numbers are already covered by
+        # `grounded`; this covers the textual claims it doesn't reach.
+        ev = _evidence_text(tool_outputs)
+        res["facts_grounded"] = (all(any(p.lower() in ev for p in grp) for grp in case["facts"])
+                                 if ev else None)
+
     # context_recall: did the run surface the gold evidence at all?
     # gold_evidence deliberately includes exact terms (e.g. "Stress Capital Buffer", "TSMC")
     # that BM25 nails but dense vectors can blur — so a miss here is the signal to add BM25.
@@ -175,11 +199,8 @@ def score_case(case, answer, tools_used, trace, tool_outputs):
     # scored as a retrieval miss. It measured which path was taken, not whether the evidence was
     # found. Numeric tools stay out — their output is a bare figure and could match a gold term
     # by accident.
-    _EVIDENCE_TOOLS = {"search_filings", "get_segment_breakdown", "get_segment_growth",
-                       "get_statement", "search_my_documents"}
     if case.get("gold_evidence") and not case["is_abstain"]:
-        retrieved = " ".join(content for name, content in tool_outputs
-                             if name in _EVIDENCE_TOOLS).lower()
+        retrieved = _evidence_text(tool_outputs)
         res["context_recall"] = any(p.lower() in retrieved for p in case["gold_evidence"])
 
     # trajectory: how the answer was reached, not just whether it is right. All-None for a
@@ -226,7 +247,7 @@ def main(quality=False):
     # aggregate per metric
     print("\n=== per-metric pass rate ===")
     metrics = ["numerical", "citation", "grounded", "tool", "abstain", "reason",
-               "facts", "context_recall", "forbid"] + TRAJECTORY_METRICS + EFFICIENCY_METRICS
+               "facts", "facts_grounded", "context_recall", "forbid"] + TRAJECTORY_METRICS + EFFICIENCY_METRICS
     rates = {}
     for m in metrics:
         vals = [r[m] for _, r, _ in rows if m in r]

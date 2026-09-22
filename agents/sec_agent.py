@@ -14,6 +14,7 @@ system prompt change (raised to the finance bar).
 import os
 import re
 import functools
+import time
 from typing import Dict, List
 
 from langchain_core.tools import tool
@@ -461,6 +462,12 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
     usage, tool_outputs, salvaged = None, [], False
     _search_state["n"] = 0                    # reset the per-turn search budget for this run
     _numeric_state["n"] = 0                   # reset the per-turn numeric-tool budget for this run
+    # Timed on the same boundary as the Langfuse span below, deliberately: the two numbers then
+    # agree and can check each other. The span covers a little more than the model invoke — the
+    # guardrail and the audit assembly run inside it — which is why this is agent latency rather
+    # than invoke latency. Keeping them inside is the point: if a guard ever grows expensive, a
+    # timer wrapped tightly around agent.stream would not show it.
+    agent_start = time.perf_counter()
     # the Langfuse span (if enabled) wraps the invoke, so its duration is the real latency
     with observability.trace_agent(question) as record:
         last_state = None
@@ -532,7 +539,8 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
     # token cost without a second pass or a trace fetch. None when observability is disabled.
     return {"answer": answer, "trace": trace, "tool_outputs": tool_outputs,
             "tools_used": tools_used, "trace_id": trace_id, "salvaged": salvaged,
-            "guardrail_reason": guardrail_reason, "usage": usage}
+            "guardrail_reason": guardrail_reason, "usage": usage,
+            "agent_latency_ms": (time.perf_counter() - agent_start) * 1000}
 
 
 if __name__ == "__main__":

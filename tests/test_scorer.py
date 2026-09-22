@@ -96,3 +96,35 @@ def test_small_ratio_band_still_absorbs_golds_rounding():
     assert _has_number_match("ANSWER: 0.389", 0.40)         # AWK, gold "$0.40"
     assert _has_number_match("ANSWER: -0.015", -0.02)       # AES, gold "-0.02"
     assert _has_number_match("ANSWER: 0.014", 0.01)         # KO, gold "0.01"
+
+
+# --- facts vs facts_grounded: saying it right isn't the same as having a source --------------
+def _fg(answer, tool_outputs, facts):
+    from eval.score import score_case
+    case = {"id": "T", "capability": "qualitative", "bucket": "happy", "question": "q",
+            "expected_tools": [], "is_abstain": False, "facts": facts}
+    return score_case(case, answer, [], [], tool_outputs)
+
+
+def test_a_claim_the_tools_never_returned_is_not_grounded():
+    """The lucky pass. Q15 named Disney's segments correctly while the tool it called had returned
+    countries — `facts` was satisfied by an answer written from memory."""
+    r = _fg("Disney's segments are Entertainment, Experiences and Sports.",
+            [("get_segment_breakdown", "CANADA: $3.7B\nCHINA: $2.6B\nBRAZIL: $1.8B")],
+            [["experiences"]])
+    assert r["facts"] is True            # the answer says the right thing
+    assert r["facts_grounded"] is False  # nothing the tools returned backs it
+
+
+def test_a_claim_the_tools_did_return_is_grounded():
+    r = _fg("Disney's segments are Entertainment, Experiences and Sports.",
+            [("get_segment_breakdown", "Entertainment: $42.5B\nExperiences: $36.2B")],
+            [["experiences"]])
+    assert r["facts"] is True and r["facts_grounded"] is True
+
+
+def test_grounding_is_unmeasurable_when_no_evidence_tool_ran():
+    """A numeric-only run has no textual evidence to check against; `grounded` covers its figures."""
+    r = _fg("Revenue was $391 billion.", [("get_financials", "AAPL revenue FY2024: 391035000000")],
+            [["391"]])
+    assert r["facts_grounded"] is None
