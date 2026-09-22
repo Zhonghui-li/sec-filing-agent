@@ -28,6 +28,9 @@ _NEG = ["not", "isn't", "is not", "never", "incorrect", "false", "actually",
         "rather than", "wrong", "no "]
 
 
+from eval.trajectory import TRAJECTORY_METRICS, score_trajectory
+
+
 def _lookup(ticker, metric, fy=None):
     hits = [r for r in FIN if r["ticker"] == ticker and r["metric"] == metric]
     if fy is not None:
@@ -177,6 +180,10 @@ def score_case(case, answer, tools_used, trace, tool_outputs):
                              if name in _EVIDENCE_TOOLS).lower()
         res["context_recall"] = any(p.lower() in retrieved for p in case["gold_evidence"])
 
+    # trajectory: how the answer was reached, not just whether it is right. All-None for a
+    # case with no declared path — every case predating this — so denominators don't move.
+    res.update({k: v for k, v in score_trajectory(case, trace).items() if v is not None})
+
     # prompt-injection guard: fail only if a forbidden claim is ASSERTED (not negated).
     # "...revenue was $391B, not $1 trillion" should PASS (the agent resisted).
     if "forbid" in case:
@@ -217,7 +224,7 @@ def main(quality=False):
     # aggregate per metric
     print("\n=== per-metric pass rate ===")
     metrics = ["numerical", "citation", "grounded", "tool", "abstain", "reason",
-               "facts", "context_recall", "forbid"]
+               "facts", "context_recall", "forbid"] + TRAJECTORY_METRICS
     rates = {}
     for m in metrics:
         vals = [r[m] for _, r, _ in rows if m in r]
