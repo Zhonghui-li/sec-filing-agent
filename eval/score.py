@@ -8,6 +8,7 @@ prompt-injection guard. context-recall + Ragas faithfulness/relevancy -> P3.
 Usage: DATABASE_URL=... OPENAI_API_KEY=... python -m eval.score
 """
 import json
+from datetime import datetime
 import re
 from pathlib import Path
 from eval.trajectory import (EFFICIENCY_METRICS, REPORT_ONLY, TRAJECTORY_METRICS,
@@ -236,12 +237,40 @@ def score_case(case, answer, tools_used, trace, tool_outputs):
     return res
 
 
-def main(quality=False):
+def select_cases(cases, only):
+    """The subset to run: everything, an explicit id list, or every case carrying a trajectory
+    block. A variance run wants the trajectory cases and only those — running all 102 five times
+    costs five times as much and tells you nothing extra about the trajectory metrics."""
+    if not only:
+        return cases
+    if only == "trajectory":
+        return [c for c in cases if "trajectory" in c]
+    want = {t.strip().upper() for t in only.split(",")}
+    return [c for c in cases if c["id"].upper() in want]
+
+
+def main(quality=False, only=None, repeat=1, run_dir=None):
     from agents.sec_agent import build_agent, run_agent  # heavy deps only for the live run
-    cases = [json.loads(l) for l in TESTSET.open()]
+    cases = select_cases([json.loads(l) for l in TESTSET.open()], only)
+    if not cases:
+        print(f"no cases match --only {only!r}")
+        return {}
     agent = build_agent()
+    runs = []                  # per repeat: {case_id -> metrics}, for the variance report
+    for attempt in range(repeat):
+        if repeat > 1:
+            print(f"\n===== run {attempt + 1}/{repeat} =====")
+        rates, per_case = _run_once(cases, agent, run_agent, quality, run_dir, attempt)
+        runs.append(per_case)
+    if repeat > 1:
+        _variance_report(runs)
+    return rates
+
+
+def _run_once(cases, agent, run_agent, quality, run_dir, attempt):
     rows = []
     q_items = []   # qualitative answers (with retrieved contexts) for the Ragas layer
+    records = []   # one per case, persisted so two runs can be diffed after the fact
     print(f"running {len(cases)} cases...\n")
     for c in cases:
         out = run_agent(c["question"], agent=agent)
@@ -251,6 +280,13 @@ def main(quality=False):
             ctx = [content for name, content in out["tool_outputs"] if name == "search_filings"]
             if ctx:
                 q_items.append({"question": c["question"], "answer": out["answer"], "contexts": ctx})
+        # cold_starts: a retrieval that had no index behind it. Recorded per case because the
+        # index is a bounded LRU — between two runs a company-year can be evicted, and without
+        # this the resulting difference reads as model nondeterminism (see agents/cold_starts.py).
+        records.append({"id": c["id"], "difficulty": c["difficulty"], "metrics": r,
+                        "tools_used": out["tools_used"], "cold_starts": out.get("cold_starts", []),
+                        "agent_latency_ms": out.get("agent_latency_ms"),
+                        "salvaged": out.get("salvaged", False)})
         flags = " ".join(f"{k}={'Y' if v else 'N'}" for k, v in r.items())
         ok = all(r.values())
         print(f"[{'PASS' if ok else 'FAIL'}] {c['id']} ({c['difficulty']:6}) {flags}")
@@ -289,7 +325,60 @@ def main(quality=False):
             if vals:
                 rates[name] = round(sum(vals) / len(vals), 3)
                 print(f"  {name:16}: {rates[name]:.3f}  (mean over {len(vals)})")
-    return rates
+
+    if run_dir:
+        run_dir.mkdir(parents=True, exist_ok=True)
+        path = run_dir / f"run{attempt + 1}.jsonl"
+        with path.open("w") as fh:
+            for rec in records:
+                fh.write(json.dumps(rec) + "\n")
+        cold = sum(len(rec["cold_starts"]) for rec in records)
+        print(f"\nwrote {path}  ({len(records)} cases, {cold} cold starts)")
+    return rates, {rec["id"]: rec for rec in records}
+
+
+def _variance_report(runs):
+    """How much each metric moves between runs of the SAME build — the noise floor a gate has to
+    clear. A threshold set without this is set against whatever the last two runs happened to do.
+
+    Reports the flipped CASES too, not only the spread: a metric that moves because one case is
+    genuinely unstable is a different problem from one that moves a little everywhere, and the
+    cases named here are where to look. A flip on a case that cold-started is not evidence about
+    the model at all — it is the index having been different, which is why that is carried."""
+    print("\n=== run-to-run variance (same build, %d runs) ===" % len(runs))
+    metrics = sorted({m for r in runs for rec in r.values() for m in rec["metrics"]})
+    for m in metrics:
+        rates = []
+        for r in runs:
+            vals = [rec["metrics"][m] for rec in r.values() if m in rec["metrics"]]
+            if vals:
+                rates.append(sum(vals) / len(vals))
+        if len(rates) < 2:
+            continue
+        spread = (max(rates) - min(rates)) * 100
+        mean = sum(rates) / len(rates)
+        var = sum((x - mean) ** 2 for x in rates) / (len(rates) - 1)
+        marker = "  <-- " if spread >= 5 else ""
+        print(f"  {m:16} " + " ".join(f"{x * 100:5.1f}" for x in rates)
+              + f"   spread {spread:4.1f}pp  sd {var ** 0.5 * 100:4.1f}pp{marker}")
+
+    print("\n=== cases that flipped between runs ===")
+    ids = sorted({i for r in runs for i in r})
+    flipped = 0
+    for cid in ids:
+        seen = [r[cid] for r in runs if cid in r]
+        if len(seen) < len(runs):
+            print(f"  {cid:6} missing from some runs")
+            continue
+        unstable = sorted({m for m in seen[0]["metrics"]
+                           if len({rec["metrics"].get(m) for rec in seen}) > 1})
+        if unstable:
+            flipped += 1
+            cold = sum(len(rec["cold_starts"]) for rec in seen)
+            note = f"  [index differed on {cold} retrieval(s) — not the model]" if cold else ""
+            print(f"  {cid:6} {', '.join(unstable)}{note}")
+    if not flipped:
+        print("  none — every case scored identically in every run")
 
 
 if __name__ == "__main__":
@@ -301,11 +390,27 @@ if __name__ == "__main__":
                     help="overwrite eval/baseline.json with this run's rates")
     ap.add_argument("--quality", action="store_true",
                     help="also run Ragas faithfulness/relevancy (LLM judge) on qualitative answers")
+    ap.add_argument("--only", metavar="IDS",
+                    help='subset to run: "trajectory" for every case with a trajectory block, '
+                         'or a comma-separated id list (e.g. M01,M02)')
+    ap.add_argument("--repeat", type=int, default=1, metavar="N",
+                    help="run the set N times and report run-to-run variance (measures the noise "
+                         "floor a gate has to clear; does not touch the baseline)")
+    ap.add_argument("--run-dir", metavar="DIR",
+                    help="write per-case results to DIR/run<N>.jsonl so two runs can be diffed")
     args = ap.parse_args()
 
-    rates = main(quality=args.quality)
+    run_dir = Path(args.run_dir) if args.run_dir else None
+    if args.repeat > 1 and run_dir is None:      # a variance run is worthless without the records
+        run_dir = ROOT / "eval" / "runs" / datetime.now().strftime("%Y%m%d-%H%M%S")
+    rates = main(quality=args.quality, only=args.only, repeat=args.repeat, run_dir=run_dir)
     BASE = ROOT / "eval" / "baseline.json"
-    if args.update_baseline:
+    # A subset or a repeat run measures something the baseline is not a baseline FOR: the baseline
+    # holds whole-suite rates, so comparing a 18-case trajectory run against it would report
+    # regressions that are only the different denominator.
+    if args.only or args.repeat > 1:
+        print("\n(subset/repeat run — baseline gate skipped)")
+    elif args.update_baseline:
         # merge so a deterministic-only run (no --quality) doesn't drop the monitor metrics
         base = json.loads(BASE.read_text()) if BASE.exists() else {}
         base.update(rates)
