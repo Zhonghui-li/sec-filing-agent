@@ -186,6 +186,64 @@ def cik_for(ticker):
 
 _SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 _FOREIGN_ANNUAL_FORMS = {"20-F", "40-F"}
+_HOLDCO_RE = re.compile(r"\b(HOLDINGS?|HOLDCO|GROUP|NEW)\b")
+
+
+def _tight_name(name):
+    """A name with corporate-form words and all spacing removed, so "ExxonMobil Holdings Corp" and
+    "EXXON MOBIL CORP" collapse to the same key. Deliberately looser than _normalize_name, and used
+    only on the predecessor path below — as a general name lookup it would be too loose."""
+    return re.sub(r"\s+", "", _HOLDCO_RE.sub(" ", _normalize_name(name)))
+
+
+def predecessor_cik(cik, name):
+    """The registrant holding this one's annual history, or None when there isn't a clear one.
+
+    A holdco reorganization or a reincorporation registers a NEW entity that takes over the ticker
+    while the filing history stays behind: SEC's ticker file sends XOM to CIK 2115436 (ExxonMobil
+    Holdings Corp, first filed 2026-07-01, zero 10-Ks) while every Exxon 10-K sits under CIK 34088.
+    This is the mirror of the retired-ticker case — there a ticker resolved to nothing, here it
+    resolves to a live registrant with no history — and both follow from one fact: a ticker is not
+    a stable key for a filing history.
+
+    SEC publishes no machine-readable link between the two. The successor's `formerNames` is empty,
+    and both the EIN and the state of incorporation change (Exxon's went NJ -> TX). What survives
+    the reorganization is the NAME, so candidates are found on a tightened form of it and the tie
+    is settled on EVIDENCE rather than on similarity: the candidate that actually filed the annual
+    reports. That evidence test is also why foreign private issuers need no special case here —
+    their tickers yield no 10-K rows either, but a name search for Toyota or Alibaba turns up no
+    other registrant at all.
+    """
+    key = _tight_name(name)
+    if len(key) < 5:                       # too short to discriminate
+        return None
+    try:
+        path = _cik_lookup_file()
+    except Exception:
+        return None
+    prefix = key[:5]                       # cheap prefilter; the tight compare still decides
+    found = set()
+    with open(path, encoding="latin-1") as f:
+        for line in f:
+            if prefix not in line:
+                continue
+            parts = line.rstrip("\n").split(":")
+            if len(parts) >= 2 and parts[1] and _tight_name(parts[0]) == key:
+                found.add(parts[1].zfill(10))
+    ranked = []
+    for cand in sorted(found - {cik}):
+        try:
+            forms = _get_json(_SUBMISSIONS_URL.format(cik=cand),
+                              timeout=30)["filings"]["recent"]["form"]
+        except Exception:
+            continue
+        n = sum(1 for f in forms if f.startswith("10-K"))
+        if n:
+            ranked.append((n, cand))
+    ranked.sort(reverse=True)
+    if not ranked or (len(ranked) > 1 and ranked[0][0] == ranked[1][0]):
+        return None                        # nobody filed annually, or no clear holder -> abstain
+    return ranked[0][1]
 
 
 def foreign_filer_note(query):
@@ -695,6 +753,22 @@ def company_rows(ticker):
     except Exception:
         return []                      # transient failure — don't cache
     rows = extract_rows(gaap, tk, cik)
+    if not rows:
+        # A live ticker that extracts nothing is usually a successor registrant holding the ticker
+        # while the history sits with its predecessor (see predecessor_cik). Retried only here, on
+        # the path where we were about to abstain anyway, so a normal query pays nothing for it —
+        # and NOT inside cik_for, because the successor is still the right answer for "who files
+        # as XOM now": its own new 10-Q and 8-Ks are the current filings.
+        prev = predecessor_cik(cik, entity or tk)
+        if prev:
+            try:
+                entity, gaap = fetch_company(prev)
+                rows = extract_rows(gaap, tk, prev)
+                cik = prev
+            except Exception:
+                return []              # transient failure — don't cache
+        if not rows:
+            log_miss(tk, "company_rows", reason=f"no_annual_rows:{cik}")
     for r in rows:                     # stamp the resolved company name so tools can echo it
         r["entity_name"] = entity
     if rows:

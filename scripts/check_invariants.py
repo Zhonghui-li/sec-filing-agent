@@ -18,7 +18,7 @@ from pathlib import Path
 
 # allow `import agents...` when run as a standalone script
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from agents.companyfacts import METRICS, cik_for, extract_rows, fetch_facts
+from agents.companyfacts import METRICS, company_rows
 
 TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "WMT", "TGT", "COST",
            "HD", "LOW", "KR", "ULTA", "NKE", "SBUX", "MCD", "AMD", "INTC", "CRM",
@@ -27,9 +27,11 @@ TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "WMT", "TGT"
 
 def check(ticker):
     """[(rule, detail)] — empty when the company's rows are self-consistent."""
+    # company_rows, not extract_rows: the scan has to see what the TOOLS see, including the
+    # predecessor fallback for a ticker that has moved to a successor registrant. Checking the
+    # extraction in isolation reported XOM as empty long after the tools could answer for it.
     try:
-        cik = cik_for(ticker)
-        rows = extract_rows(fetch_facts(cik), ticker, cik)
+        rows = company_rows(ticker)
     except Exception as e:
         return [("fetch_failed", f"{type(e).__name__}: {e}")]
     if not rows:

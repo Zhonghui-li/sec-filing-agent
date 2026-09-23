@@ -434,3 +434,39 @@ def test_a_filings_own_label_is_rejected_when_it_contradicts_the_company(monkeyp
     assert cal.fiscal_year("2013-01-31") == 2013        # was 2012 — the filing's own bad label
     assert cal.fiscal_year("2014-01-31") == 2014        # was 2013, leaving fiscal 2014 with no row
     assert cal.fiscal_year("2015-01-31") == 2015        # agreeing labels are still adopted
+
+
+def test_a_ticker_that_moved_to_a_successor_finds_the_predecessors_history(monkeypatch, tmp_path):
+    """SEC's ticker file sends XOM to CIK 2115436 — ExxonMobil Holdings Corp, registered 2026-07-01
+    with zero 10-Ks — while every Exxon 10-K sits under CIK 34088. Resolution SUCCEEDS and returns
+    a live registrant, so nothing looked broken; the tools just answered "no data" for a company
+    with fifteen years of filings. SEC publishes no link between the two (the successor's
+    formerNames is empty, and the EIN and state of incorporation both change), so the name is
+    matched loosely and the tie settled on which candidate actually filed the annual reports."""
+    import agents.companyfacts as cf
+    lookup = tmp_path / "cik-lookup-data.txt"
+    lookup.write_text("EXXON MOBIL CORP:0000034088:\n"
+                      "EXXONMOBIL HOLDINGS CORP:0002115436:\n"
+                      "EXXON MOBIL OIL TRUST:0001226649:\n", encoding="latin-1")
+    monkeypatch.setattr(cf, "_cik_lookup_file", lambda: str(lookup))
+    counts = {"0000034088": ["10-K"] * 15, "0001226649": ["8-K"] * 3}
+    monkeypatch.setattr(cf, "_get_json",
+                        lambda url, timeout=90: {"filings": {"recent": {
+                            "form": counts.get(url.split("CIK")[1][:10], [])}}})
+    # the trust shares the loose key but never filed a 10-K, so evidence — not name distance —
+    # rules it out; the successor itself is never its own predecessor.
+    assert cf.predecessor_cik("0002115436", "ExxonMobil Holdings Corp") == "0000034088"
+
+
+def test_no_predecessor_is_invented_for_a_company_that_simply_has_none(monkeypatch, tmp_path):
+    """A foreign private issuer files a 20-F, so its ticker also extracts no annual rows. The
+    fallback must not reach for a same-sounding registrant: the evidence test (did a candidate
+    actually file 10-Ks?) is what keeps it off them, which is why they need no special case."""
+    import agents.companyfacts as cf
+    lookup = tmp_path / "cik-lookup-data.txt"
+    lookup.write_text("TOYOTA MOTOR CORP:0001094517:\n", encoding="latin-1")
+    monkeypatch.setattr(cf, "_cik_lookup_file", lambda: str(lookup))
+    monkeypatch.setattr(cf, "_get_json",
+                        lambda url, timeout=90: {"filings": {"recent": {"form": ["20-F"]}}})
+    assert cf.predecessor_cik("0001094517", "TOYOTA MOTOR CORP") is None       # only itself
+    assert cf.predecessor_cik("0009999999", "Some Unlisted Startup") is None   # no candidates
