@@ -1,0 +1,441 @@
+{
+  "generated_at": "2026-09-23T21:01:03Z",
+  "filing_chunks_max": 20000,
+  "total_chunks": 19524,
+  "entries": [
+    {
+      "ticker": "AAPL",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 152,
+      "accessions": 8
+    },
+    {
+      "ticker": "AAPL",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 79,
+      "accessions": 9
+    },
+    {
+      "ticker": "AMZN",
+      "fiscal_year": 2022,
+      "pinned": true,
+      "chunks": 312,
+      "accessions": 14
+    },
+    {
+      "ticker": "AMZN",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 247,
+      "accessions": 3
+    },
+    {
+      "ticker": "AMZN",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 114,
+      "accessions": 14
+    },
+    {
+      "ticker": "BA",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 257,
+      "accessions": 2
+    },
+    {
+      "ticker": "BRK-B",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 529,
+      "accessions": 10
+    },
+    {
+      "ticker": "BRK-B",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 186,
+      "accessions": 7
+    },
+    {
+      "ticker": "COST",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 154,
+      "accessions": 9
+    },
+    {
+      "ticker": "COST",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 124,
+      "accessions": 8
+    },
+    {
+      "ticker": "CSCO",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 93,
+      "accessions": 8
+    },
+    {
+      "ticker": "CSCO",
+      "fiscal_year": 2025,
+      "pinned": true,
+      "chunks": 507,
+      "accessions": 16
+    },
+    {
+      "ticker": "CSCO",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 480,
+      "accessions": 9
+    },
+    {
+      "ticker": "CVS",
+      "fiscal_year": 2024,
+      "pinned": true,
+      "chunks": 818,
+      "accessions": 21
+    },
+    {
+      "ticker": "CVS",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 566,
+      "accessions": 2
+    },
+    {
+      "ticker": "CVS",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 116,
+      "accessions": 2
+    },
+    {
+      "ticker": "F",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 585,
+      "accessions": 3
+    },
+    {
+      "ticker": "F",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 213,
+      "accessions": 14
+    },
+    {
+      "ticker": "GOOGL",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 287,
+      "accessions": 3
+    },
+    {
+      "ticker": "GOOGL",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 127,
+      "accessions": 14
+    },
+    {
+      "ticker": "HD",
+      "fiscal_year": 2024,
+      "pinned": true,
+      "chunks": 302,
+      "accessions": 18
+    },
+    {
+      "ticker": "INTC",
+      "fiscal_year": 2025,
+      "pinned": true,
+      "chunks": 194,
+      "accessions": 23
+    },
+    {
+      "ticker": "JPM",
+      "fiscal_year": 2023,
+      "pinned": true,
+      "chunks": 566,
+      "accessions": 1
+    },
+    {
+      "ticker": "JPM",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 1389,
+      "accessions": 3
+    },
+    {
+      "ticker": "JPM",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 1175,
+      "accessions": 2
+    },
+    {
+      "ticker": "KO",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 511,
+      "accessions": 7
+    },
+    {
+      "ticker": "KO",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 169,
+      "accessions": 10
+    },
+    {
+      "ticker": "META",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 449,
+      "accessions": 8
+    },
+    {
+      "ticker": "META",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 125,
+      "accessions": 9
+    },
+    {
+      "ticker": "MGM",
+      "fiscal_year": 2022,
+      "pinned": true,
+      "chunks": 510,
+      "accessions": 4
+    },
+    {
+      "ticker": "MGM",
+      "fiscal_year": 2023,
+      "pinned": true,
+      "chunks": 467,
+      "accessions": 12
+    },
+    {
+      "ticker": "MSFT",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 73,
+      "accessions": 7
+    },
+    {
+      "ticker": "MSFT",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 393,
+      "accessions": 10
+    },
+    {
+      "ticker": "NKE",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 72,
+      "accessions": 4
+    },
+    {
+      "ticker": "NKE",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 446,
+      "accessions": 13
+    },
+    {
+      "ticker": "NVDA",
+      "fiscal_year": 2024,
+      "pinned": true,
+      "chunks": 240,
+      "accessions": 9
+    },
+    {
+      "ticker": "NVDA",
+      "fiscal_year": 2025,
+      "pinned": true,
+      "chunks": 119,
+      "accessions": 3
+    },
+    {
+      "ticker": "NVDA",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 317,
+      "accessions": 15
+    },
+    {
+      "ticker": "NVDA",
+      "fiscal_year": 2027,
+      "pinned": false,
+      "chunks": 75,
+      "accessions": 2
+    },
+    {
+      "ticker": "PEP",
+      "fiscal_year": 2021,
+      "pinned": true,
+      "chunks": 387,
+      "accessions": 1
+    },
+    {
+      "ticker": "PEP",
+      "fiscal_year": 2022,
+      "pinned": true,
+      "chunks": 407,
+      "accessions": 1
+    },
+    {
+      "ticker": "PEP",
+      "fiscal_year": 2023,
+      "pinned": true,
+      "chunks": 669,
+      "accessions": 4
+    },
+    {
+      "ticker": "PEP",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 394,
+      "accessions": 1
+    },
+    {
+      "ticker": "PEP",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 1,
+      "accessions": 1
+    },
+    {
+      "ticker": "PFE",
+      "fiscal_year": 2011,
+      "pinned": false,
+      "chunks": 189,
+      "accessions": 1
+    },
+    {
+      "ticker": "PFE",
+      "fiscal_year": 2012,
+      "pinned": false,
+      "chunks": 197,
+      "accessions": 1
+    },
+    {
+      "ticker": "PFE",
+      "fiscal_year": 2019,
+      "pinned": true,
+      "chunks": 244,
+      "accessions": 1
+    },
+    {
+      "ticker": "PFE",
+      "fiscal_year": 2023,
+      "pinned": true,
+      "chunks": 346,
+      "accessions": 15
+    },
+    {
+      "ticker": "PFE",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 339,
+      "accessions": 1
+    },
+    {
+      "ticker": "SBUX",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 246,
+      "accessions": 6
+    },
+    {
+      "ticker": "SBUX",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 189,
+      "accessions": 11
+    },
+    {
+      "ticker": "TSLA",
+      "fiscal_year": 2023,
+      "pinned": true,
+      "chunks": 247,
+      "accessions": 14
+    },
+    {
+      "ticker": "TSLA",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 352,
+      "accessions": 9
+    },
+    {
+      "ticker": "TSLA",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 109,
+      "accessions": 8
+    },
+    {
+      "ticker": "ULTA",
+      "fiscal_year": 2023,
+      "pinned": true,
+      "chunks": 292,
+      "accessions": 6
+    },
+    {
+      "ticker": "ULTA",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 271,
+      "accessions": 9
+    },
+    {
+      "ticker": "ULTA",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 92,
+      "accessions": 8
+    },
+    {
+      "ticker": "VZ",
+      "fiscal_year": 2021,
+      "pinned": true,
+      "chunks": 528,
+      "accessions": 4
+    },
+    {
+      "ticker": "WMT",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 7,
+      "accessions": 3
+    },
+    {
+      "ticker": "WMT",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 336,
+      "accessions": 11
+    },
+    {
+      "ticker": "WMT",
+      "fiscal_year": 2027,
+      "pinned": false,
+      "chunks": 101,
+      "accessions": 2
+    },
+    {
+      "ticker": "XOM",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 43,
+      "accessions": 4
+    }
+  ]
+}
