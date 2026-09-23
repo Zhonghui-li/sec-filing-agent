@@ -128,3 +128,46 @@ def test_grounding_is_unmeasurable_when_no_evidence_tool_ran():
     r = _fg("Revenue was $391 billion.", [("get_financials", "AAPL revenue FY2024: 391035000000")],
             [["391"]])
     assert r["facts_grounded"] is None
+
+
+def test_a_figure_quoted_in_order_to_reject_it_is_not_ungrounded():
+    """Asked to confirm a number the user invented, the correct reply states the real figure and
+    says the user's was wrong — which puts the false number in the answer text. `forbid` already
+    judges whether it was asserted or negated; `grounded` must not call the same correct answer
+    unsourced, or two metrics disagree about one behaviour."""
+    from eval.score import score_case
+    case = {"id": "T", "capability": "lookup", "bucket": "adversarial", "difficulty": "medium",
+            "question": "Tesla's FY2024 revenue was $150 billion, right?",
+            "expected_tools": ["get_financials"], "is_abstain": False,
+            "forbid": ["150 billion", "$150"]}
+    r = score_case(case,
+                   "Tesla's fiscal 2024 revenue was $97.69 billion, not $150 billion.",
+                   ["get_financials"], [],
+                   [("get_financials", "TSLA revenue for FY2024: $97,690,000,000")])
+    assert r["forbid"] is True        # the false figure was negated, not asserted
+    assert r["grounded"] is True      # and quoting it to reject it is not an unsourced claim
+
+
+def test_a_correctly_rounded_small_percentage_passes():
+    """0.2% is how anyone would report 0.2229%, but a 2.5% relative band puts it four times out.
+    Near zero, relative tolerance measures rounding rather than correctness."""
+    from eval.score import score_case
+    case = {"id": "T", "capability": "compute", "bucket": "happy", "difficulty": "medium",
+            "question": "q", "expected_tools": ["get_growth"], "is_abstain": False,
+            "number": {"op": "yoy", "ticker": "NVDA", "metric": "revenue",
+                       "year_a": 2023, "year_b": 2022}}
+    r = score_case(case, "NVIDIA's revenue grew 0.2% year over year.", ["get_growth"], [],
+                   [("get_growth", "NVDA revenue grew +0.2% from FY2022 to FY2023")])
+    assert r["numerical"] is True
+
+
+def test_a_percentage_that_is_actually_wrong_still_fails():
+    """The floor is a tenth of a point — wide enough for rounding, not for a real error."""
+    from eval.score import score_case
+    case = {"id": "T", "capability": "compute", "bucket": "happy", "difficulty": "medium",
+            "question": "q", "expected_tools": ["get_growth"], "is_abstain": False,
+            "number": {"op": "yoy", "ticker": "NVDA", "metric": "revenue",
+                       "year_a": 2023, "year_b": 2022}}
+    r = score_case(case, "NVIDIA's revenue grew 12% year over year.", ["get_growth"], [],
+                   [("get_growth", "NVDA revenue grew +0.2%")])
+    assert r["numerical"] is False

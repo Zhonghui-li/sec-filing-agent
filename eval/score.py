@@ -143,7 +143,12 @@ def score_case(case, answer, tools_used, trace, tool_outputs):
     val, is_pct, accns = expected(case)
     if val is not None and not case["is_abstain"]:
         if is_pct:
-            mag_ok = any(abs(abs(v) - abs(val)) <= TOL * abs(val) for v in pcts) if val else False
+            # Relative tolerance alone breaks down on percentages near zero: 0.2% is the correct
+            # rounding of 0.2229%, but it misses a 2.5% relative band by four times over. An
+            # absolute floor of a tenth of a point covers sane rounding without letting a real
+            # error through — at these magnitudes a genuine mistake is points, not tenths.
+            mag_ok = any(abs(abs(v) - abs(val)) <= max(TOL * abs(val), 0.1) for v in pcts) \
+                if val else False
             # direction matters for a BARE YoY/ratio (short answer, e.g. "decreased by 2.4%"
             # must match a negative expected). For COMBINED answers the "what drove it"
             # narrative confounds a whole-answer direction scan, so match on magnitude there
@@ -168,6 +173,14 @@ def score_case(case, answer, tools_used, trace, tool_outputs):
             if name in ("get_financials", "compute", "compute_formula", "get_ratio", "get_growth"):
                 sanctioned += [v for v, _ in extract_numbers(content)]
         qualifying = [v for v, p in nums if p or 1e6 < abs(v) < 1e13]  # $ figures, not URL/accession digits
+        # A figure the answer quotes in order to REJECT it isn't an ungrounded claim. Asked to
+        # confirm a number the user made up, the right reply states the real figure and says the
+        # user's was wrong — which puts the false figure in the text, where this check would call
+        # it unsourced. `forbid` already scores whether such a figure was asserted or negated;
+        # scoring it here too makes two metrics disagree about the same correct behaviour.
+        for f in case.get("forbid", []):
+            for v, _ in extract_numbers(f):
+                qualifying = [q for q in qualifying if abs(q - v) > TOL * abs(v or 1)]
         res["grounded"] = all(any(abs(v - s) <= TOL * abs(s) for s in sanctioned if s)
                               for v in qualifying) if qualifying else True
 
