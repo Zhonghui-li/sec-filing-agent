@@ -21,6 +21,7 @@ So HyDE is wired but DEFAULT OFF (FILINGS_HYDE=1 to enable) — not shipped on a
 clear the end-to-end bar. (Caveat: that harness used a plain answerer without our guardrails, which may
 understate the benefit / overstate the wrong-answer risk vs the real agent.)
 """
+import contextvars
 import os
 
 import psycopg
@@ -93,6 +94,42 @@ def _dense(cur, qv, ticker, k, fiscal_year=None):
     return cur.fetchall()
 
 
+# A retrieval that misses the index fetches and embeds the filing inline, then queries again — so
+# a cold start and a cache hit return the SAME passages and are indistinguishable downstream. That
+# matters for measurement: `filing_chunks` is a bounded LRU, so between two runs of the same eval a
+# company-year can be evicted, and the case that had to cold-start is the one whose retrieval (and
+# latency, and possibly answer) differed for a reason that has nothing to do with the code. Without
+# this, that difference gets attributed to model nondeterminism and inflates the measured variance
+# a gate would then be set against.
+#
+# A ContextVar, not a module global: service/app.py declares `ask` as a sync def, so FastAPI runs
+# run_agent in a THREADPOOL and concurrent requests share the module. A shared list would file one
+# request's cold start in another request's audit trail.
+_cold_starts = contextvars.ContextVar("filings_cold_starts")
+
+
+def reset_cold_starts():
+    """Begin collecting cold starts for this turn (run_agent calls this per request)."""
+    _cold_starts.set([])
+
+
+def take_cold_starts():
+    """The cold starts since reset_cold_starts(), clearing them. [] when nobody is collecting."""
+    try:
+        out = _cold_starts.get()
+    except LookupError:
+        return []
+    _cold_starts.set([])
+    return out
+
+
+def _note_cold_start(ticker, fiscal_year, chunks):
+    try:
+        _cold_starts.get().append({"ticker": ticker, "fiscal_year": fiscal_year, "chunks": chunks})
+    except LookupError:
+        pass                                  # nobody is collecting — a direct tool call, or a test
+
+
 def search_filings(query: str, ticker: str = None, k: int = 5, fiscal_year: int = None) -> str:
     """Search companies' 10-K narrative sections (business, risk factors, MD&A) for
     QUALITATIVE information — risks, strategy, management's discussion/explanations.
@@ -111,7 +148,11 @@ def search_filings(query: str, ticker: str = None, k: int = 5, fiscal_year: int 
 
     if not rows and tk:                     # company/year not indexed yet -> fetch & cache it live,
         from agents.filings_ingest import ingest_ticker   # so narrative is "any company / any year"
-        if ingest_ticker(tk, fiscal_year=fiscal_year):
+        n = ingest_ticker(tk, fiscal_year=fiscal_year)
+        # Recorded even when it returns 0: a cold start that found nothing is the more informative
+        # case — it says this retrieval had no index behind it at all, rather than a stale one.
+        _note_cold_start(tk, fiscal_year, n)
+        if n:
             with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
                 rows = _dense(cur, qv, tk, k, fiscal_year)
 

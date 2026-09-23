@@ -27,7 +27,8 @@ from langgraph.errors import GraphRecursionError
 from agents.finance_tools import (get_financials as _get_financials, compute as _compute,
                                   get_ratio as _get_ratio, get_growth as _get_growth,
                                   compute_formula as _compute_formula)
-from agents.filings_retrieval import search_filings as _search_filings
+from agents.filings_retrieval import (search_filings as _search_filings,
+                                      reset_cold_starts, take_cold_starts)
 from agents.statements import (get_statement as _get_statement,
                                largest_line_item as _largest_line_item,
                                get_segment_breakdown as _get_segment_breakdown,
@@ -469,6 +470,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
     # timer wrapped tightly around agent.stream would not show it.
     agent_start = time.perf_counter()
     # the Langfuse span (if enabled) wraps the invoke, so its duration is the real latency
+    reset_cold_starts()          # per-turn, before any tool runs (see filings_retrieval)
     with observability.trace_agent(question) as record:
         last_state = None
         try:
@@ -520,8 +522,13 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
         # route through it. The flag is structural (zero tool calls), not a scan of the prose, so
         # it can't misread an answer the way the retired magnitude scan did. It records the fact,
         # it does not try to reclassify the turn.
+        # Which retrievals had no index behind them. A cold start returns the same passages as a
+        # cache hit, so without this the two are indistinguishable — and a bounded LRU means the
+        # difference between two runs of the same eval can be eviction rather than the model.
+        cold_starts = take_cold_starts()
         audit = {"accessions_cited": accns, "abstained": "abstain" in tools_used,
                  "no_tool_answer": not tools_used,
+                 "cold_starts": cold_starts,
                  "abstain_reason": next((t["args"].get("reason")
                                          for t in trace if t["tool"] == "abstain"), None),
                  "guardrail": {"fired": bool(guardrail_reason), "reason": guardrail_reason},
@@ -539,6 +546,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
     # token cost without a second pass or a trace fetch. None when observability is disabled.
     return {"answer": answer, "trace": trace, "tool_outputs": tool_outputs,
             "tools_used": tools_used, "trace_id": trace_id, "salvaged": salvaged,
+            "cold_starts": cold_starts,
             "guardrail_reason": guardrail_reason, "usage": usage,
             "agent_latency_ms": (time.perf_counter() - agent_start) * 1000}
 
