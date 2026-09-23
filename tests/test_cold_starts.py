@@ -6,20 +6,20 @@ makes that visible; the DB is never touched.
 """
 import threading
 
-from agents.filings_retrieval import _note_cold_start, reset_cold_starts, take_cold_starts
+from agents.cold_starts import note_cold_start, reset_cold_starts, take_cold_starts
 
 
 def test_nothing_is_recorded_until_someone_is_collecting():
     """A direct tool call, or a test, runs with no turn around it. That must not raise, and must not
     leak a record into whatever collects next."""
     assert take_cold_starts() == []
-    _note_cold_start("AAPL", 2024, 0)          # no reset first
+    note_cold_start("AAPL", 2024, 0)          # no reset first
     assert take_cold_starts() == []
 
 
 def test_take_reports_once_then_clears():
     reset_cold_starts()
-    _note_cold_start("XOM", 2019, 240)
+    note_cold_start("XOM", 2019, 240)
     assert take_cold_starts() == [{"ticker": "XOM", "fiscal_year": 2019, "chunks": 240}]
     assert take_cold_starts() == []            # a second turn starts empty, not with turn one's
 
@@ -28,7 +28,7 @@ def test_a_failed_cold_start_is_recorded_too():
     """chunks=0 is the MORE informative case — the retrieval had no index behind it at all, rather
     than a stale one — so it must not be filtered out as 'nothing happened'."""
     reset_cold_starts()
-    _note_cold_start("ZZZZ", None, 0)
+    note_cold_start("ZZZZ", None, 0)
     assert take_cold_starts() == [{"ticker": "ZZZZ", "fiscal_year": None, "chunks": 0}]
 
 
@@ -41,7 +41,7 @@ def test_concurrent_turns_do_not_see_each_others_cold_starts():
     def turn(name, ticker):
         reset_cold_starts()
         barrier.wait()                         # both turns are open at once
-        _note_cold_start(ticker, 2024, 100)
+        note_cold_start(ticker, 2024, 100)
         barrier.wait()                         # both have recorded before either collects
         seen[name] = take_cold_starts()
 
