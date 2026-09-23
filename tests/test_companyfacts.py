@@ -382,3 +382,55 @@ def test_a_retired_ticker_resolves_through_the_company_name():
     from agents.companyfacts import cik_for, ticker_to_cik_map
     assert "FL" not in ticker_to_cik_map()      # still retired, not reassigned to a live issuer
     assert cik_for("FL") == "0000850209"
+
+
+def test_a_mid_year_instant_does_not_become_an_annual_balance():
+    """Target's LongTermDebtNoncurrent carries a 2010-07-31 instant alongside the real year ends
+    (late Jan / early Feb). Nothing in the fact distinguishes it — same form, no start, own
+    accession — so it was accepted as FY2009's balance and get_financials returned a mid-year
+    $1B instead of the year-end figure. Annual instants must sit at the company's own year end."""
+    from agents.companyfacts import _year_end_only
+    facts = {"2010-07-31": 1, "2011-01-29": 2, "2012-01-28": 3, "2013-02-02": 4}
+    assert sorted(_year_end_only(facts)) == ["2011-01-29", "2012-01-28", "2013-02-02"]
+
+
+def test_the_year_end_window_spans_adjacent_months():
+    """A 52/53-week year drifts across a month boundary, so Target's ends split 2x January /
+    1x February and no single month holds a majority. Counting each month on its own let the
+    filter conclude there was no dominant month and keep the July row anyway."""
+    from agents.companyfacts import _year_end_only
+    feb_heavy = {"2010-07-31": 1, "2011-02-01": 2, "2012-01-28": 3, "2013-02-02": 4}
+    assert "2010-07-31" not in _year_end_only(feb_heavy)
+
+
+def test_instants_are_left_alone_when_no_year_end_dominates():
+    """The filter only fires on evidence. Too few facts, or ends scattered with no clear window,
+    means we cannot tell which month is the year end — keep everything rather than guess."""
+    from agents.companyfacts import _year_end_only
+    scattered = {"2011-03-31": 1, "2011-06-30": 2, "2011-09-30": 3, "2011-12-31": 4}
+    assert _year_end_only(scattered) == scattered
+    three = {"2010-07-31": 1, "2011-01-29": 2, "2012-01-28": 3}
+    assert _year_end_only(three) == three
+
+
+def test_a_filings_own_label_is_rejected_when_it_contradicts_the_company(monkeypatch):
+    """Walmart's 2013 and 2014 10-Ks tag their own year one behind what Walmart calls it. The
+    modal offset already ignored them, but the per-period map adopted each filing's label
+    unconditionally — so 2013-01-31 and 2014-01-31 both landed on FY2012/FY2013, fiscal 2013 ended
+    up with two period ends and fiscal 2014 vanished from the data. A label that disagrees with the
+    company's own dominant convention is dropped and the year derived from the modal offset."""
+    import agents.companyfacts as cf
+    ends = {f"a{y}": f"{y}-01-31" for y in range(2012, 2020)}          # one 10-K per fiscal year
+    monkeypatch.setattr(cf, "_report_dates", lambda cik: ends)
+    monkeypatch.setattr(cf, "_cal_mem", {})
+    # Walmart names its year after the year it ENDS in (offset 0) — except the 2013 and 2014
+    # filings, which say one less.
+    gaap = {"Assets": {"units": {"USD": [
+        {"accn": a, "end": end, "val": 1, "form": "10-K", "fp": "FY",
+         "fy": int(end[:4]) - (1 if end[:4] in ("2013", "2014") else 0)}
+        for a, end in ends.items()]}}}
+    cal = cf.fiscal_calendar("0000104169", gaap)
+    assert cal.offset == 0
+    assert cal.fiscal_year("2013-01-31") == 2013        # was 2012 — the filing's own bad label
+    assert cal.fiscal_year("2014-01-31") == 2014        # was 2013, leaving fiscal 2014 with no row
+    assert cal.fiscal_year("2015-01-31") == 2015        # agreeing labels are still adopted

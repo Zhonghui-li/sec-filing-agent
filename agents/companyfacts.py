@@ -211,6 +211,43 @@ def foreign_filer_note(query):
 
 
 # --- extraction (identical logic to the offline script) --------------------------------------
+def _year_end_only(facts, cal=None):
+    """Drop balance-sheet instants that aren't the company's year end.
+
+    Having no start date makes a fact an instant, not a year end. A 10-K also carries instants from
+    inside the year, and neither `form` nor `fp` separates them — Target's $1,000,000,000 at
+    2010-07-31 arrives on a 10-K tagged fp=FY, six months off. Taking the latest end per fiscal year
+    then picks the mid-year figure over the real one.
+
+    Two tests, covering different eras because the submissions feed only reaches back about ten
+    years. Within the span the feed does cover, the company's own filed period ends are the direct
+    evidence: an instant on a date the company never closed a period on is not a period end
+    (Walmart's cash at 2012-12-31 sits one month off a January year end, close enough to survive
+    any month-based rule). Before that span there is no such list, so fall back on the pattern: a
+    company's year ends in the same month every year, give or take a week for 52/53-week
+    calendars, so an instant in any other month isn't one. The fallback only applies with enough
+    years to establish the pattern and a clear majority behind it; below that, keeping a stray
+    beats dropping a real one on a two-point guess.
+    """
+    known = set(cal._by_end) if cal is not None and cal._by_end else set()
+    if known:
+        lo, hi = min(known), max(known)
+        facts = {end: v for end, v in facts.items() if not (lo <= end <= hi) or end in known}
+    if len(facts) < 4:
+        return facts
+    months = Counter(end[5:7] for end in facts)
+    # Count the WINDOW, not the single month. A 52/53-week fiscal year lands in two adjacent months
+    # from year to year — Target's ends fall in both January and February — so no single month can
+    # hold a majority and a per-month test would decline to filter anything.
+    def window(m):
+        return {f"{(int(m) + d - 1) % 12 + 1:02d}" for d in (-1, 0, 1)}
+    near, n = max(((window(m), sum(months[x] for x in window(m))) for m in months),
+                  key=lambda t: t[1])
+    if n <= len(facts) / 2:                       # nothing dominant — can't tell, keep everything
+        return facts
+    return {end: v for end, v in facts.items() if end[5:7] in near}
+
+
 def annual_values(units, kind, cal=None):
     """{fiscal_year_end -> {val, accn, restated_val, restated_accn}} for 10-K annual facts. A
     duration fact must span a full year (350-380 days, dropping quarters/stubs); an instant fact
@@ -237,6 +274,8 @@ def annual_values(units, kind, cal=None):
             if "start" in u:
                 continue
         facts.setdefault(end, []).append((u.get("accn", ""), u["val"], u.get("fy")))
+    if kind == "instant":
+        facts = _year_end_only(facts, cal)
     out = {}
     for end, cands in facts.items():
         # The filing this period was FIRST reported in — the one it is the current period of.
@@ -450,7 +489,7 @@ def fiscal_calendar(cik, gaap):
                         label[a] = (u["fy"], u["fp"])
                         need.discard(a)
         by_accn = {}
-        offs = []
+        offs = {}
         for a, end in report.items():
             if a not in label:
                 continue
@@ -464,7 +503,7 @@ def fiscal_calendar(cik, gaap):
             # fallback for an ANNUAL period too old to be in the feed; quarters fall back to
             # _fiscal_period instead.
             if fp == "FY":
-                offs.append((end, fy - int(end[:4])))
+                offs.setdefault(end, fy - int(end[:4]))   # one period, one vote
         # an amendment supersedes the original for "as reported for that period", matching the
         # previous max(accn) choice among a period's own filings
         accn_by_end = {end: max(accns) for end, accns in by_accn.items()}
@@ -481,11 +520,22 @@ def fiscal_calendar(cik, gaap):
         # themselves are unaffected: each one carries its own filing's label from the map, and
         # only periods older than all of them ever reach this value.
         if offs:
-            counts = Counter(o for _, o in offs)
+            counts = Counter(offs.values())
             offset = counts.most_common(1)[0][0]
             if len(counts) > 1:
                 log_miss(str(cik), "fiscal_calendar",
                          reason=f"inconsistent_fy_tags:{dict(counts)}")
+            # A filing's own label is adopted only where it AGREES with that convention. The two
+            # Walmart filings above don't just skew the fallback offset — they are the labels for
+            # their own periods, so 2013-01-31 and 2014-01-31 each landed a year early: fiscal
+            # 2013 ended up with two period ends and fiscal 2014 vanished from the data entirely.
+            # The same shape shows up in Kroger, Ulta and Salesforce. A label that contradicts the
+            # company's dominant convention is not evidence about that period, so it is dropped
+            # and the year is derived the way a period too old for the feed already is. Annual
+            # labels only — a 10-Q's offset legitimately differs, as the note above explains.
+            for end, off in offs.items():
+                if off != offset:
+                    by_end[end] = (int(end[:4]) + offset, "FY")
     except Exception as e:
         # the same miss log the tools use, so a company whose fiscal-year naming we could not
         # establish leaves a trace instead of quietly answering with calendar years. Skipped for a
