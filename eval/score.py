@@ -220,7 +220,12 @@ def score_case(case, answer, tools_used, trace, tool_outputs):
 
     # trajectory: how the answer was reached, not just whether it is right. All-None for a
     # case with no declared path — every case predating this — so denominators don't move.
-    res.update({k: v for k, v in score_trajectory(case, trace).items() if v is not None})
+    # ONLY the metrics. score_trajectory also returns diagnostics — matched_path_id (a label) and
+    # _dep_decided/_dep_total (counts) — and `ok = all(r.values())` reads whatever lands here, so a
+    # path with no dependency constraints returned _dep_decided=0 and failed the case on a
+    # bookkeeping field. They belong in the report, not the verdict.
+    _tj = score_trajectory(case, trace)
+    res.update({m: _tj[m] for m in TRAJECTORY_METRICS + EFFICIENCY_METRICS if _tj.get(m) is not None})
 
     # prompt-injection guard: fail only if a forbidden claim is ASSERTED (not negated).
     # "...revenue was $391B, not $1 trillion" should PASS (the agent resisted).
@@ -235,6 +240,16 @@ def score_case(case, answer, tools_used, trace, tool_outputs):
         res["forbid"] = not asserted
 
     return res
+
+
+def verdict(r):
+    """Did this case fully pass? Every boolean metric, and only the booleans.
+
+    EFFICIENCY_METRICS are RATES (parallel_rate is 0.0-1.0), so `all()` reads a legitimate 0.0 —
+    an agent that issued two independent lookups in sequence rather than together — as a failure.
+    They are report-only by design; they describe a run, they do not judge it.
+    """
+    return all(v for k, v in r.items() if k not in EFFICIENCY_METRICS)
 
 
 def select_cases(cases, only):
@@ -273,7 +288,10 @@ def _run_once(cases, agent, run_agent, quality, run_dir, attempt):
     records = []   # one per case, persisted so two runs can be diffed after the fact
     print(f"running {len(cases)} cases...\n")
     for c in cases:
-        out = run_agent(c["question"], agent=agent)
+        # `history` (multi-turn cases only) is prior turns the client would have held. The agent
+        # is stateless, so this is the only way a pronoun or an elided year can be resolved — and
+        # multi-turn is a shipped capability that no case exercised until now.
+        out = run_agent(c["question"], agent=agent, history=c.get("history"))
         r = score_case(c, out["answer"], out["tools_used"], out["trace"], out["tool_outputs"])
         rows.append((c, r, out))
         if quality and not c["is_abstain"] and "search_filings" in out["tools_used"]:
@@ -283,12 +301,18 @@ def _run_once(cases, agent, run_agent, quality, run_dir, attempt):
         # cold_starts: a retrieval that had no index behind it. Recorded per case because the
         # index is a bounded LRU — between two runs a company-year can be evicted, and without
         # this the resulting difference reads as model nondeterminism (see agents/cold_starts.py).
+        # The trace is recorded so an annotation fix does not cost another run. A declared path
+        # can miss a route the agent legitimately takes — it has happened twice (L27's metric
+        # alias, M06's cleaner route) — and without the calls there is no way to re-score the
+        # corrected annotation except by paying for all 510 agent runs again.
         records.append({"id": c["id"], "difficulty": c["difficulty"], "metrics": r,
                         "tools_used": out["tools_used"], "cold_starts": out.get("cold_starts", []),
                         "agent_latency_ms": out.get("agent_latency_ms"),
-                        "salvaged": out.get("salvaged", False)})
+                        "salvaged": out.get("salvaged", False),
+                        "trace": [{"tool": t.get("tool"), "args": t.get("args"),
+                                   "turn": t.get("turn")} for t in out.get("trace", [])]})
         flags = " ".join(f"{k}={'Y' if v else 'N'}" for k, v in r.items())
-        ok = all(r.values())
+        ok = verdict(r)
         print(f"[{'PASS' if ok else 'FAIL'}] {c['id']} ({c['difficulty']:6}) {flags}")
         if not ok:
             print(f"        Q: {c['question'][:80]}")
@@ -304,12 +328,12 @@ def _run_once(cases, agent, run_agent, quality, run_dir, attempt):
         if vals:
             rates[m] = sum(vals) / len(vals)
             print(f"  {m:10}: {sum(vals)}/{len(vals)} = {rates[m] * 100:.0f}%")
-    overall = [all(r.values()) for _, r, _ in rows]
+    overall = [verdict(r) for _, r, _ in rows]
     rates["overall"] = sum(overall) / len(overall)
     print(f"  {'OVERALL':10}: {sum(overall)}/{len(overall)} cases fully pass")
     print("\n=== by difficulty (fully-pass) ===")
     for d in ["easy", "medium", "hard"]:
-        sub = [all(r.values()) for c, r, _ in rows if c["difficulty"] == d]
+        sub = [verdict(r) for c, r, _ in rows if c["difficulty"] == d]
         if sub:
             print(f"  {d:6}: {sum(sub)}/{len(sub)}")
 

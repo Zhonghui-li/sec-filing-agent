@@ -171,3 +171,35 @@ def test_a_percentage_that_is_actually_wrong_still_fails():
     r = score_case(case, "NVIDIA's revenue grew 12% year over year.", ["get_growth"], [],
                    [("get_growth", "NVDA revenue grew +0.2%")])
     assert r["numerical"] is False
+
+
+def test_diagnostics_do_not_decide_whether_a_case_passed():
+    """score_trajectory returns matched_path_id (a label) and _dep_decided/_dep_total (counts)
+    alongside the metrics, and the runner's verdict reads whatever score_case puts in the result.
+    A path with no dependency constraints returns _dep_decided=0, which made every such case fail
+    on a bookkeeping field — first seen when the multi-turn cases, all single-step, failed while
+    every metric they carried said Y."""
+    from eval.score import score_case
+    case = {"id": "TX", "capability": "lookup", "difficulty": "medium", "is_abstain": False,
+            "expected_tools": ["get_financials"],
+            "trajectory": {"paths": [{"id": "main", "steps": [
+                {"sid": "s1", "tool": "get_financials",
+                 "args": {"ticker": "AAPL", "metric": "revenue", "fiscal_year": 2024}}]}],
+                "forbidden_tools": [], "call_slack": 1}}
+    trace = [{"tool": "get_financials", "turn": 1,
+              "args": {"ticker": "AAPL", "metric": "revenue", "fiscal_year": 2024},
+              "output": "AAPL revenue for FY2024: $391,035,000,000."}]
+    res = score_case(case, "Apple's revenue was $391,035,000,000.",
+                     ["get_financials"], trace, [("get_financials", trace[0]["output"])])
+    assert "_dep_decided" not in res and "_dep_total" not in res
+    assert "matched_path_id" not in res
+
+
+def test_a_rate_metric_does_not_fail_a_case():
+    """parallel_rate is 0.0-1.0, not a boolean. Issuing two independent lookups in sequence rather
+    than together is a legitimate style choice — the metric is report-only by design — but a plain
+    all() read the 0.0 as a failure and failed the case."""
+    from eval.score import verdict
+    assert verdict({"numerical": True, "step_recall": True, "parallel_rate": 0.0}) is True
+    assert verdict({"numerical": False, "parallel_rate": 1.0}) is False
+    assert verdict({"numerical": True, "step_recall": False, "parallel_rate": 1.0}) is False
