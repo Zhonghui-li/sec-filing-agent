@@ -203,3 +203,14 @@ def test_a_rate_metric_does_not_fail_a_case():
     assert verdict({"numerical": True, "step_recall": True, "parallel_rate": 0.0}) is True
     assert verdict({"numerical": False, "parallel_rate": 1.0}) is False
     assert verdict({"numerical": True, "step_recall": False, "parallel_rate": 1.0}) is False
+
+
+def test_a_not_applicable_metric_is_excluded_not_counted_as_failure():
+    """facts_grounded is three-valued: None when the run retrieved no evidence to check the claims
+    against. `all()` read that None as a failure, and the aggregator summed it and crashed with
+    'unsupported operand type(s) for +: int and NoneType' — after the cases had run and before the
+    records were written, so the whole run's agent calls were lost."""
+    from eval.score import verdict
+    assert verdict({"numerical": True, "facts_grounded": None}) is True
+    assert verdict({"numerical": True, "facts_grounded": False}) is False
+    assert verdict({"numerical": True, "step_recall": None, "parallel_rate": 0.0}) is True

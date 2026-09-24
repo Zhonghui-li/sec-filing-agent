@@ -248,8 +248,13 @@ def verdict(r):
     EFFICIENCY_METRICS are RATES (parallel_rate is 0.0-1.0), so `all()` reads a legitimate 0.0 —
     an agent that issued two independent lookups in sequence rather than together — as a failure.
     They are report-only by design; they describe a run, they do not judge it.
+
+    None means NOT APPLICABLE, never failure: facts_grounded is None when the run retrieved no
+    evidence to check the claims against, and the trajectory metrics are None for a case with no
+    declared path. Counting those as failures would penalise a case for a question we did not ask.
     """
-    return all(v for k, v in r.items() if k not in EFFICIENCY_METRICS)
+    return all(v for k, v in r.items()
+               if k not in EFFICIENCY_METRICS and v is not None)
 
 
 def select_cases(cases, only):
@@ -318,13 +323,27 @@ def _run_once(cases, agent, run_agent, quality, run_dir, attempt):
             print(f"        Q: {c['question'][:80]}")
             print(f"        tools={out['tools_used']}  A: {out['answer'][:120].strip()}")
 
+    # Written BEFORE aggregating. The records are what the run cost; an exception while summing
+    # them (a three-valued metric reaching sum() did exactly this) would otherwise discard every
+    # agent call the run paid for.
+    if run_dir:
+        run_dir.mkdir(parents=True, exist_ok=True)
+        path = run_dir / f"run{attempt + 1}.jsonl"
+        with path.open("w") as fh:
+            for rec in records:
+                fh.write(json.dumps(rec) + "\n")
+        cold = sum(len(rec["cold_starts"]) for rec in records)
+        print(f"\nwrote {path}  ({len(records)} cases, {cold} cold starts)")
+
     # aggregate per metric
     print("\n=== per-metric pass rate ===")
     metrics = ["numerical", "citation", "grounded", "tool", "abstain", "reason",
                "facts", "facts_grounded", "context_recall", "forbid"] + TRAJECTORY_METRICS + EFFICIENCY_METRICS
     rates = {}
     for m in metrics:
-        vals = [r[m] for _, r, _ in rows if m in r]
+        # None is excluded, not counted: a three-valued metric says "not applicable here", and
+        # summing it both crashes and would understate the rate if it were coerced to False.
+        vals = [r[m] for _, r, _ in rows if r.get(m) is not None]
         if vals:
             rates[m] = sum(vals) / len(vals)
             print(f"  {m:10}: {sum(vals)}/{len(vals)} = {rates[m] * 100:.0f}%")
@@ -350,14 +369,6 @@ def _run_once(cases, agent, run_agent, quality, run_dir, attempt):
                 rates[name] = round(sum(vals) / len(vals), 3)
                 print(f"  {name:16}: {rates[name]:.3f}  (mean over {len(vals)})")
 
-    if run_dir:
-        run_dir.mkdir(parents=True, exist_ok=True)
-        path = run_dir / f"run{attempt + 1}.jsonl"
-        with path.open("w") as fh:
-            for rec in records:
-                fh.write(json.dumps(rec) + "\n")
-        cold = sum(len(rec["cold_starts"]) for rec in records)
-        print(f"\nwrote {path}  ({len(records)} cases, {cold} cold starts)")
     return rates, {rec["id"]: rec for rec in records}
 
 
