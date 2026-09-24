@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-09-24T17:53:31Z",
+  "generated_at": "2026-09-24T22:08:10Z",
   "filing_chunks_max": 24000,
-  "total_chunks": 22985,
+  "total_chunks": 23274,
   "entries": [
     {
       "ticker": "AAPL",
@@ -194,10 +194,38 @@
     },
     {
       "ticker": "INTC",
+      "fiscal_year": 2016,
+      "pinned": false,
+      "chunks": 37,
+      "accessions": 1
+    },
+    {
+      "ticker": "INTC",
+      "fiscal_year": 2017,
+      "pinned": false,
+      "chunks": 86,
+      "accessions": 3
+    },
+    {
+      "ticker": "INTC",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 143,
+      "accessions": 2
+    },
+    {
+      "ticker": "INTC",
       "fiscal_year": 2025,
       "pinned": true,
       "chunks": 194,
       "accessions": 23
+    },
+    {
+      "ticker": "INTC",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 23,
+      "accessions": 11
     },
     {
       "ticker": "JPM",

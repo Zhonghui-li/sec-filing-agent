@@ -372,6 +372,17 @@ def _run_once(cases, agent, run_agent, quality, run_dir, attempt):
     return rates, {rec["id"]: rec for rec in records}
 
 
+def load_runs(run_dir):
+    """The per-case records of a finished run, as _variance_report wants them. Reporting is
+    separated from running because the records outlive the process that made them: the first
+    variance pass crashed in the report AFTER all five runs had been paid for, and being able to
+    re-report from disk is the difference between a bug fix and another 130 agent calls."""
+    out = []
+    for path in sorted(Path(run_dir).glob("run*.jsonl")):
+        out.append({r["id"]: r for r in (json.loads(l) for l in path.open())})
+    return out
+
+
 def _variance_report(runs):
     """How much each metric moves between runs of the SAME build — the noise floor a gate has to
     clear. A threshold set without this is set against whatever the last two runs happened to do.
@@ -385,7 +396,8 @@ def _variance_report(runs):
     for m in metrics:
         rates = []
         for r in runs:
-            vals = [rec["metrics"][m] for rec in r.values() if m in rec["metrics"]]
+            vals = [rec["metrics"][m] for rec in r.values()
+                    if rec["metrics"].get(m) is not None]     # None = not applicable, excluded
             if vals:
                 rates.append(sum(vals) / len(vals))
         if len(rates) < 2:
@@ -433,7 +445,18 @@ if __name__ == "__main__":
                          "floor a gate has to clear; does not touch the baseline)")
     ap.add_argument("--run-dir", metavar="DIR",
                     help="write per-case results to DIR/run<N>.jsonl so two runs can be diffed")
+    ap.add_argument("--report", metavar="DIR",
+                    help="print the variance report for an ALREADY-RECORDED run and exit; "
+                         "runs no cases")
     args = ap.parse_args()
+
+    if args.report:
+        saved = load_runs(args.report)
+        if not saved:
+            print(f"no run*.jsonl under {args.report}")
+            sys.exit(1)
+        _variance_report(saved)
+        sys.exit(0)
 
     run_dir = Path(args.run_dir) if args.run_dir else None
     if args.repeat > 1 and run_dir is None:      # a variance run is worthless without the records
