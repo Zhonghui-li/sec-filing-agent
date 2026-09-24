@@ -219,13 +219,21 @@ def score_trajectory(case: Dict, trace: List[Dict]) -> Dict[str, Optional[Any]]:
              for t in (trace or [])]
     forbidden, slack = spec.get("forbidden_tools", []), spec.get("call_slack", 1)
 
-    # Deterministic choice among accepted paths: most steps matched, then fewest extra calls, then
-    # declaration order. Paths are never blended — a half-of-A-half-of-B run scores against
-    # whichever single path fits best, and if that hybrid is legitimate it gets declared as its own.
+    # Deterministic choice among accepted paths: most steps matched, then fewest of the path's own
+    # steps left unmatched, then fewest extra calls, then declaration order. Paths are never
+    # blended — a half-of-A-half-of-B run scores against whichever single path fits best, and if
+    # that hybrid is legitimate it gets declared as its own.
+    #
+    # The second key is what separates paths of different LENGTH that matched the same number of
+    # calls. C03 can be answered by fetching both years and subtracting, or by one compute_formula
+    # using delta(); because compute and compute_formula fold together, a lone compute_formula call
+    # matches one step of EITHER path. On count and extra calls alone those tie, declaration order
+    # picked the three-step path, and a complete one-call answer scored step_recall 1/3. A path
+    # that fully explains the run beats one that explains a third of itself.
     def rank(p):
         r = _score_path(p, calls, forbidden, slack)
         hit = sum(1 for i in _match_steps(p["steps"], calls).values() if i is not None)
-        return (-hit, len(calls) - hit), p.get("id"), r
+        return (-hit, len(p["steps"]) - hit, len(calls) - hit), p.get("id"), r
 
     best = sorted((rank(p) for p in spec["paths"]), key=lambda x: x[0])[0]
     out = {m: best[2].get(m) for m in TRAJECTORY_METRICS + EFFICIENCY_METRICS}

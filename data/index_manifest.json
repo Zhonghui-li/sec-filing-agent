@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-09-23T21:01:03Z",
-  "filing_chunks_max": 20000,
-  "total_chunks": 19524,
+  "generated_at": "2026-09-24T17:53:31Z",
+  "filing_chunks_max": 24000,
+  "total_chunks": 22985,
   "entries": [
     {
       "ticker": "AAPL",
@@ -116,6 +116,34 @@
       "accessions": 2
     },
     {
+      "ticker": "CVX",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 255,
+      "accessions": 6
+    },
+    {
+      "ticker": "CVX",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 132,
+      "accessions": 11
+    },
+    {
+      "ticker": "DIS",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 357,
+      "accessions": 6
+    },
+    {
+      "ticker": "DIS",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 196,
+      "accessions": 11
+    },
+    {
       "ticker": "F",
       "fiscal_year": 2025,
       "pinned": false,
@@ -128,6 +156,20 @@
       "pinned": false,
       "chunks": 213,
       "accessions": 14
+    },
+    {
+      "ticker": "GM",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 421,
+      "accessions": 7
+    },
+    {
+      "ticker": "GM",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 165,
+      "accessions": 10
     },
     {
       "ticker": "GOOGL",
@@ -161,8 +203,8 @@
       "ticker": "JPM",
       "fiscal_year": 2023,
       "pinned": true,
-      "chunks": 566,
-      "accessions": 1
+      "chunks": 2210,
+      "accessions": 27
     },
     {
       "ticker": "JPM",
@@ -210,8 +252,8 @@
       "ticker": "MGM",
       "fiscal_year": 2022,
       "pinned": true,
-      "chunks": 510,
-      "accessions": 4
+      "chunks": 160,
+      "accessions": 2
     },
     {
       "ticker": "MGM",
@@ -275,6 +317,20 @@
       "pinned": false,
       "chunks": 75,
       "accessions": 2
+    },
+    {
+      "ticker": "ORCL",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 8,
+      "accessions": 3
+    },
+    {
+      "ticker": "ORCL",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 633,
+      "accessions": 14
     },
     {
       "ticker": "PEP",

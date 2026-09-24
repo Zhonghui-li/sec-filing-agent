@@ -262,3 +262,42 @@ def test_the_matched_path_is_reported_so_strategy_shifts_are_visible():
            _call("search_filings", {"query": "digital assets"}, "none"),
            _call("abstain", {"reason": "not_in_filings"})]
     assert score_trajectory(TWO_SEARCHES, two)["matched_path_id"] == "verify_twice"
+
+
+def test_a_shorter_path_that_fully_explains_the_run_beats_a_longer_partial_one():
+    """C03 ("how much did net income change from FY2022 to FY2024") is answerable by fetching both
+    years and subtracting, or by one compute_formula using delta(). Because compute and
+    compute_formula fold together for matching, a lone compute_formula call matches ONE step of
+    either path — so on steps-matched and extra-calls the two tied, declaration order picked the
+    three-step path, and a complete one-call answer scored step_recall 1/3. Ranking also on the
+    path's OWN unmatched steps picks the path that explains the whole run."""
+    case = {"trajectory": {"paths": [
+        {"id": "fetch_both_then_diff", "steps": [
+            {"sid": "s1", "tool": "get_financials",
+             "args": {"ticker": "AAPL", "metric": "net_income", "fiscal_year": 2024}},
+            {"sid": "s2", "tool": "get_financials",
+             "args": {"ticker": "AAPL", "metric": "net_income", "fiscal_year": 2022}},
+            {"sid": "s3", "tool": "compute", "depends_on": ["s1", "s2"]}]},
+        {"id": "formula_delta", "steps": [
+            {"sid": "f1", "tool": "compute_formula",
+             "args": {"ticker": "AAPL", "fiscal_year": 2024}}]},
+    ], "forbidden_tools": [], "call_slack": 1}}
+
+    one_call = [{"tool": "compute_formula", "turn": 1,
+                 "args": {"expression": "delta(net_income, 2)", "ticker": "AAPL",
+                          "fiscal_year": 2024}}]
+    r = score_trajectory(case, one_call)
+    assert r["matched_path_id"] == "formula_delta"
+    assert r["step_recall"] is True
+
+    # and the long path still wins when the run actually took it
+    three_calls = [
+        {"tool": "get_financials", "turn": 1,
+         "args": {"ticker": "AAPL", "metric": "net_income", "fiscal_year": 2024}},
+        {"tool": "get_financials", "turn": 1,
+         "args": {"ticker": "AAPL", "metric": "net_income", "fiscal_year": 2022}},
+        {"tool": "compute", "turn": 2, "args": {"op": "diff", "a": 1, "b": 2}},
+    ]
+    r = score_trajectory(case, three_calls)
+    assert r["matched_path_id"] == "fetch_both_then_diff"
+    assert r["step_recall"] is True
