@@ -44,6 +44,9 @@ def main():
         if "trace" not in (recs[0] if recs else {}):
             print(f"{path.name}: recorded before traces were kept — cannot re-score")
             continue
+        if recs and recs[0]["trace"] and "output" not in recs[0]["trace"][0]:
+            print(f"{path.name}: recorded without tool outputs — dependency_ok cannot be decided "
+                  f"on replay and comes back None; every other metric replays exactly")
         rates = {}
         for rec in recs:
             case = cases.get(rec["id"])

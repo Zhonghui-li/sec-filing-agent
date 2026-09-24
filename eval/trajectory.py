@@ -10,6 +10,7 @@ becomes the next "score dropped but nothing broke" (that happened four times on 
 
 Contract and schema: Obsidian note 33.
 """
+import json
 from typing import Any, Dict, List, Optional
 
 # Metrics defined here. Listed so eval/score.py can report them without hardcoding names twice.
@@ -117,8 +118,33 @@ def _score_path(path: Dict, calls: List[Dict], forbidden: List[str], slack: int)
     # The only metric that speaks to a missing step.
     res["step_recall"] = all(i is not None for i in where.values())
 
-    extra = [c for i, c in enumerate(calls) if i not in matched]
-    res["tool_precision"] = not extra and not any(c.get("tool") in (forbidden or []) for c in calls)
+    # An extra call is only waste if it bought nothing. "Call count alone cannot define waste —
+    # marginal information value is what matters": a second retrieval that rephrases the query, or
+    # widens k from 5 to 10, is verifying a negative, and one miss is weak evidence of absence. A
+    # call that EXACTLY repeats an earlier one (same tool, same arguments) can return only what the
+    # first already did, so its marginal value is zero by construction. That is the line here; the
+    # sheer VOLUME of exploration is call_budget's job, and a tool that should never have been
+    # touched is forbidden_tools'.
+    #
+    # Two ways an unmatched call earns nothing, and they are different failures:
+    #   a REPEAT of an earlier call can return only what that one already returned, and
+    #   a call to a tool this path never mentions is off the route entirely, not more of it.
+    # Between them sits the case this metric used to get wrong: another search_filings with a
+    # different query, or the same query at k=10 instead of k=5. That is the agent widening its
+    # search after a thin result, and it is how a negative gets verified.
+    #
+    # Only unmatched calls can be waste — a call satisfying a declared step is one the path asked
+    # for, including the second search_filings of a verify_twice path.
+    declared = {st["tool"] for st in steps}
+    seen, wasted = set(), []
+    for i, c in enumerate(calls):
+        key = (c.get("tool"), json.dumps(c.get("args") or {}, sort_keys=True, default=str))
+        if i not in matched and (key in seen or
+                                 not any(_tool_eq(d, c.get("tool")) for d in declared)):
+            wasted.append(c)
+        seen.add(key)
+    res["tool_precision"] = not wasted and not any(c.get("tool") in (forbidden or [])
+                                                   for c in calls)
 
     # arg_correct: over declared arg keys, plus any `args_differ_from` constraint. A step with
     # neither contributes nothing, so a tool whose only argument is free text can't fail on wording.

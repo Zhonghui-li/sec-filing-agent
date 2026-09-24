@@ -314,8 +314,13 @@ def _run_once(cases, agent, run_agent, quality, run_dir, attempt):
                         "tools_used": out["tools_used"], "cold_starts": out.get("cold_starts", []),
                         "agent_latency_ms": out.get("agent_latency_ms"),
                         "salvaged": out.get("salvaged", False),
+                        # output included: dependency_ok decides by looking for what a step
+                        # PRODUCED inside the arguments of the step that depends on it, so a trace
+                        # recorded without outputs replays as undecidable rather than as True.
+                        # Already trimmed to 600 chars per call by _extract_trace.
                         "trace": [{"tool": t.get("tool"), "args": t.get("args"),
-                                   "turn": t.get("turn")} for t in out.get("trace", [])]})
+                                   "turn": t.get("turn"), "output": t.get("output")}
+                                  for t in out.get("trace", [])]})
         flags = " ".join(f"{k}={'Y' if v else 'N'}" for k, v in r.items())
         ok = verdict(r)
         print(f"[{'PASS' if ok else 'FAIL'}] {c['id']} ({c['difficulty']:6}) {flags}")
