@@ -11,6 +11,7 @@ to its source filing, and honest abstention when something isn't in the data.
 Same create_react_agent orchestration as the Slug Advisor; only the tools and the
 system prompt change (raised to the finance bar).
 """
+import json
 import os
 import re
 import functools
@@ -389,6 +390,39 @@ def build_agent(model: str = None, temperature: float = 0.0, user_id: str = None
     return create_react_agent(llm, tools, prompt=prompt)
 
 
+_ABSTAIN_JSON_RX = re.compile(r'\{[^{}]*"reason"\s*:\s*"([a-z_]+)"[^{}]*\}', re.S)
+
+
+def _abstain_written_as_text(answer: str):
+    """The abstain call the model wrote into the message CONTENT instead of calling, or None.
+
+    Off-topic questions are where the refusal misses the tool — the metric that counts refusals
+    sees nothing, so a refusal nobody can count. Three of the five off-topic cases fail this way
+    and the answer the user gets is the raw call:
+
+        {"reason":"off_topic","detail":"Real-time market data such as current stock prices ..."}
+
+    So it is not only an eval gap: that JSON ships. The arguments are RIGHT — a well-formed call
+    that landed in the wrong channel. Recognising one is parsing, not persuading the model, which
+    is the distinction note 31 draws when it says to record the behaviour rather than fight it:
+    what it rules out is another prompt rule, not reading what the model actually produced.
+
+    Deliberately strict. Only a JSON object whose `reason` is one of the declared categories
+    counts; prose that merely refuses is left alone, because inferring an abstention from wording
+    is the keyword-matching this suite replaced with a structured signal in the first place.
+    """
+    m = _ABSTAIN_JSON_RX.search(answer or "")
+    if not m or m.group(1) not in ABSTAIN_REASONS:
+        return None
+    try:
+        payload = json.loads(m.group(0))
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(payload, dict) or payload.get("reason") not in ABSTAIN_REASONS:
+        return None
+    return {"reason": payload["reason"], "detail": str(payload.get("detail", "")).strip()}
+
+
 def _extract_trace(messages, max_chars=600) -> List[Dict]:
     # pair each tool call with the output it produced (by tool_call_id) so the audit trail can show
     # what a tool RETURNED — the cited figure, the abstain, the [CHECK] convention note — not just
@@ -503,6 +537,22 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
                         for m in messages if isinstance(m, ToolMessage)]
         usage = observability.sum_usage(messages)
         tools_used = [t["tool"] for t in trace]
+        # A well-formed abstain that arrived as text rather than as a call: record it as the call
+        # it is, and give the user prose instead of the JSON. `text_abstain` keeps it visible in
+        # the audit — recovering one is not the same as the model having routed correctly.
+        text_abstain = None
+        if "abstain" not in tools_used:
+            text_abstain = _abstain_written_as_text(answer)
+        if text_abstain:
+            out = f"ABSTAIN[{text_abstain['reason']}] {text_abstain['detail']}".strip()
+            entry = {"tool": "abstain", "args": text_abstain, "output": out,
+                     "turn": (trace[-1]["turn"] + 1) if trace else 0}
+            trace.append(entry)
+            full_trace.append(entry)
+            tool_outputs.append(("abstain", out))
+            tools_used.append("abstain")
+            answer = (text_abstain["detail"]
+                      or "I can't answer that from SEC filings.").strip()
         # full_trace (untrimmed): the guardrail must see the whole retrieved passage to confirm a $
         # figure traces to it — the 600-char UI trim would starve the check and false-abstain.
         guardrail_reason = guardrail_check(answer, tools_used, full_trace)  # capture the decision
@@ -536,6 +586,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
         cold_starts = take_cold_starts()
         audit = {"accessions_cited": accns, "abstained": "abstain" in tools_used,
                  "no_tool_answer": not tools_used,
+                 "text_abstain": bool(text_abstain),
                  "cold_starts": cold_starts,
                  "abstain_reason": next((t["args"].get("reason")
                                          for t in trace if t["tool"] == "abstain"), None),
