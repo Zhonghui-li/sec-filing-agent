@@ -349,13 +349,20 @@ def _uploaded_doc_names(user_id: str):
         return []
 
 
+# What PRODUCTION runs (service/deploy.sh has set it since 138a3b9). The default was "medium",
+# so an eval run, a local run and the live service were three different configurations and the
+# baseline described none of them. A default that isn't what ships makes "run it locally" mean
+# something other than "run what users get".
+_DEFAULT_EFFORT = "low"
+
+
 def build_agent(model: str = None, temperature: float = 0.0, user_id: str = None,
                 scope_doc: str = None):
     model = model or os.environ.get("GEN_LLM_MODEL", "o4-mini")
     # o-series reasoning models (o1/o3/o4-...) reject a non-default temperature and instead take a
     # reasoning_effort knob; only the chat models (gpt-4o, ...) get a temperature.
     if re.match(r"^o\d", model):
-        llm = ChatOpenAI(model=model, reasoning_effort=os.environ.get("REASONING_EFFORT", "medium"))
+        llm = ChatOpenAI(model=model, reasoning_effort=os.environ.get("REASONING_EFFORT", _DEFAULT_EFFORT))
     else:
         llm = ChatOpenAI(model=model, temperature=temperature)
     # only add the private-docs tools when a user is in scope, so eval/public demo are unchanged
@@ -426,7 +433,7 @@ def _llm(model: str = None):
     """The chat model, built the same way as build_agent's (used by the salvage synthesis)."""
     model = model or os.environ.get("GEN_LLM_MODEL", "o4-mini")
     if re.match(r"^o\d", model):
-        return ChatOpenAI(model=model, reasoning_effort=os.environ.get("REASONING_EFFORT", "medium"))
+        return ChatOpenAI(model=model, reasoning_effort=os.environ.get("REASONING_EFFORT", _DEFAULT_EFFORT))
     return ChatOpenAI(model=model, temperature=0)
 
 
@@ -499,7 +506,8 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
         # full_trace (untrimmed): the guardrail must see the whole retrieved passage to confirm a $
         # figure traces to it — the 600-char UI trim would starve the check and false-abstain.
         guardrail_reason = guardrail_check(answer, tools_used, full_trace)  # capture the decision
-        answer = guardrail(answer, tools_used, full_trace)   # hard backstop against bad numbers
+        answer = guardrail(answer, tools_used, full_trace,   # hard backstop against bad numbers
+                           reason=guardrail_reason, _checked=True)
         # audit trail: which filings were cited + whether/why it abstained
         accns = sorted({a for _, c in tool_outputs
                         for a in re.findall(r"\d{10}-\d{2}-\d{6}", c)})

@@ -32,7 +32,12 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       EMB_MODEL: text-embedding-3-small
-      GEN_LLM_MODEL: gpt-4o-mini
+      # Match production (service/deploy.sh). The default model moved to o4-mini in 138a3b9, which
+      # updated the agent, observability, the FinanceBench harness and deploy.sh — and missed this
+      # file, so every manual L2 run since has scored a model that was replaced three months ago,
+      # and replaced precisely because its tool routing was unstable.
+      GEN_LLM_MODEL: o4-mini
+      REASONING_EFFORT: low
       RERANK: "1"
     steps:
       - uses: actions/checkout@v4

@@ -359,9 +359,16 @@ def restore_citation(answer: str, tools_used: List[str], trace: List[Dict] = Non
     return f"{answer.rstrip()}\n\n[source: {', '.join(accns)}]" if accns else answer
 
 
-def guardrail(answer: str, tools_used: List[str], trace: List[Dict] = None) -> str:
+def guardrail(answer: str, tools_used: List[str], trace: List[Dict] = None,
+              reason: str = None, _checked: bool = False) -> str:
     """Return a safe abstention if guardrail_check flags an untrustworthy number; otherwise the
-    answer, with its source restored if the model dropped it."""
-    if guardrail_check(answer, tools_used, trace):
+    answer, with its source restored if the model dropped it.
+
+    `reason`/`_checked` let a caller that already ran guardrail_check pass the verdict in rather
+    than have it recomputed. The check WRITES miss-log entries, so running it twice on one turn
+    filed every detection twice and doubled the counts a rate is read from."""
+    if not _checked:
+        reason = guardrail_check(answer, tools_used, trace)
+    if reason:
         return _SAFE
     return restore_citation(answer, tools_used, trace)

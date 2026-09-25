@@ -319,6 +319,10 @@ def _run_once(cases, agent, run_agent, quality, run_dir, attempt):
                         # number, not a single-question sample.
                         "usage": out.get("usage"),
                         "salvaged": out.get("salvaged", False),
+                        # the answer, so a detector's FALSE POSITIVES can be judged after the fact.
+                        # Whether a flagged figure was asserted or rejected is visible only here.
+                        "answer": (out.get("answer") or "")[:1200],
+                        "guardrail_reason": out.get("guardrail_reason"),
                         # output included: dependency_ok decides by looking for what a step
                         # PRODUCED inside the arguments of the step that depends on it, so a trace
                         # recorded without outputs replays as undecidable rather than as True.
