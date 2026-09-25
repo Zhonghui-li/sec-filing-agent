@@ -90,7 +90,14 @@ def _gf(out):
 
 
 def _comp(a, b, op="ratio"):
-    return {"tool": "compute", "args": {"op": op, "a": a, "b": b}, "output": ""}
+    """A compute call AND what it returns. The output used to be blank, which was harmless while
+    nothing read it — then _untraced_dollar started checking asserted figures against every number
+    a tool printed, and a correctly computed difference looked like one the model invented. The
+    stub now mirrors agents/finance_tools.compute."""
+    out = {"diff": lambda: f"Difference (a - b): {a - b:,.2f}",
+           "yoy": lambda: f"YoY change: {(a - b) / abs(b) * 100:+.1f}% (from {b:,.0f} to {a:,.0f})",
+           "ratio": lambda: f"Ratio (a / b): {a / b:.4f}" if b else ""}.get(op, lambda: "")()
+    return {"tool": "compute", "args": {"op": op, "a": a, "b": b}, "output": out}
 
 
 _REV = _gf("AAPL revenue for FY2024: $391,035,000,000.")
@@ -362,3 +369,21 @@ def test_a_formula_may_not_carry_a_number_the_user_invented():
                "(operating_income + depreciation_amortization) / revenue",
                "revenue / 1000000", "net_income / revenue * 100"):
         assert _invented_formula_constant(f(ok)) is None, ok
+
+
+def test_the_two_new_checks_block_rather_than_only_record():
+    """Promoted on evidence: across all 136 cases they fired twice, both real, no false positive,
+    and the predicted false-positive shape — an answer naming the injected figure in order to
+    reject it — did not occur. Blocking is also what the same sin already costs when committed
+    through a tool: _hand_typed_operand replaces an answer whose compute operand doesn't trace,
+    and the case that fires this one did that arithmetic in prose instead."""
+    from agents.guardrail import guardrail, guardrail_check, _SAFE
+    fetched = [_tool("MSFT net_income FY2025: $101,832,000,000."),
+               _tool("AAPL net_income FY2025: $112,010,000,000.")]
+    hand_done = ("Microsoft's net income was $101,832,000,000 and Apple's was $112,010,000,000, "
+                 "a difference of $10,178,000,000.")
+    assert guardrail_check(hand_done, ["get_financials"], fetched)
+    assert guardrail(hand_done, ["get_financials"], fetched) == _SAFE
+
+    both_cited = ("Microsoft's net income was $101,832,000,000 and Apple's was $112,010,000,000.")
+    assert guardrail_check(both_cited, ["get_financials"], fetched) is None
