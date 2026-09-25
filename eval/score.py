@@ -313,6 +313,11 @@ def _run_once(cases, agent, run_agent, quality, run_dir, attempt):
         records.append({"id": c["id"], "difficulty": c["difficulty"], "metrics": r,
                         "tools_used": out["tools_used"], "cold_starts": out.get("cold_starts", []),
                         "agent_latency_ms": out.get("agent_latency_ms"),
+                        # token usage: what a run actually costs, per case. o4-mini spends ~800
+                        # reasoning tokens a step that bill at the OUTPUT rate, so its cost is not
+                        # readable from the headline price — and comparing models needs the real
+                        # number, not a single-question sample.
+                        "usage": out.get("usage"),
                         "salvaged": out.get("salvaged", False),
                         # output included: dependency_ok decides by looking for what a step
                         # PRODUCED inside the arguments of the step that depends on it, so a trace

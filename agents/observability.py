@@ -16,13 +16,33 @@ _MODEL = os.environ.get("GEN_LLM_MODEL", "o4-mini")
 
 
 def sum_usage(messages):
-    """Sum input/output tokens across the run's messages (for $ cost tracking)."""
-    inp = out = 0
+    """Tokens across the run's messages, split the way they are BILLED.
+
+    Two of the four numbers are priced differently from the totals they sit inside, so the totals
+    alone cannot reconstruct what a run cost:
+
+      cached    input served from the prompt cache. A multi-turn agent resends the system prompt
+                and the tool schemas every turn, so most input is a cache hit — measured at 93%
+                here — and it bills at a discount that differs by model (75% off for o4-mini,
+                90% off for gpt-5-nano). Costing the total at the full input rate overstated a
+                run by 56%.
+      reasoning output tokens the model spent thinking rather than answering. They bill at the
+                output rate and are 89% of o4-mini's output at medium effort, so this is the
+                number to watch when tuning reasoning_effort.
+
+    `input` and `output` remain the totals — `cached` is part of `input`, `reasoning` part of
+    `output` — so existing readers are unaffected.
+    """
+    inp = out = cached = reasoning = 0
     for m in messages:
         u = getattr(m, "usage_metadata", None) or {}
         inp += u.get("input_tokens", 0)
         out += u.get("output_tokens", 0)
-    return {"input": inp, "output": out} if (inp or out) else None
+        cached += (u.get("input_token_details") or {}).get("cache_read", 0)
+        reasoning += (u.get("output_token_details") or {}).get("reasoning", 0)
+    if not (inp or out):
+        return None
+    return {"input": inp, "output": out, "cached": cached, "reasoning": reasoning}
 
 
 def _noop(**_):
