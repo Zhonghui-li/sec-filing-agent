@@ -213,3 +213,30 @@ def test_compute_formula_rejects_bad_periods():
     # years-back must be a positive integer literal, never a metric or 0/negative
     assert "Abstain" in compute_formula("prev(revenue, 0)", "AAPL", 2024)
     assert "Abstain" in compute_formula("prev(revenue, revenue)", "AAPL", 2024)
+
+
+def test_a_partial_curated_entry_does_not_hide_the_live_extraction():
+    """data/financials.json is a curated snapshot that must win where it exists — the eval baseline
+    is built on those exact figures. It used to win by PRESENCE: one row for a ticker returned that
+    row and nothing else. Alphabet and Meta each carry exactly one curated row (revenue), so asking
+    either for net income answered "does not report net_income", naming revenue as the only metric
+    it had, while SEC's XBRL held 24. Fifty-one (company, metric) pairs were invisible this way."""
+    from agents.finance_tools import _rows_for
+    curated = [{"ticker": "ZZ", "metric": "revenue", "fiscal_year": 2024, "value": 1,
+                "period_end": "2024-12-31", "accession": "curated"}]
+    live = [{"ticker": "ZZ", "metric": "revenue", "fiscal_year": 2024, "value": 999,
+             "period_end": "2024-12-31", "accession": "live"},
+            {"ticker": "ZZ", "metric": "net_income", "fiscal_year": 2024, "value": 7,
+             "period_end": "2024-12-31", "accession": "live"}]
+    import agents.finance_tools as ft
+    import agents.companyfacts as cf
+    orig_rows, orig_live = ft._rows, cf.company_rows
+    try:
+        ft._rows = lambda: curated
+        cf.company_rows = lambda tk: live
+        rows = _rows_for("ZZ")
+        by = {r["metric"]: r for r in rows}
+        assert by["revenue"]["accession"] == "curated"   # curated still wins where it exists
+        assert by["net_income"]["value"] == 7            # and no longer hides what it doesn't cover
+    finally:
+        ft._rows, cf.company_rows = orig_rows, orig_live

@@ -87,13 +87,21 @@ def _rows_for(ticker):
     behavior (and the eval baseline). Returns [] if unknown / unreachable -> the caller abstains."""
     tk = ticker.strip().upper()
     local = [r for r in _rows() if r["ticker"] == tk]
-    if local:
-        return local
     try:
         from agents.companyfacts import company_rows
-        return company_rows(tk)
+        live = company_rows(tk)
     except Exception:
-        return []
+        live = []
+    if not local:
+        return live
+    # The curated rows WIN where they exist — they are what the eval baseline was built on, and a
+    # curated figure must stay byte-identical. But they only shadow the metrics they actually
+    # cover. Presence of ANY curated row used to hide the live extraction entirely, and both
+    # Alphabet and Meta carry exactly one curated row (revenue): asking either for net income got
+    # "does not report net_income", naming revenue as the only metric it had, while SEC's XBRL
+    # held 24. Fifty-one (company, metric) pairs were invisible this way.
+    have = {r["metric"] for r in local}
+    return local + [r for r in live if r["metric"] not in have]
 
 
 def _quarterly_rows_for(ticker):
