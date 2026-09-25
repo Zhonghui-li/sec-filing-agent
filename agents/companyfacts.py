@@ -264,8 +264,13 @@ def foreign_filer_note(query):
         return None
     form = "40-F" if "40-F" in forms else "20-F"
     name = fetch_company(cik)[0].rstrip("/") or query
+    # Names the abstain category as well as the reason. Without it the model picked
+    # `year_unavailable` for Ferrari — the year is not the problem, the company is — and a refusal
+    # filed under the wrong category is a refusal nobody can count.
     return (f"{name} is a foreign private issuer — it files a Form {form} annual report, not a "
-            f"10-K, so its annual figures aren't in the us-GAAP 10-K XBRL data this tool uses.")
+            f"10-K, so its annual figures aren't in the us-GAAP 10-K XBRL data this tool uses. "
+            f"If you abstain, the reason is out_of_scope (the company is not covered), not "
+            f"year_unavailable.")
 
 
 # --- extraction (identical logic to the offline script) --------------------------------------
