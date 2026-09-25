@@ -222,14 +222,14 @@ def test_a_well_formed_abstain_written_as_text_is_recognised():
     {"reason":"off_topic","detail":"Real-time market data ..."}. The arguments are right; only the
     channel is wrong. The metric that counts refusals saw nothing, and the raw JSON was what the
     user got — so this is a shipped output bug as much as an eval gap."""
-    from agents.sec_agent import _abstain_written_as_text
-    got = _abstain_written_as_text(
+    from agents.abstain import abstain_written_as_text
+    got = abstain_written_as_text(
         '{"reason":"off_topic","detail":"Real-time market data such as current stock prices is '
         'not available in SEC filings."}')
     assert got["reason"] == "off_topic"
     assert got["detail"].startswith("Real-time market data")
     # embedded in prose, not only alone
-    assert _abstain_written_as_text(
+    assert abstain_written_as_text(
         'Here is my response: {"reason":"year_unavailable","detail":"FY2031 has not ended."} '
     )["reason"] == "year_unavailable"
 
@@ -238,10 +238,10 @@ def test_prose_that_merely_refuses_is_left_alone():
     """Only a JSON object naming a DECLARED category counts. Inferring an abstention from wording
     is the keyword-matching the suite replaced with a structured signal; "I'm sorry, but I can't
     help with that" stays a refusal that missed the tool, and is still counted as one."""
-    from agents.sec_agent import _abstain_written_as_text
+    from agents.abstain import abstain_written_as_text
     for prose in ("I'm sorry, but I can't help with that.",
                   "I can't help with investment advice.",
                   '{"reason":"because_i_said_so","detail":"nope"}',      # not a declared category
                   '{"detail":"no reason field at all"}',
                   "Apple's revenue was $391,035,000,000."):
-        assert _abstain_written_as_text(prose) is None, prose
+        assert abstain_written_as_text(prose) is None, prose

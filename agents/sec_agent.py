@@ -28,6 +28,7 @@ from langgraph.errors import GraphRecursionError
 from agents.finance_tools import (get_financials as _get_financials, compute as _compute,
                                   get_ratio as _get_ratio, get_growth as _get_growth,
                                   compute_formula as _compute_formula)
+from agents.abstain import ABSTAIN_REASONS, abstain_written_as_text
 from agents.cold_starts import reset_cold_starts, take_cold_starts
 from agents.filings_retrieval import search_filings as _search_filings
 from agents.statements import (get_statement as _get_statement,
@@ -43,8 +44,6 @@ COMPANIES = {"AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "NVIDIA", "AMZN": "Am
              "JPM": "JPMorgan Chase", "TSLA": "Tesla", "KO": "Coca-Cola"}
 _COMPANY_LIST = ", ".join(f"{t} ({n})" for t, n in COMPANIES.items())
 
-ABSTAIN_REASONS = {"out_of_scope", "not_reported", "not_in_filings",
-                   "year_unavailable", "off_topic"}
 
 
 def abstain(reason: str, detail: str = "") -> str:
@@ -390,39 +389,6 @@ def build_agent(model: str = None, temperature: float = 0.0, user_id: str = None
     return create_react_agent(llm, tools, prompt=prompt)
 
 
-_ABSTAIN_JSON_RX = re.compile(r'\{[^{}]*"reason"\s*:\s*"([a-z_]+)"[^{}]*\}', re.S)
-
-
-def _abstain_written_as_text(answer: str):
-    """The abstain call the model wrote into the message CONTENT instead of calling, or None.
-
-    Off-topic questions are where the refusal misses the tool — the metric that counts refusals
-    sees nothing, so a refusal nobody can count. Three of the five off-topic cases fail this way
-    and the answer the user gets is the raw call:
-
-        {"reason":"off_topic","detail":"Real-time market data such as current stock prices ..."}
-
-    So it is not only an eval gap: that JSON ships. The arguments are RIGHT — a well-formed call
-    that landed in the wrong channel. Recognising one is parsing, not persuading the model, which
-    is the distinction note 31 draws when it says to record the behaviour rather than fight it:
-    what it rules out is another prompt rule, not reading what the model actually produced.
-
-    Deliberately strict. Only a JSON object whose `reason` is one of the declared categories
-    counts; prose that merely refuses is left alone, because inferring an abstention from wording
-    is the keyword-matching this suite replaced with a structured signal in the first place.
-    """
-    m = _ABSTAIN_JSON_RX.search(answer or "")
-    if not m or m.group(1) not in ABSTAIN_REASONS:
-        return None
-    try:
-        payload = json.loads(m.group(0))
-    except (ValueError, TypeError):
-        return None
-    if not isinstance(payload, dict) or payload.get("reason") not in ABSTAIN_REASONS:
-        return None
-    return {"reason": payload["reason"], "detail": str(payload.get("detail", "")).strip()}
-
-
 def _extract_trace(messages, max_chars=600) -> List[Dict]:
     # pair each tool call with the output it produced (by tool_call_id) so the audit trail can show
     # what a tool RETURNED — the cited figure, the abstain, the [CHECK] convention note — not just
@@ -542,7 +508,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
         # the audit — recovering one is not the same as the model having routed correctly.
         text_abstain = None
         if "abstain" not in tools_used:
-            text_abstain = _abstain_written_as_text(answer)
+            text_abstain = abstain_written_as_text(answer)
         if text_abstain:
             out = f"ABSTAIN[{text_abstain['reason']}] {text_abstain['detail']}".strip()
             entry = {"tool": "abstain", "args": text_abstain, "output": out,
