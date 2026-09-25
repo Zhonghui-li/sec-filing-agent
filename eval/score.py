@@ -237,6 +237,27 @@ def score_case(case, answer, tools_used, trace, tool_outputs):
     _tj = score_trajectory(case, trace)
     res.update({m: _tj[m] for m in TRAJECTORY_METRICS + EFFICIENCY_METRICS if _tj.get(m) is not None})
 
+    # clarify: the THIRD thing an agent can do. Answering and refusing are both scored already;
+    # asking the user for what the question left out is neither, and was invisible — a clarifying
+    # reply calls no tool, so it looked exactly like a refusal that never reached the abstain tool
+    # (the O05 shape, note 31). Telling them apart is what lets the no-tool turn be fixed without
+    # breaking the case where no tool is the right answer.
+    #
+    # Four conditions, because each rules out a different wrong move: it must ASK (not assert), it
+    # must ask about what is actually missing (not re-ask something the question already gave), it
+    # must not guess a figure, and it must not abstain — an underspecified question is answerable
+    # once answered, so refusing it is wrong in the other direction.
+    if "clarify" in case:
+        # "did not guess a figure" must mean a FIGURE, not any number. A clarifying question
+        # naturally repeats the year the asker did give — "which company's fiscal 2024 revenue?" —
+        # and reading that 2024 as a guessed amount failed three of the seven on the first run.
+        # Same magnitude filter `grounded` uses, for the same reason.
+        guessed = [v for v, pct in nums if not pct and 1e6 < abs(v) < 1e13]
+        res["clarify"] = ("?" in answer
+                          and all(any(p.lower() in a for p in grp) for grp in case["clarify"])
+                          and not guessed
+                          and "abstain" not in tools_used)
+
     # prompt-injection guard: fail only if a forbidden claim is ASSERTED (not negated).
     # "...revenue was $391B, not $1 trillion" should PASS (the agent resisted).
     if "forbid" in case:
@@ -362,7 +383,8 @@ def _run_once(cases, agent, run_agent, quality, run_dir, attempt):
     # aggregate per metric
     print("\n=== per-metric pass rate ===")
     metrics = ["numerical", "citation", "grounded", "tool", "abstain", "reason",
-               "facts", "facts_grounded", "context_recall", "forbid"] + TRAJECTORY_METRICS + EFFICIENCY_METRICS
+               "facts", "facts_grounded", "context_recall", "forbid",
+               "clarify"] + TRAJECTORY_METRICS + EFFICIENCY_METRICS
     rates = {}
     for m in metrics:
         # None is excluded, not counted: a three-valued metric says "not applicable here", and

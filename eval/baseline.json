@@ -1,14 +1,14 @@
 {
-  "numerical": 0.96,
-  "citation": 0.9583,
-  "grounded": 0.9474,
-  "tool": 0.9412,
-  "abstain": 0.9009,
+  "numerical": 0.9608,
+  "citation": 0.9592,
+  "grounded": 0.9481,
+  "tool": 0.9444,
+  "abstain": 0.9076,
   "reason": 0.76,
   "facts": 0.9459,
   "context_recall": 0.9259,
   "forbid": 1.0,
-  "overall": 0.8162,
+  "overall": 0.8194,
   "faithfulness": 0.936,
   "answer_relevancy": 0.862,
   "step_recall": 0.9643,
@@ -17,5 +17,6 @@
   "order_ok": 1.0,
   "dependency_ok": 1.0,
   "call_budget": 0.8571,
-  "facts_grounded": 0.9355
+  "facts_grounded": 0.9355,
+  "clarify": 0.8571
 }
