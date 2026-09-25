@@ -11,6 +11,7 @@ import json
 from datetime import datetime
 import re
 from pathlib import Path
+from eval.gate import compare, format_report
 from eval.trajectory import (EFFICIENCY_METRICS, REPORT_ONLY, TRAJECTORY_METRICS,
                              score_trajectory)
 
@@ -38,9 +39,18 @@ TOL = 0.025  # FinanceBench-style 2.5% relative tolerance
 # metrics are MONITOR-ONLY — they're noisy and systematically biased in a regulated
 # domain (e.g. answer_relevancy's noncommittal classifier penalizes honest "remains
 # uncertain / see the filing" hedging), so they're reported, never block. See README.
-# Efficiency joins them: reported every run, never a gate. There is no threshold worth
-# setting for parallelism or cost until real traffic says what normal looks like.
-MONITOR = {"faithfulness", "answer_relevancy", "context_precision"} | REPORT_ONLY
+#
+# The TRAJECTORY metrics have now joined the gate, which is what measuring their variance was
+# for. Five runs of one unchanged build put the noise floor at one case (arg_correct, order_ok and
+# dependency_ok did not move at all; step_recall, call_budget and tool_precision moved by one case,
+# tool_precision by two after its definition was widened). They are deterministic checks, not
+# judged ones, and the gate's own UNDECIDABLE verdict handles their smaller denominators honestly
+# rather than passing them by default.
+#
+# EFFICIENCY stays out, for a different reason: parallel_rate is a RATE, and there is no threshold
+# worth setting for parallelism or cost until real traffic says what normal looks like. It is also
+# structurally 0 on o4-mini, which rejects parallel tool calls outright.
+MONITOR = {"faithfulness", "answer_relevancy", "context_precision"} | set(EFFICIENCY_METRICS)
 SCALE = {"trillion": 1e12, "billion": 1e9, "million": 1e6, "thousand": 1e3}
 # v1 keyword refusal list is RETIRED — abstain is now detected via the structured
 # abstain tool call (design for evaluability), not prose. _NEG is kept for the injection guard.
@@ -274,7 +284,7 @@ def main(quality=False, only=None, repeat=1, run_dir=None):
     cases = select_cases([json.loads(l) for l in TESTSET.open()], only)
     if not cases:
         print(f"no cases match --only {only!r}")
-        return {}
+        return {}, {}
     agent = build_agent()
     runs = []                  # per repeat: {case_id -> metrics}, for the variance report
     for attempt in range(repeat):
@@ -284,7 +294,7 @@ def main(quality=False, only=None, repeat=1, run_dir=None):
         runs.append(per_case)
     if repeat > 1:
         _variance_report(runs)
-    return rates
+    return rates, per_case
 
 
 def _run_once(cases, agent, run_agent, quality, run_dir, attempt):
@@ -448,7 +458,8 @@ if __name__ == "__main__":
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--update-baseline", action="store_true",
-                    help="overwrite eval/baseline.json with this run's rates")
+                    help="overwrite eval/baseline.json (rates, for reading) AND "
+                         "eval/baseline_run.jsonl (per-case outcomes, what the gate compares)")
     ap.add_argument("--quality", action="store_true",
                     help="also run Ragas faithfulness/relevancy (LLM judge) on qualitative answers")
     ap.add_argument("--only", metavar="IDS",
@@ -475,8 +486,10 @@ if __name__ == "__main__":
     run_dir = Path(args.run_dir) if args.run_dir else None
     if args.repeat > 1 and run_dir is None:      # a variance run is worthless without the records
         run_dir = ROOT / "eval" / "runs" / datetime.now().strftime("%Y%m%d-%H%M%S")
-    rates = main(quality=args.quality, only=args.only, repeat=args.repeat, run_dir=run_dir)
+    rates, per_case = main(quality=args.quality, only=args.only, repeat=args.repeat,
+                           run_dir=run_dir)
     BASE = ROOT / "eval" / "baseline.json"
+    BASE_RUN = ROOT / "eval" / "baseline_run.jsonl"
     # A subset or a repeat run measures something the baseline is not a baseline FOR: the baseline
     # holds whole-suite rates, so comparing a 18-case trajectory run against it would report
     # regressions that are only the different denominator.
@@ -487,20 +500,25 @@ if __name__ == "__main__":
         base = json.loads(BASE.read_text()) if BASE.exists() else {}
         base.update(rates)
         BASE.write_text(json.dumps(base, indent=2))
-        print(f"\nwrote baseline -> {BASE}")
-    elif BASE.exists():
-        base = json.loads(BASE.read_text())
-        # gate on deterministic metrics only; the Ragas MONITOR metrics are reported, never block
-        regressions = [(m, base[m], rates[m]) for m in base
-                       if m in rates and m not in MONITOR
-                       and rates[m] < base[m] - 0.10]   # 10pp tolerance
-        print("\n=== baseline gate (deterministic metrics, tolerance 10pp) ===")
-        for m, b, c in regressions:
-            print(f"  REGRESSION {m}: {b * 100:.0f}% -> {c * 100:.0f}%")
-        mon = [f"{m} {rates[m]:.2f} (base {base[m]:.2f})"
-               for m in MONITOR if m in rates and m in base]
+        print(f"\nwrote baseline rates -> {BASE}")
+        if run_dir:
+            src = run_dir / "run1.jsonl"
+            BASE_RUN.write_text(src.read_text())
+            print(f"wrote baseline run   -> {BASE_RUN}  (per-case, what the gate compares)")
+        else:
+            print("NOTE: --run-dir not given, so the per-case baseline was NOT updated. "
+                  "A paired test needs per-case outcomes, not rates.")
+    elif BASE_RUN.exists():
+        # McNemar over the cases both runs scored. A rate cannot be compared across metrics whose
+        # denominators differ by a factor of fifteen, and cannot tell three breaks alongside three
+        # fixes from three breaks. See eval/gate.py.
+        baseline = {json.loads(l)["id"]: json.loads(l)["metrics"] for l in BASE_RUN.open()}
+        current = {cid: rec["metrics"] for cid, rec in per_case.items()}
+        results = compare(baseline, current, metrics=[m for m in rates if m not in MONITOR])
+        print("\n=== regression gate (McNemar, exact binomial, one-sided) ===")
+        print(format_report(results))
+        mon = [f"{m} {rates[m]:.2f}" for m in MONITOR if m in rates]
         if mon:
             print("  monitor (not gated): " + " · ".join(mon))
-        if regressions:
+        if any(r["verdict"] == "REGRESSED" for r in results.values()):
             sys.exit(1)
-        print("  PASS: no deterministic metric regressed beyond tolerance.")
