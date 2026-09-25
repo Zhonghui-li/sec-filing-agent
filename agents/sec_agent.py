@@ -389,6 +389,33 @@ def build_agent(model: str = None, temperature: float = 0.0, user_id: str = None
     return create_react_agent(llm, tools, prompt=prompt)
 
 
+_ROUTE_RETRY = (
+    "You produced a final answer without calling any tool. Every factual answer here has to come "
+    "from one. Do one of these now:\n"
+    "  - If you cannot answer, call `abstain` with the reason category and a one-line detail. "
+    "Refusing in prose leaves no record, so a refusal that skips the tool cannot be counted.\n"
+    "  - If the question is missing something you need (which company? which metric? which year?), "
+    "just ASK the user for it. That is correct and needs no tool — do not abstain instead.\n"
+    "  - If you can answer, call the tool you need."
+)
+
+
+def _needs_routing_retry(answer: str, tools_used) -> bool:
+    """Did this turn finish without a tool AND without asking the user anything?
+
+    Zero-tool turns are two different things that looked identical in the audit, and only one is a
+    bug. Asking the user which company they meant is correct and needs no tool. Refusing in prose
+    — "I'm sorry, but I can't help with that" — skips the abstain tool, so the refusal leaves no
+    record and nothing can count it (note 31). A question mark separates them at runtime, where
+    the eval's `clarify` annotation is not available: every clarifying reply the agent produced
+    asked something, and none of the prose refusals did.
+
+    A clarification phrased without a question mark costs one extra round trip and nothing else —
+    the retry text says asking is fine, so the second attempt asks again and is accepted.
+    """
+    return not tools_used and "?" not in (answer or "")
+
+
 def _extract_trace(messages, max_chars=600) -> List[Dict]:
     # pair each tool call with the output it produced (by tool_call_id) so the audit trail can show
     # what a tool RETURNED — the cited figure, the abstain, the [CHECK] convention note — not just
@@ -467,7 +494,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
     """Run the agent on a question. `history` (optional) is prior turns [{role, content}, ...]
     for multi-turn (Model B). Returns {answer, trace, tools_used, tool_outputs}."""
     agent = agent or build_agent()
-    usage, tool_outputs, salvaged = None, [], False
+    usage, tool_outputs, salvaged, routing_retry = None, [], False, False
     _search_state["n"] = 0                    # reset the per-turn search budget for this run
     _numeric_state["n"] = 0                   # reset the per-turn numeric-tool budget for this run
     # Timed on the same boundary as the Langfuse span below, deliberately: the two numbers then
@@ -488,6 +515,17 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
                 pass
             messages = last_state["messages"]
             answer = messages[-1].content
+            # ONE retry, never a loop: a second no-tool answer is returned as it is and recorded.
+            # Holding a user in a retry loop to make a metric look better is the wrong trade.
+            if _needs_routing_retry(answer, [m for m in messages
+                                             if isinstance(m, ToolMessage)]):
+                routing_retry = True
+                for last_state in agent.stream(
+                        {"messages": messages + [HumanMessage(_ROUTE_RETRY)]},
+                        {"recursion_limit": recursion_limit}, stream_mode="values"):
+                    pass
+                messages = last_state["messages"]
+                answer = messages[-1].content
         except GraphRecursionError:
             # The agent looped without converging (over-searching, or retrying an absent metric),
             # ignoring the soft tool budgets. Salvage: force ONE final answer from the passages it
@@ -553,6 +591,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
         audit = {"accessions_cited": accns, "abstained": "abstain" in tools_used,
                  "no_tool_answer": not tools_used,
                  "text_abstain": bool(text_abstain),
+                 "routing_retry": routing_retry,
                  "cold_starts": cold_starts,
                  "abstain_reason": next((t["args"].get("reason")
                                          for t in trace if t["tool"] == "abstain"), None),
