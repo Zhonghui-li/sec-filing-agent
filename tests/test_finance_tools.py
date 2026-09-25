@@ -240,3 +240,24 @@ def test_a_partial_curated_entry_does_not_hide_the_live_extraction():
         assert by["net_income"]["value"] == 7            # and no longer hides what it doesn't cover
     finally:
         ft._rows, cf.company_rows = orig_rows, orig_live
+
+
+def test_a_formula_carrying_a_supplied_assumption_is_computed_but_not_cited():
+    """compute_formula exists because the ratios worth asking for cannot all be enumerated: if the
+    caller spells out a formula, it is evaluated deterministically. That flexibility let a caller
+    supply a QUANTITY rather than a structure — "revenue * 0.15" for net income — and the tool
+    returned 5,426,430,000 with a 10-K accession attached, for a number no filing contains.
+
+    The fix keeps the flexibility. A retrieved figure is evidence and a supplied coefficient is an
+    assumption; the arithmetic is still deterministic and still done, but the result is labelled as
+    an estimate and carries no citation, so it cannot be read as reported. Day counts, period
+    counts, percentages and unit scales are structure, not assumptions, and are unaffected."""
+    from agents.finance_tools import _supplied_assumptions
+    assert _supplied_assumptions("revenue * 0.15") == ["0.15"]
+    assert _supplied_assumptions("total_assets * 0.62") == ["0.62"]
+    for structural in ("365 * avg(accounts_payable) / cost_of_revenue",
+                       "(revenue / prev(revenue, 2)) ** (1/2) - 1",
+                       "((capex/revenue) + (prev(capex,1)/prev(revenue,1))) / 3",
+                       "(operating_income + depreciation_amortization) / revenue",
+                       "revenue / 1000000", "net_income / revenue * 100"):
+        assert _supplied_assumptions(structural) == [], structural

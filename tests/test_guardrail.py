@@ -371,7 +371,22 @@ def test_a_formula_may_not_carry_a_number_the_user_invented():
         assert _invented_formula_constant(f(ok)) is None, ok
 
 
-def test_the_two_new_checks_block_rather_than_only_record():
+def test_an_assumption_based_formula_is_recorded_not_blocked():
+    """The harm was never the arithmetic — compute_formula attached a 10-K accession to a figure no
+    filing contains. That is fixed at the tool: it now labels the result an estimate from the
+    caller's assumption and cites nothing. Blocking an answer that already tells the reader the
+    number is not reported is the note-29 mistake, so this one records and lets it through."""
+    from agents.guardrail import guardrail_check, _invented_formula_constant
+    trace = [_tool("Starbucks Corporation FY2024: 5,426,430,000.00 — an ESTIMATE from the "
+                   "assumption(s) 0.15 you supplied, not a reported figure.",
+                   "compute_formula", {"expression": "revenue * 0.15"})]
+    assert _invented_formula_constant(trace) == "revenue * 0.15"
+    answer = ("Multiplying revenue by 0.15 yields an estimated $5,426,430,000 — your assumption, "
+              "not a reported figure.")
+    assert guardrail_check(answer, ["compute_formula"], trace) is None
+
+
+def test_the_untraced_dollar_check_blocks_rather_than_only_records():
     """Promoted on evidence: across all 136 cases they fired twice, both real, no false positive,
     and the predicted false-positive shape — an answer naming the injected figure in order to
     reject it — did not occur. Blocking is also what the same sin already costs when committed

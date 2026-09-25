@@ -313,10 +313,19 @@ def guardrail_check(answer: str, tools_used: List[str], trace: List[Dict] = None
                      reason=f"asserted:{stray:.0f}|tools:{','.join(sorted(set(tools_used)))}")
             return f"dollar figure {stray:,.0f} traces to no tool output (taken from the prompt, " \
                    f"or arithmetic done by hand)"
+    # DETECTION, not a block — and that is a decision, not an omission. The harm here was never the
+    # arithmetic: compute_formula ATTACHED A FILING ACCESSION to a figure no filing contains. That
+    # is fixed at the tool, which now computes the same result, labels it an estimate from the
+    # caller's assumption, and carries no citation. Asked again, the model either says so in the
+    # answer or declines outright. Replacing an answer that already tells the reader the number is
+    # not reported is the disproportionate intervention note 29 was about. Genuinely untraceable
+    # figures are still blocked above.
+    #
+    # Residual, worth a narrower fix than blocking: the model may still append a stray accession of
+    # its own next to the estimate.
     bad_const = _invented_formula_constant(trace)
     if bad_const:
         log_miss("-", "invented_formula_constant", reason=bad_const[:120])
-        return f"a formula carried a number no filing provides: {bad_const[:80]}"
     if not (set(tools_used) & _DATA_TOOLS) and re.search(r"\$\s?\d", answer):
         # No numeric tool ran, but a $ amount may still be legitimately quoted from filing prose —
         # an 8-K debt/buyback figure, say, that XBRL doesn't carry. Allow it only if it traces (unit-

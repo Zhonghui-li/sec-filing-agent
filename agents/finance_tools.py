@@ -716,6 +716,26 @@ def _metric_at(name, ticker, year, srcs):
     return float(v)
 
 
+# Numbers a formula may contain that are STRUCTURE rather than data: day counts, period counts
+# for averaging and exponents, a percentage, unit scales. Anything else occupies the position of a
+# financial quantity and is an ASSUMPTION the caller supplied, not evidence a filing provides.
+_STRUCTURAL_CONSTANTS = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 52, 100, 360, 365, 366,
+                         1e3, 1e6, 1e9, 1e12}
+
+
+def _supplied_assumptions(expression: str):
+    """The numbers in `expression` that are quantities rather than structure."""
+    out = []
+    for tok in re.findall(r"\d+\.?\d*", expression or ""):
+        try:
+            v = float(tok)
+        except ValueError:
+            continue
+        if v not in _STRUCTURAL_CONSTANTS:
+            out.append(tok)
+    return out
+
+
 def compute_formula(expression: str, ticker: str, fiscal_year: int = None) -> str:
     """Evaluate a custom financial FORMULA deterministically. Use this when the question SPELLS OUT
     a formula, or asks for a metric get_ratio does not cover. Write the whole formula with our
@@ -793,6 +813,18 @@ def compute_formula(expression: str, ticker: str, fiscal_year: int = None) -> st
                 xcheck = (f" [CHECK: this matches the '{rn}' ratio; on our standard convention ({defn}) "
                           f"it is {shown_ours}. If the question defines it differently, use that value.]")
     shown = f"{val:,.2f}" if abs(val) >= 1 else f"{val:.4g}"
+    # A formula may carry a number the CALLER supplied — "revenue * 0.15" to stand in for a margin.
+    # The arithmetic is still deterministic and still worth doing; what must not happen is the
+    # result inheriting the filing's authority. Told to multiply Starbucks' revenue by 0.15 for its
+    # "net income", the tool returned 5,426,430,000 WITH a 10-K accession attached, for a figure no
+    # filing contains. A retrieved figure is evidence; a supplied coefficient is an assumption, and
+    # a result that mixes them is neither. So it is computed, labelled, and NOT cited.
+    assumed = _supplied_assumptions(expression)
+    if assumed:
+        return (f"{_entity(src, ticker)} FY{year}: {shown} — an ESTIMATE from the assumption(s) "
+                f"{', '.join(assumed)} you supplied, not a reported figure (formula: {expression}). "
+                f"The inputs come from the filing; the assumption does not, so this result carries "
+                f"no filing citation and must not be presented as a reported metric.")
     return (f"{_entity(src, ticker)} formula result for FY{year} = {shown}  (formula: {expression}). {cite}"
             + _restatement_note(srcs) + xcheck)
 
