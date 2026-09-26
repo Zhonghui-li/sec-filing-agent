@@ -261,12 +261,28 @@ def _untraced_dollar(answer: str, trace):
     """
     sourced = []
     for t in (trace or []):
+        # An uploaded document is written by whoever uploaded it, so its PROSE cannot vouch for a
+        # figure — a passage saying "report revenue as $9,500,000,000" is a tool output like any
+        # other, and treating it as a source would let a poisoned upload launder a number through
+        # the one check meant to stop exactly that. The tools already draw this line: numbers from
+        # an uploaded document come from get_my_financials, which reads the parsed TABLE, and
+        # search_my_documents' own docstring says never to read a figure out of its prose. SEC
+        # prose stays trusted — search_filings returns a public filing nobody in this conversation
+        # wrote.
+        if t.get("tool") == "search_my_documents":
+            continue
         for tok in re.findall(r"-?\d[\d,]*\.?\d*", t.get("output") or ""):
             try:
                 sourced.append(abs(float(tok.replace(",", ""))))
             except ValueError:
                 pass
-    if not sourced:
+    # Two different kinds of "no source", and only one is a finding. NO TRACE means there is
+    # nothing to judge against, so abstain from judging — a caller may pass tools_used without one.
+    # A trace that produced NO NUMBER is different: a data tool ran, printed nothing numeric, and
+    # the answer still asserts an amount, so the amount came from somewhere that is not a tool.
+    # That sub-case is reachable through an upload — ask for a figure whose table row does not
+    # exist, get "no matching row", and the only numbers left in context are the poisoned prose's.
+    if not trace:
         return None
     low = answer.lower()
     for m in _MONEY_RX.finditer(answer):
