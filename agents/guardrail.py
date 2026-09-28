@@ -242,6 +242,42 @@ def _invented_formula_constant(trace):
     return None
 
 
+_UPLOAD_TAG_RX = re.compile(r"\[([^\]]+?\.(?:pdf|docx|xlsx|csv|txt)[^\]]*)\]", re.I)
+
+
+def _upload_prose_figures(trace):
+    """Every number printed by search_my_documents — the uploaded document's PROSE."""
+    out = []
+    for t in (trace or []):
+        if t.get("tool") != "search_my_documents":
+            continue
+        for tok in re.findall(r"-?\d[\d,]*\.?\d*", t.get("output") or ""):
+            try:
+                out.append(abs(float(tok.replace(",", ""))))
+            except ValueError:
+                pass
+    return out
+
+
+def upload_provenance(answer: str, trace):
+    """The `filename · p.N` tag to attach when an asserted figure came from an upload's prose, or
+    None. Uploaded documents carry no accession number, so restore_citation cannot reach them: this
+    tag is the only provenance they have, and it is what lets a reader turn to the page — whether
+    what is on it is a figure or an instruction aimed at the model."""
+    weak = _upload_prose_figures(trace)
+    if not weak:
+        return None
+    asserted = _parse_money(answer)
+    if not any(abs(a - w) <= _MONEY_TOL * max(abs(a), abs(w), 1.0) for a in asserted for w in weak):
+        return None
+    for t in (trace or []):
+        if t.get("tool") == "search_my_documents":
+            m = _UPLOAD_TAG_RX.search(t.get("output") or "")
+            if m:
+                return m.group(1).strip()
+    return None
+
+
 def _untraced_dollar(answer: str, trace):
     """A $ amount the answer ASSERTS that matches nothing any tool returned, or None.
 
@@ -270,7 +306,7 @@ def _untraced_dollar(answer: str, trace):
         # prose stays trusted — search_filings returns a public filing nobody in this conversation
         # wrote.
         if t.get("tool") == "search_my_documents":
-            continue
+            continue                      # collected separately, as weak provenance — see below
         for tok in re.findall(r"-?\d[\d,]*\.?\d*", t.get("output") or ""):
             try:
                 sourced.append(abs(float(tok.replace(",", ""))))
@@ -284,6 +320,18 @@ def _untraced_dollar(answer: str, trace):
     # exist, get "no matching row", and the only numbers left in context are the poisoned prose's.
     if not trace:
         return None
+    # An uploaded document's PROSE is weak provenance, not zero provenance. Blocking on it made a
+    # legitimate figure unreachable: a memo that states revenue in a sentence with no table cannot
+    # be answered from at all, which is measurably what happens today. And the distinction that
+    # would justify blocking — prose that STATES a figure versus prose that INSTRUCTS you to state
+    # one — cannot be drawn mechanically without reading intent out of wording, which is the
+    # mistake note 29 records.
+    #
+    # So it is cited, not refused, and the citation is now able to say where: page-level tags
+    # started being recorded in the same change. A figure the reader can turn to page 3 and check
+    # is more useful than a refusal — and if page 3 turns out to hold an instruction rather than a
+    # fact, the citation is what makes that visible instead of hidden.
+    weak = _upload_prose_figures(trace)
     low = answer.lower()
     for m in _MONEY_RX.finditer(answer):
         try:
@@ -294,6 +342,8 @@ def _untraced_dollar(answer: str, trace):
             continue
         if any(abs(v - s) <= _MONEY_TOL * max(abs(v), abs(s), 1.0) for s in sourced):
             continue
+        if any(abs(v - s) <= _MONEY_TOL * max(abs(v), abs(s), 1.0) for s in weak):
+            continue                      # in the upload's prose: weakly sourced, so cited not blocked
         k = _scale_exp(v, sourced)
         if k is not None and abs(k) in (0, 3, 6, 9, 12):
             continue
@@ -406,4 +456,10 @@ def guardrail(answer: str, tools_used: List[str], trace: List[Dict] = None,
         reason = guardrail_check(answer, tools_used, trace)
     if reason:
         return _SAFE
-    return restore_citation(answer, tools_used, trace)
+    answer = restore_citation(answer, tools_used, trace)
+    tag = upload_provenance(answer, trace)
+    if tag and tag not in answer:
+        log_miss("-", "upload_prose_figure", reason=tag[:120])
+        answer = (f"{answer.rstrip()}\n\n[source: {tag} — document text, not a parsed table. "
+                  f"Check that page before relying on this figure.]")
+    return answer
