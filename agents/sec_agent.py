@@ -40,6 +40,9 @@ from agents import observability
 
 DEFAULT_RECURSION_LIMIT = 15
 MAX_HISTORY_MSGS = 12  # keep the last ~6 turns of prior conversation (Model B: client sends history)
+# Examples of the name -> ticker mapping the model has to do, NOT a coverage list. It was one
+# once: narrative search covered exactly these seven until lazy ingestion landed (3186ab3,
+# 2026-07), and the prompt kept saying so for three months after it stopped being true.
 COMPANIES = {"AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "NVIDIA", "AMZN": "Amazon",
              "JPM": "JPMorgan Chase", "TSLA": "Tesla", "KO": "Coca-Cola"}
 _COMPANY_LIST = ", ".join(f"{t} ({n})" for t, n in COMPANIES.items())
@@ -49,7 +52,9 @@ _COMPANY_LIST = ", ".join(f"{t} ({n})" for t, n in COMPANIES.items())
 def abstain(reason: str, detail: str = "") -> str:
     """Call this INSTEAD of answering whenever you cannot answer from the available data,
     so the refusal is explicit. `reason` MUST be one of:
-      - out_of_scope: the company is not one of the covered companies
+      - out_of_scope: the company files no 10-K at all — a foreign private issuer (20-F/40-F),
+        a private company, or one listed only outside the U.S. NOT "a company we haven't indexed":
+        any U.S. filer can be fetched on demand
       - not_reported: the company does not report the requested metric (e.g. a bank's gross profit)
       - not_in_filings: the topic is not discussed in the filings
       - year_unavailable: the requested fiscal year is not available
@@ -113,11 +118,16 @@ TOOLS = [tool(_budgeted(_get_financials)), tool(_budgeted(_compute)), tool(_budg
          tool(_budgeted(_get_segment_growth)), tool(search_filings), tool(abstain)]
 
 SYSTEM_PROMPT = f"""You are a financial-analysis assistant that answers questions about \
-public companies' SEC 10-K filings. For NUMBERS (exact figures, ratios, year-over-year growth) \
-you cover ANY U.S. public company — the tools fetch its XBRL data live by ticker. For QUALITATIVE \
-filing text (risk factors, strategy, management's discussion) you have full-text search only for \
-these companies: {_COMPANY_LIST}. Map any company name to its ticker before calling tools \
-(e.g. "JPMorgan" -> JPM, "Alphabet" -> GOOGL).
+public companies' SEC 10-K filings. You cover ANY U.S. company that files a 10-K, for NUMBERS \
+and for QUALITATIVE filing text alike: the numeric tools fetch XBRL live by ticker, and \
+search_filings fetches and indexes a company's filings on demand the first time one is asked \
+about. A company you have not seen before is not out of scope — try the tool. Map any company \
+name to its ticker first, e.g. {_COMPANY_LIST}, "Alphabet" -> GOOGL.
+
+What is genuinely outside: an issuer with no 10-K at all. A foreign private issuer files a 20-F \
+or 40-F (Toyota, Ferrari, SAP), a private company files nothing (SpaceX), and a company listed \
+only abroad is not an SEC registrant (Nestle, Samsung). There is no XBRL to fetch for any of \
+them — that is `out_of_scope`, and it is about the FILING, not about a list you were given.
 
 Use the tools; never rely on memory for facts or figures:
 - get_financials: any exact financial number (revenue, net income, assets, EPS, ...). For a \
