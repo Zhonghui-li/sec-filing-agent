@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-09-24T22:08:10Z",
-  "filing_chunks_max": 24000,
-  "total_chunks": 23274,
+  "generated_at": "2026-09-28T20:47:23Z",
+  "filing_chunks_max": 26000,
+  "total_chunks": 23939,
   "entries": [
     {
       "ticker": "AAPL",
@@ -37,6 +37,13 @@
       "pinned": false,
       "chunks": 114,
       "accessions": 14
+    },
+    {
+      "ticker": "BA",
+      "fiscal_year": 2024,
+      "pinned": true,
+      "chunks": 410,
+      "accessions": 21
     },
     {
       "ticker": "BA",
@@ -173,6 +180,13 @@
     },
     {
       "ticker": "GOOGL",
+      "fiscal_year": 2023,
+      "pinned": true,
+      "chunks": 372,
+      "accessions": 13
+    },
+    {
+      "ticker": "GOOGL",
       "fiscal_year": 2025,
       "pinned": false,
       "chunks": 287,
@@ -191,6 +205,20 @@
       "pinned": true,
       "chunks": 302,
       "accessions": 18
+    },
+    {
+      "ticker": "HD",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 280,
+      "accessions": 10
+    },
+    {
+      "ticker": "HD",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 30,
+      "accessions": 7
     },
     {
       "ticker": "INTC",
@@ -278,17 +306,10 @@
     },
     {
       "ticker": "MGM",
-      "fiscal_year": 2022,
-      "pinned": true,
-      "chunks": 160,
-      "accessions": 2
-    },
-    {
-      "ticker": "MGM",
       "fiscal_year": 2023,
       "pinned": true,
-      "chunks": 467,
-      "accessions": 12
+      "chunks": 200,
+      "accessions": 3
     },
     {
       "ticker": "MSFT",
