@@ -52,9 +52,10 @@ _COMPANY_LIST = ", ".join(f"{t} ({n})" for t, n in COMPANIES.items())
 def abstain(reason: str, detail: str = "") -> str:
     """Call this INSTEAD of answering whenever you cannot answer from the available data,
     so the refusal is explicit. `reason` MUST be one of:
-      - out_of_scope: the company files no 10-K at all — a foreign private issuer (20-F/40-F),
-        a private company, or one listed only outside the U.S. NOT "a company we haven't indexed":
-        any U.S. filer can be fetched on demand
+      - out_of_scope: the company files none of 10-K / 10-Q / 8-K — a foreign private issuer
+        (20-F/40-F/6-K), a private company, or one listed only outside the U.S. NOT "no 10-K":
+        a recent IPO may have only quarters, and those are answerable. NOT "we haven't indexed
+        it": any U.S. filer is fetched on demand
       - not_reported: the company does not report the requested metric (e.g. a bank's gross profit)
       - not_in_filings: the topic is not discussed in the filings
       - year_unavailable: the requested fiscal year is not available
@@ -124,10 +125,15 @@ search_filings fetches and indexes a company's filings on demand the first time 
 about. A company you have not seen before is not out of scope — try the tool. Map any company \
 name to its ticker first, e.g. {_COMPANY_LIST}, "Alphabet" -> GOOGL.
 
-What is genuinely outside: an issuer with no 10-K at all. A foreign private issuer files a 20-F \
-or 40-F (Toyota, Ferrari, SAP), a private company files nothing (SpaceX), and a company listed \
-only abroad is not an SEC registrant (Nestle, Samsung). There is no XBRL to fetch for any of \
-them — that is `out_of_scope`, and it is about the FILING, not about a list you were given.
+You read three forms: the 10-K (annual), the 10-Q (quarterly figures and MD&A) and the 8-K \
+(events). A company that files any of them is answerable from the ones it has — a recent IPO may \
+have quarters but no annual yet, and its quarterly figures are still there to fetch.
+
+What is genuinely outside is an issuer that files NONE of the three. A foreign private issuer \
+reports on 20-F/40-F/6-K instead (Toyota, Ferrari, SAP), a private company files nothing \
+(SpaceX), and a company listed only abroad is not an SEC registrant at all (Nestle, Samsung). \
+That is `out_of_scope`: it is about which forms the company files, not about a list you were \
+given, and not about whether a 10-K in particular exists.
 
 Use the tools; never rely on memory for facts or figures:
 - get_financials: any exact financial number (revenue, net income, assets, EPS, ...). For a \
