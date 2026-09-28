@@ -51,6 +51,14 @@ def _doc_clause(doc_filter):
     return " and (doc_id = %s or lower(filename) like %s)", [doc_filter, f"%{doc_filter.lower()}%"]
 
 
+def _tag(meta) -> str:
+    """The citation for one uploaded passage: "filename · p.N", or the filename when no page is
+    known. An uploaded document has no accession number, so this tag is the ONLY provenance it
+    carries — a filename alone cannot locate a figure for anyone to check."""
+    page = meta.get("page")
+    return meta["filename"] + (f" · p.{page}" if page is not None else "")
+
+
 def search_my_documents(query: str, user_id: str, k: int = 5, doc_filter: str = None) -> str:
     """Search the USER'S OWN uploaded documents (private files they provided, e.g. an internal
     financial statement or memo) for relevant passages. Returns passages tagged
@@ -75,8 +83,7 @@ def search_my_documents(query: str, user_id: str, k: int = 5, doc_filter: str = 
 
     out = []
     for d in docs:
-        m = d.metadata
-        tag = m["filename"] + (f" · p.{m['page']}" if m.get("page") is not None else "")
+        tag = _tag(d.metadata)
         out.append(f"[{tag}]\n{d.page_content}")
     return "\n\n".join(out)
 

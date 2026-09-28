@@ -153,10 +153,22 @@ def parse_document(path: str, max_pages: int = None):
     # page_range=(1, N) parses only the first N pages (max_num_pages instead REJECTS longer docs)
     kwargs = {"page_range": (1, max_pages)} if max_pages else {}
     doc = DocumentConverter().convert(path, **kwargs).document
-    md = doc.export_to_markdown()
     pages = getattr(doc, "pages", None)
     n_pages = len(pages) if pages else 1   # ACTUAL pages parsed (not the cap)
-    return [(None, md)], extract_table_facts(doc), n_pages
+    # PER PAGE, not the whole document at once. Exporting everything to one markdown string threw
+    # the page boundaries away, so every narrative chunk went in with page=None — 2,129 of 2,129
+    # rows in user_chunks, across every file. The column existed, this function's own docstring
+    # promised it, and search_my_documents already renders "· p.N" when it is there; only the
+    # middle step never filled it. Table facts kept their page the whole time, because they come
+    # from the structured document (prov[0].page_no) rather than from the markdown.
+    #
+    # An uploaded document's citation is the only provenance it has — there is no accession number
+    # to fall back on — so a filename alone is not enough to check a figure against.
+    per_page = [(n, doc.export_to_markdown(page_no=n)) for n in sorted(pages)] if pages else []
+    md_pages = [(n, t) for n, t in per_page if t.strip()]    # blank pages carry nothing to chunk
+    if not md_pages:                                          # no page info (e.g. XLSX) -> whole doc
+        md_pages = [(None, doc.export_to_markdown())]
+    return md_pages, extract_table_facts(doc), n_pages
 
 
 def main():

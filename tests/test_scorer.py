@@ -1,4 +1,5 @@
 """L1 deterministic tests for the scorer's number logic — no LLM, no DB, no secrets."""
+import pytest
 from eval.score import extract_numbers, near, expected
 
 
@@ -245,3 +246,23 @@ def test_prose_that_merely_refuses_is_left_alone():
                   '{"detail":"no reason field at all"}',
                   "Apple's revenue was $391,035,000,000."):
         assert abstain_written_as_text(prose) is None, prose
+
+
+def test_an_uploaded_passage_cites_its_page_when_the_ingest_recorded_one():
+    """search_my_documents renders "filename · p.N" whenever `page` is set, and it never was:
+    2,129 of 2,129 rows in user_chunks had page=None, across every file. parse_document exported
+    the WHOLE document to one markdown string, throwing the page boundaries away, so every
+    narrative chunk went in with None — while table facts kept their page all along, because they
+    come from the structured document rather than from the markdown.
+
+    An uploaded document's citation is the only provenance it has. There is no accession number to
+    fall back on, so a filename alone cannot locate a figure for checking."""
+    # agents.user_docs_retrieval imports psycopg AND langchain at module level, and the L1 lane
+    # installs neither, so this skips there rather than failing collection and taking the suite
+    # with it — the same gate tests/test_filings_cache.py uses. Third time I have tripped over this.
+    pytest.importorskip("psycopg")
+    pytest.importorskip("langchain_openai")
+    from agents.user_docs_retrieval import _tag
+    assert _tag({"filename": "acme_memo.pdf", "page": 3}) == "acme_memo.pdf · p.3"
+    assert _tag({"filename": "acme_memo.pdf", "page": None}) == "acme_memo.pdf"
+    assert _tag({"filename": "sheet.xlsx"}) == "sheet.xlsx"
