@@ -9,12 +9,32 @@ not a case, and it cannot be scored one row at a time the way eval/score.py does
 It also stays out of eval/testset.jsonl on purpose. Four phrasings of one fact would enter the
 other metrics' denominators four times over, weighting whatever fact happens to be paraphrased.
 
-Scoring, per group (the contract in Obsidian note 33):
+Two test kinds, after CheckList (Ribeiro et al., ACL 2020), which names both:
 
-    PASS     some value appears in EVERY answer that produced one
-    FAIL     answers produced values, but no value is common to all
-    UNKNOWN  fewer than two answers produced a value — a refusal or a clarifying question is not
-             an inconsistency, and counting it as one would reward answering at any cost
+    INV  invariance — reword the question, the figure must NOT change
+    DIR  directional — change the YEAR or the COMPANY, the figure MUST change
+
+DIR is what makes INV mean anything. A model that ignores the question and always returns the same
+number passes a pure invariance suite perfectly; the first version of this file had no DIR at all
+and would have scored it 5/5. It is the same control that sits in `forbid` and `clarify` — a
+metric measuring only one direction can be satisfied by refusing to vary.
+
+Each INV variant differs from the baseline in EXACTLY ONE way — metric synonym, fiscal-year form,
+entity form, padding, language — so a failure names the dimension that caused it. The earlier
+version changed several at once and could only report that something broke.
+
+    INV      PASS    some value appears in EVERY answer that produced one
+             FAIL    answers produced values, but no value is common to all
+             UNKNOWN fewer than two answers produced a value — a refusal or a clarifying question
+                     is not an inconsistency, and counting it as one would reward answering at
+                     any cost
+    DIR      PASS    the figure matches THAT question's own gold
+             FAIL    it does not — the baseline's figure came back, or the wrong one did
+
+DIR is checked against gold rather than against "differs from the baseline", because differing is
+not the same as being right and the weaker test fails both ways. PepsiCo's FY2023 and FY2024
+revenue are 0.42% apart, inside the tolerance, so a CORRECT answer to the shifted year looked like
+the baseline figure coming back.
 
 "Some value in every answer", rather than comparing the first figure in each, because an answer
 legitimately carries more than one — "revenue was $391,035,000,000, up from $383,285,000,000".
@@ -79,30 +99,56 @@ def main():
     from agents.sec_agent import build_agent, run_agent
     groups = [json.loads(l) for l in GROUPS.open()]
     agent = build_agent()
-    failed = 0
-    print(f"{len(groups)} facts, {sum(len(g['variants']) for g in groups)} phrasings\n")
+    inv_fail, dir_fail = [], []
+    by_dim = {}                      # which rewrite dimension broke a group
+    print(f"{len(groups)} facts · {len(groups) * 8} phrasings "
+          f"(6 invariance + 2 directional each)\n")
     for g in groups:
-        per, detail = [], []
-        for q in g["variants"]:
-            out = run_agent(q, agent=agent)
-            figs = _figures(out["answer"])
-            per.append(figs)
-            detail.append((q, figs, out["tools_used"]))
-        decided = [f for f in per if f]
-        common = _common(per)
-        verdict = ("UNKNOWN" if len(decided) < 2 else "PASS" if common else "FAIL")
-        mark = {"PASS": "  ", "FAIL": "<-", "UNKNOWN": "? "}[verdict]
+        figs, ask = {}, lambda q: _figures(run_agent(q, agent=agent)["answer"])
+        for dim, q in g["inv"].items():
+            figs[dim] = ask(q)
+        decided = [f for f in figs.values() if f]
+        common = _common(list(figs.values()))
+        inv = "UNKNOWN" if len(decided) < 2 else "PASS" if common else "FAIL"
+
+        base = figs.get("baseline") or []
+        dirs = {}
+        for dim, q in g["dir"].items():
+            got = ask(q)
+            want = (g.get("dir_gold") or {}).get(dim)
+            # Against THAT question's own gold, not merely "different from the baseline".
+            # Differing is not the same as being right, and it fails in both directions:
+            # PepsiCo's FY2023 and FY2024 revenue are 0.42% apart, inside the tolerance, so a
+            # correct answer to the shifted year read as "returned the baseline figure".
+            dirs[dim] = ("UNKNOWN" if not got or want is None else
+                         "PASS" if any(abs(v - want) <= TOL * max(abs(v), abs(want))
+                                       for v in got) else "FAIL")
+
+        bad_dirs = [d for d, v in dirs.items() if v == "FAIL"]
+        mark = "  " if inv == "PASS" and not bad_dirs else "<-"
         shared = f"  shared={common[0]:,.0f}" if common else ""
-        print(f"{mark} {g['id']}  {verdict:8} {g['fact']:26} "
-              f"{len(decided)}/{len(per)} answered{shared}")
-        if verdict != "PASS":
-            for q, figs, tools in detail:
-                shown = ", ".join(f"{v:,.0f}" for v in figs) or "(no figure)"
-                print(f"       {q[:58]:60} {shown}")
-        if verdict == "FAIL":
-            failed += 1
-    print(f"\n{len(groups) - failed} consistent, {failed} inconsistent")
-    return 1 if failed else 0
+        print(f"{mark} {g['id']}  INV {inv:8} DIR {'/'.join(dirs.values()):16} "
+              f"{g['fact']:24} {len(decided)}/6 answered{shared}")
+        if inv == "FAIL":
+            inv_fail.append(g["id"])
+            # name the dimension: which single rewrite lost the value the others shared
+            majority = _common([f for d, f in figs.items() if d != "baseline" and f])
+            for d, f in figs.items():
+                if f and (not majority or not _common([majority, f])):
+                    by_dim[d] = by_dim.get(d, 0) + 1
+                    print(f"       {d:10} diverged: {', '.join(f'{v:,.0f}' for v in f)}")
+        for d in bad_dirs:
+            dir_fail.append(f"{g['id']}/{d}")
+            print(f"       {d:10} returned the baseline figure for a different question")
+
+    print(f"\nINV: {len(groups) - len(inv_fail)}/{len(groups)} consistent"
+          + (f"  failed={inv_fail}" if inv_fail else ""))
+    print(f"DIR: {len(groups) * 2 - len(dir_fail)}/{len(groups) * 2} moved as they should"
+          + (f"  failed={dir_fail}" if dir_fail else ""))
+    if by_dim:
+        print("\nrewrite dimensions that broke a group: "
+              + " · ".join(f"{d} ×{n}" for d, n in sorted(by_dim.items(), key=lambda x: -x[1])))
+    return 1 if (inv_fail or dir_fail) else 0
 
 
 if __name__ == "__main__":
