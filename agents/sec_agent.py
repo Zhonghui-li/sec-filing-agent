@@ -16,7 +16,7 @@ import os
 import re
 import functools
 import time
-from typing import Dict, List
+from typing import Optional, Dict, List
 
 from langchain_core.tools import tool
 from langchain_core.messages import (ToolMessage, HumanMessage, AIMessage, SystemMessage,
@@ -77,7 +77,7 @@ _search_state = {"n": 0}  # per-run search counter. A module global because neit
                           # (per-invocation), deferred as low-severity (recursion_limit still backstops).
 
 
-def search_filings(query: str, ticker: str = None, k: int = 5, fiscal_year: int = None) -> str:
+def search_filings(query: str, ticker: Optional[str] = None, k: int = 5, fiscal_year: Optional[int] = None) -> str:
     # Per-turn budget enforced in code: an LLM will re-search a narrative question indefinitely
     # (rephrasing the query) instead of committing to an answer, blowing the recursion limit —
     # and prompting alone does NOT reliably stop it. After _MAX_SEARCHES calls we force the model
@@ -314,7 +314,7 @@ def _user_docs_tools(user_id: str, scope_doc: str = None):
         return scope_doc or document   # explicit UI selection (A) wins over the LLM hint (B)
 
     @_tool
-    def search_my_documents(query: str, document: str = None) -> str:
+    def search_my_documents(query: str, document: Optional[str] = None) -> str:
         """Search the USER'S OWN uploaded private documents for QUALITATIVE passages, each tagged
         [filename · page] to cite. Use for narrative/risk/commentary in an uploaded file — NOT for
         exact numbers (use get_my_financials). If the question is about a SPECIFIC uploaded file,
@@ -329,7 +329,7 @@ def _user_docs_tools(user_id: str, scope_doc: str = None):
         return _smd(query, user_id=user_id, doc_filter=_filter(document))
 
     @_tool
-    def get_my_financials(metric: str, period: str = None, document: str = None) -> str:
+    def get_my_financials(metric: str, period: Optional[str] = None, document: Optional[str] = None) -> str:
         """Exact financial numbers from the TABLES in the user's uploaded documents (the
         private-data analogue of get_financials). `metric` matches a table row label (e.g.
         "net income"); optional `period` matches a column (e.g. "FY2025"). Use this for ANY number
@@ -339,7 +339,7 @@ def _user_docs_tools(user_id: str, scope_doc: str = None):
         return _gmf(metric, user_id=user_id, period=period, doc_filter=_filter(document))
 
     @_tool
-    def get_my_ratio(ratio: str, document: str = None, period: str = None) -> str:
+    def get_my_ratio(ratio: str, document: Optional[str] = None, period: Optional[str] = None) -> str:
         """A standard financial RATIO from the user's uploaded documents (the private-data
         analogue of get_ratio; same fixed formulas, computed in code). Supports gross_margin,
         operating_margin, net_margin, cogs_pct, roa, roe, current_ratio, quick_ratio,
@@ -349,7 +349,7 @@ def _user_docs_tools(user_id: str, scope_doc: str = None):
         return _gmr(ratio, user_id=user_id, period=period, doc_filter=_filter(document))
 
     @_tool
-    def get_my_growth(metric: str, document: str = None, period: str = None) -> str:
+    def get_my_growth(metric: str, document: Optional[str] = None, period: Optional[str] = None) -> str:
         """Year-over-year (YoY) change of a metric from the user's uploaded documents (the
         private-data analogue of get_growth). The tool fetches the year and the immediately
         preceding year itself, so the compared years are always consecutive. Use this for ANY

@@ -1,3 +1,4 @@
+from typing import Optional
 """Report-level statement reconstruction. The full income statement / balance sheet / cash-flow line
 items (labels + values) for any company-year, rebuilt from the filing's XBRL *presentation* linkbase
 via edgartools — not the flat companyfacts tags. This SUPPLEMENTS the metric-level tools
@@ -98,7 +99,7 @@ def _concrete(df, col):
     return df[m]
 
 
-def get_statement(ticker: str, statement: str = "balance_sheet", fiscal_year: int = None) -> str:
+def get_statement(ticker: str, statement: str = "balance_sheet", fiscal_year: Optional[int] = None) -> str:
     """Return the FULL line items of a company's financial statement for a fiscal year — for
     statement structure or a line item NOT covered by get_financials (e.g. a bank's customer deposits).
     `statement` is "balance_sheet", "income_statement", or "cash_flow". Values come from XBRL and the
@@ -120,7 +121,7 @@ _CAPEX_CONCEPTS = ("PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcqu
                    "PaymentsToAcquireOtherProductiveAssets", "PaymentsForCapitalImprovements")
 
 
-def capex_from_cashflow(ticker: str, fiscal_year: int = None):
+def capex_from_cashflow(ticker: str, fiscal_year: Optional[int] = None):
     """Capital expenditures read from the cash-flow statement (edgartools linkbase) — the fallback for
     filers whose capex isn't in the flat companyfacts API (e.g. Verizon tags it as
     PaymentsToAcquireOtherProductiveAssets, which companyfacts omits). Returns (value, accession, fy)
@@ -153,7 +154,7 @@ def _pick_line_item(df, col, section, smallest=False):
     return min(items, key=lambda x: x[1]) if smallest else max(items, key=lambda x: x[1])
 
 
-def largest_line_item(ticker: str, section: str = "liabilities", fiscal_year: int = None,
+def largest_line_item(ticker: str, section: str = "liabilities", fiscal_year: Optional[int] = None,
                       smallest: bool = False) -> str:
     """The single largest (or smallest) LINE ITEM in a balance-sheet section — the deterministic answer
     to "what is X's largest liability/asset?". `section` is "liabilities", "assets", or "equity". The
@@ -239,7 +240,7 @@ def _breakdown_from_xbrl(xb, axis, want_concept, fy):
 
 
 def get_segment_breakdown(ticker: str, dimension: str = "segment", metric: str = "revenue",
-                          fiscal_year: int = None) -> str:
+                          fiscal_year: Optional[int] = None) -> str:
     """Revenue (or operating income) broken down BY BUSINESS SEGMENT or BY GEOGRAPHY for a fiscal year —
     dimensional XBRL data the flat metric tools (get_financials) can't reach. `metric` is "revenue" or
     "operating_income". Values come from XBRL and the answer cites the filing. Use this for "revenue by
@@ -334,7 +335,7 @@ def _segment_growth(xb, axis, want_concept, fy):
 
 
 def get_segment_growth(ticker: str, dimension: str = "segment", metric: str = "revenue",
-                       fiscal_year: int = None) -> str:
+                       fiscal_year: Optional[int] = None) -> str:
     """Year-over-year GROWTH of revenue (or operating income) BY BUSINESS SEGMENT or BY GEOGRAPHY — the
     deterministic answer to "which segment grew fastest / dragged down growth". Uses the filing's own
     recast prior-year figures (consistent even after a segment restructuring); growth is computed in

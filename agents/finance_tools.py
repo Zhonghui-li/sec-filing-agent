@@ -1,3 +1,4 @@
+from typing import Optional
 """Numeric tools for the SEC agent — the ONLY source of financial figures.
 
 get_financials returns exact values from the XBRL-derived financials.json (with the
@@ -217,7 +218,7 @@ def _capex_cashflow_fallback(tk, ticker, fiscal_year):
             f"[source: 10-K accession {row['accession']}, {edgar_url(row['cik'], row['accession'])}]")
 
 
-def get_financials(ticker: str, metric: str, fiscal_year: int = None, quarter: int = None) -> str:
+def get_financials(ticker: str, metric: str, fiscal_year: Optional[int] = None, quarter: Optional[int] = None) -> str:
     """Return an EXACT financial figure for a company from SEC XBRL data, with its
     source filing. Use this for ANY financial number (revenue, net income, total assets,
     gross profit, EPS, cash, equity, EBITDA, free cash flow, ...) — never recall or estimate
@@ -513,7 +514,7 @@ def _eval_known_formula(key, ticker, fiscal_year):
             f"({definition}).{cite}" + _restatement_note(srcs))
 
 
-def get_ratio(ratio: str, ticker: str, fiscal_year: int = None) -> str:
+def get_ratio(ratio: str, ticker: str, fiscal_year: Optional[int] = None) -> str:
     """Compute a standard financial RATIO deterministically (the formula is fixed in code, so
     the right base metrics and conventions are always used). Supports: gross_margin,
     operating_margin, net_margin, cogs_pct, roa, roe, current_ratio, quick_ratio, payout_ratio,
@@ -601,7 +602,7 @@ def financial_table_csv(ticker, metrics, years):
     return "\n".join(lines) + "\n"
 
 
-def get_growth(metric: str, ticker: str, fiscal_year: int = None) -> str:
+def get_growth(metric: str, ticker: str, fiscal_year: Optional[int] = None) -> str:
     """Compute year-over-year (YoY) change of a metric DETERMINISTICALLY. The tool itself
     fetches the given fiscal year (or the latest) AND the immediately preceding fiscal year,
     then returns the percent change — so the two years compared are ALWAYS consecutive. Use
@@ -736,7 +737,7 @@ def _supplied_assumptions(expression: str):
     return out
 
 
-def compute_formula(expression: str, ticker: str, fiscal_year: int = None) -> str:
+def compute_formula(expression: str, ticker: str, fiscal_year: Optional[int] = None) -> str:
     """Evaluate a custom financial FORMULA deterministically. Use this when the question SPELLS OUT
     a formula, or asks for a metric get_ratio does not cover. Write the whole formula with our
     metric names as variables and the helpers avg(), delta() (this year minus prior), prev(), e.g.:
