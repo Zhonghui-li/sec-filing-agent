@@ -1,3 +1,4 @@
+from typing import Optional
 """search_filings: RAG over 10-K narrative sections (pgvector).
 
 Returns passages each tagged with its source (ticker · fiscal year · section · accession) so the
@@ -80,7 +81,22 @@ def _hyde_embed(query: str):
     return _fmt(qv)
 
 
+_ITER_SCAN = None       # does this pgvector know hnsw.iterative_scan (0.8+)? probed once per process
+
+
 def _dense(cur, qv, ticker, k, fiscal_year=None):
+    # HNSW collects its ef_search candidates from the WHOLE index and the WHERE is applied only
+    # afterwards, so a per-ticker filter over a 30-company index routinely leaves zero survivors and
+    # this returns EMPTY while the rows sit on disk (exact scan finds them). That is not a miss the
+    # caller can see: it looks exactly like "this company isn't indexed", which sent 25% of the
+    # 2026-09 baseline's narrative retrievals down the cold-start path. Iterative scan keeps walking
+    # the graph until k rows survive the filter.
+    global _ITER_SCAN
+    if _ITER_SCAN is None:
+        cur.execute("select count(*) from pg_settings where name='hnsw.iterative_scan'")
+        _ITER_SCAN = cur.fetchone()[0] > 0
+    if _ITER_SCAN:
+        cur.execute("set hnsw.iterative_scan = relaxed_order")
     where, tp = [], []
     if ticker:
         where.append("ticker=%s"); tp.append(ticker)
@@ -94,7 +110,7 @@ def _dense(cur, qv, ticker, k, fiscal_year=None):
     return cur.fetchall()
 
 
-def search_filings(query: str, ticker: str = None, k: int = 5, fiscal_year: int = None) -> str:
+def search_filings(query: str, ticker: Optional[str] = None, k: int = 5, fiscal_year: Optional[int] = None) -> str:
     """Search companies' 10-K narrative sections (business, risk factors, MD&A) for
     QUALITATIVE information — risks, strategy, management's discussion/explanations.
     Pass `ticker` (e.g. "AAPL") to restrict to one company. For a question about a SPECIFIC
@@ -127,7 +143,13 @@ def search_filings(query: str, ticker: str = None, k: int = 5, fiscal_year: int 
         try:                                # bounded cache (agents.filings_ingest) evicts colder ones first
             accns = list({r[3] for r in rows})
             with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
-                cur.execute("update filing_chunks set last_accessed=now() where accession = any(%s)", (accns,))
+                # Only when actually stale. Every row of an accession is rewritten (39 on average,
+                # 711 at worst) for a bookkeeping timestamp, and in Postgres each UPDATE is a new row
+                # version — a new HNSW graph entry plus a dead one. 594k of those had bloated the
+                # index until autovacuum caught up, which is what made the empty results intermittent.
+                # Hour granularity is ample for an eviction order.
+                cur.execute("update filing_chunks set last_accessed=now() where accession = any(%s) "
+                            "and last_accessed < now() - interval '1 hour'", (accns,))
         except Exception:
             pass
 
