@@ -24,6 +24,7 @@ _EMB_MODEL = os.environ.get("EMB_MODEL", "text-embedding-3-small")
 # store once year-aware retrieval put multiple years per company in it. Cap the row count and drop the
 # least-recently-used companies when over it. ~20k rows ≈ 320 MB, well under the free-tier limit.
 _MAX_CHUNKS = int(os.environ.get("FILING_CHUNKS_MAX", "20000"))
+from agents.cold_starts import note_ingest_reason
 # Freshness TTL: an entry older than this is pruned so a re-query re-fetches the newest filing (a new
 # 10-Q/10-K may have been filed). Year-pinned filings are immutable, so pruning just harmlessly
 # re-fetches the same content on next use.
@@ -247,6 +248,7 @@ def ingest_ticker(ticker, years=1, fiscal_year=None):
         with psycopg.connect(dsn) as conn, conn.cursor() as cur:
             cur.execute(_ENSURE)
             if _present(cur):
+                note_ingest_reason("already_indexed")
                 return 0                       # already indexed -> cache hit, nothing to do
         if fy_req is not None:
             sections = _fetch_sections(tk, fiscal_year=fy_req)   # that year's 10-K
@@ -257,6 +259,7 @@ def ingest_ticker(ticker, years=1, fiscal_year=None):
             sections += _fetch_10q_mda(tk, quarters=4)   # last 4 quarters of 10-Q MD&A
             sections += _fetch_8k(tk)                     # recent bounded 8-K events
         if not sections:
+            note_ingest_reason("no_sections")
             return 0
         splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=150)
         chunks = []
@@ -271,6 +274,7 @@ def ingest_ticker(ticker, years=1, fiscal_year=None):
         with psycopg.connect(dsn) as conn, conn.cursor() as cur:
             cur.execute("select pg_advisory_xact_lock(hashtext(%s))", (lock_key,))  # serialize per key
             if _present(cur):
+                note_ingest_reason("raced")
                 return 0                       # another request ingested it while we embedded
             for (fy, sec, accn, text), v in zip(chunks, vectors):
                 cur.execute(
@@ -283,6 +287,10 @@ def ingest_ticker(ticker, years=1, fiscal_year=None):
             conn.commit()
         return len(chunks)
     except Exception as e:
+        # The caller only sees the chunk count, so a swallowed exception used to look exactly like
+        # "this company has nothing to index". Record it: that ambiguity hid a failure affecting
+        # 25% of narrative retrievals in the 2026-09 baseline.
+        note_ingest_reason(f"{type(e).__name__}: {e}"[:200])
         print(f"[filings_ingest] {tk} ingestion failed: {type(e).__name__}: {e}")
         return 0
 

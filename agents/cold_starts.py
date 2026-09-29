@@ -18,6 +18,7 @@ skipping one file. Nothing here needs a database.
 import contextvars
 
 _cold_starts = contextvars.ContextVar("filings_cold_starts")
+_ingest_reason = contextvars.ContextVar("filings_ingest_reason", default=None)
 
 
 def reset_cold_starts():
@@ -35,10 +36,24 @@ def take_cold_starts():
     return out
 
 
+def note_ingest_reason(reason):
+    """Why the ingest that is about to be recorded returned the count it did. Set by
+    agents.filings_ingest at each of its exits; consumed by the next note_cold_start."""
+    _ingest_reason.set(reason)
+
+
 def note_cold_start(ticker, fiscal_year, chunks):
     """Record one. Called even when `chunks` is 0: a cold start that found nothing says the
-    retrieval had no index behind it at all, which is the more informative case."""
+    retrieval had no index behind it at all, which is the more informative case. `chunks: 0`
+    alone cannot distinguish "nothing to add" from "the fetch blew up", so the ingest's own
+    reason rides along — without it a swallowed exception is indistinguishable from an empty
+    company, which is how a 25%-of-retrievals failure stayed invisible in the baseline."""
+    rec = {"ticker": ticker, "fiscal_year": fiscal_year, "chunks": chunks}
+    reason = _ingest_reason.get()
+    _ingest_reason.set(None)
+    if reason:
+        rec["reason"] = reason
     try:
-        _cold_starts.get().append({"ticker": ticker, "fiscal_year": fiscal_year, "chunks": chunks})
+        _cold_starts.get().append(rec)
     except LookupError:
         pass                                  # nobody is collecting — a direct tool call, or a test
