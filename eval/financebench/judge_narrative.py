@@ -98,8 +98,19 @@ def capture(limit=None):
     if limit:
         narrative = narrative[:limit]
     agent = build_agent()
+    # Append as we go and skip what is already captured. A 95-question capture takes ~40 minutes,
+    # and writing only at the end means an OOM kill (8 GB machine, this happened) throws all of it
+    # away. Keyed on the question text, so a rerun resumes rather than restarts.
+    done = {}
+    if _CAP.exists():
+        done = {json.loads(l)["question"]: json.loads(l)
+                for l in _CAP.read_text().splitlines() if l.strip()}
     rows = []
     for i, c in enumerate(narrative, 1):
+        if c["question"] in done:
+            rows.append(done[c["question"]])
+            print(f"  cached   [{i}/{len(narrative)}] {c['question'][:60]}")
+            continue
         out = run_agent(c["question"], agent=agent)
         # out["tool_outputs"], not out["trace"]. `trace` is the UI-facing field: _extract_trace
         # trims every output to 600 characters so the chat interface can show the tool calls.
@@ -128,8 +139,9 @@ def capture(limit=None):
                      "gold": str(c["answer"]), "answer": out["answer"],
                      "out_of_corpus": bool(ev) and all("EARNINGS" in d for d in ev),
                      "contexts": ctxs, "tool_outputs": tool_outs})
+        with _CAP.open("a") as f:                 # incremental: survive an interrupted capture
+            f.write(json.dumps(rows[-1]) + "\n")
         print(f"  captured [{i}/{len(narrative)}] {c['question'][:60]}")
-    _CAP.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
     print(f"wrote {_CAP.name} ({len(rows)} full narrative answers)")
     return rows
 
