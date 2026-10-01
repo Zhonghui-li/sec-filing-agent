@@ -86,6 +86,14 @@ def _judge_one(llm, item):
 
 def domain_judge(items):
     """items: [{question, answer, contexts}]. Returns [{verdict: good|bad, reasoning, unsupported}]."""
+    # NOTE: this judge is pinned to gpt-4o because kappa=0.76 is calibrated against it, and one
+    # call carrying retrieved passages plus a full financial statement runs to ~30k tokens. On an
+    # OpenAI Tier-1 account gpt-4o allows 30,000 TPM, so a SINGLE call spends the whole minute and
+    # the 95-question narrative set cannot complete. Lowering concurrency, raising retries and
+    # pacing the sends were all tried and none of them help — the request itself is the budget.
+    # The fix is account tier (Tier 2, reached at $50 cumulative spend, raises gpt-4o to 450k TPM),
+    # not anything in this file. Do not "solve" it by switching to gpt-4o-mini: that judge is
+    # systematically over-strict (kappa 0.61) and the calibration would no longer hold.
     llm = ChatOpenAI(model=JUDGE_MODEL, temperature=0,
                      model_kwargs={"response_format": {"type": "json_object"}})
     with ThreadPoolExecutor(max_workers=4) as ex:
