@@ -23,10 +23,35 @@ from pathlib import Path
 
 from langchain_openai import ChatOpenAI
 
-# gpt-4o, not -mini: on the balanced (harder) calibration set the -mini judge lands at κ=0.76 while
-# gpt-4o reaches 0.94 — the stronger model applies the nuanced grounding rubric that -mini can't.
-# (The mini/4o gap only shows on the balanced set; the good-heavy default set masks it at 0.947 for
-# both.) Override with DOMAIN_JUDGE_MODEL for cheaper high-volume monitoring if needed.
+# Still gpt-4o — but the calibration behind that choice no longer holds, and the obvious
+# replacement turned out to be wrong for half of what this judge actually does.
+#
+# The 33-item balanced set this was calibrated on is saturated: five candidates were run over it
+# and three tied at kappa=1.000, so it cannot tell models apart, and the held-out set that caught
+# overfitting in 2026-07 was never committed. PHANTOM (NeurIPS 2025, 10-K/DEF14A, human-labelled)
+# replaced it — 200 balanced items to choose on, a disjoint 200 held back — and on the sealed slice
+# gpt-5-mini reached kappa=0.820 against gpt-4o's 0.660, 21 items better and 5 worse, p=0.0012.
+#
+# That result is real and does NOT transfer. Switched to gpt-5-mini, the 95 narrative answers went
+# from 96% grounded to 54%, and the failures share a shape: the numbers are right and the
+# EVALUATIVE conclusion is what gets failed — "liquidity is healthy", "margin is improving",
+# "inventory is not a material concern". Half our narrative questions ask for exactly that kind of
+# judgement (48 of 95; they fail at 56% against 36% for the factual ones), and PHANTOM contains
+# none of it: it builds a hallucination by perturbing a fact, which cannot produce "every fact
+# correct, conclusion overreaches". It also contains no abstentions, which is what the
+# zero-false-positives-on-hedged-answers claim rests on.
+#
+# This is the same strictness that was deliberately rolled back in 2026-07, when tightening the
+# rubric to catch evaluative claims scored kappa=1.0 on the tuning set and 0.40 on held-out, false-
+# failing three grounded answers. The rubric was never un-rolled-back — the words are identical.
+# A different model simply reads them more strictly, which is to say part of this rubric's leniency
+# was always the model's disposition rather than the text.
+#
+# So: gpt-4o stays until an evaluative-answer labelled set exists. DOMAIN_JUDGE_MODEL switches it
+# for anyone who wants the stronger factual detector and accepts that cost. Do not re-decide this
+# from the PHANTOM slices already spent (scratchpad/phantom_{dev,test}_slice.json) — reusing them
+# turns held-out back into tuning data, which is how the previous held-out was lost in the first
+# place.
 JUDGE_MODEL = os.environ.get("DOMAIN_JUDGE_MODEL", "gpt-4o")
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -94,8 +119,11 @@ def domain_judge(items):
     # The fix is account tier (Tier 2, reached at $50 cumulative spend, raises gpt-4o to 450k TPM),
     # not anything in this file. Do not "solve" it by switching to gpt-4o-mini: that judge is
     # systematically over-strict (kappa 0.61) and the calibration would no longer hold.
-    llm = ChatOpenAI(model=JUDGE_MODEL, temperature=0,
-                     model_kwargs={"response_format": {"type": "json_object"}})
+    # gpt-5 and the o-series reject an explicit temperature, so pass it only where it is accepted.
+    kw = {"model": JUDGE_MODEL, "model_kwargs": {"response_format": {"type": "json_object"}}}
+    if not JUDGE_MODEL.startswith(("gpt-5", "gpt-6", "o1", "o3", "o4")):
+        kw["temperature"] = 0
+    llm = ChatOpenAI(**kw)
     with ThreadPoolExecutor(max_workers=4) as ex:
         return list(ex.map(lambda it: _judge_one(llm, it), items))
 
