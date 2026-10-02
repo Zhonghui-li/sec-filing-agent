@@ -322,8 +322,28 @@ def _run_once(cases, agent, run_agent, quality, run_dir, attempt):
     rows = []
     q_items = []   # qualitative answers (with retrieved contexts) for the Ragas layer
     records = []   # one per case, persisted so two runs can be diffed after the fact
+    # Append each record as it lands and skip cases a previous attempt already scored. Writing
+    # only at the end is one OOM kill away from losing the whole run, which on an 8 GB machine
+    # happened four times the day this was added — and 144 cases is the longest run here. Keyed
+    # on case id, so a rerun resumes. `rows` cannot be rebuilt from a record (it holds the agent's
+    # full output), so a resumed case keeps its metrics but sits out the Ragas layer, which is
+    # opt-in and recomputed from scratch anyway.
+    if run_dir:
+        run_dir.mkdir(parents=True, exist_ok=True)
+    resume = run_dir / f"run{attempt + 1}.jsonl" if run_dir else None
+    done = {}
+    if resume and resume.exists():
+        done = {r["id"]: r for r in (json.loads(l) for l in resume.read_text().splitlines() if l.strip())}
+        print(f"resuming: {len(done)} of {len(cases)} cases already scored")
     print(f"running {len(cases)} cases...\n")
     for c in cases:
+        if c["id"] in done:
+            rec = done[c["id"]]
+            records.append(rec)
+            # The aggregate reads (case, metrics); the third slot is the agent's output and is
+            # only used to print a failing case's answer, which a resumed case cannot show.
+            rows.append((c, rec["metrics"], None))
+            continue
         # `history` (multi-turn cases only) is prior turns the client would have held. The agent
         # is stateless, so this is the only way a pronoun or an elided year can be resolved — and
         # multi-turn is a shipped capability that no case exercised until now.
@@ -361,22 +381,25 @@ def _run_once(cases, agent, run_agent, quality, run_dir, attempt):
                         "trace": [{"tool": t.get("tool"), "args": t.get("args"),
                                    "turn": t.get("turn"), "output": t.get("output")}
                                   for t in out.get("trace", [])]})
+        if resume:
+            with resume.open("a") as fh:          # incremental: survive an interrupted run
+                fh.write(json.dumps(records[-1]) + "\n")
         flags = " ".join(f"{k}={'Y' if v else 'N'}" for k, v in r.items())
         ok = verdict(r)
         print(f"[{'PASS' if ok else 'FAIL'}] {c['id']} ({c['difficulty']:6}) {flags}")
         if not ok:
             print(f"        Q: {c['question'][:80]}")
-            print(f"        tools={out['tools_used']}  A: {out['answer'][:120].strip()}")
+            if out is None:
+                print("        (resumed from a previous attempt — answer not retained)")
+            else:
+                print(f"        tools={out['tools_used']}  A: {out['answer'][:120].strip()}")
 
     # Written BEFORE aggregating. The records are what the run cost; an exception while summing
     # them (a three-valued metric reaching sum() did exactly this) would otherwise discard every
     # agent call the run paid for.
     if run_dir:
-        run_dir.mkdir(parents=True, exist_ok=True)
         path = run_dir / f"run{attempt + 1}.jsonl"
-        with path.open("w") as fh:
-            for rec in records:
-                fh.write(json.dumps(rec) + "\n")
+        path.write_text("".join(json.dumps(rec) + "\n" for rec in records))   # rewrite in case order
         cold = sum(len(rec["cold_starts"]) for rec in records)
         print(f"\nwrote {path}  ({len(records)} cases, {cold} cold starts)")
 
