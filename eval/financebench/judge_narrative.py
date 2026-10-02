@@ -24,7 +24,6 @@ from langchain_openai import ChatOpenAI
 HERE = Path(__file__).resolve().parent
 _CACHE = HERE / "_open_cache.jsonl"
 _CAP = HERE / "_narrative_answers.jsonl"      # full answers + contexts we capture
-JUDGE_MODEL = os.environ.get("DOMAIN_JUDGE_MODEL", "gpt-4o-mini")
 
 CORRECTNESS_RUBRIC = """You are grading an AI assistant's answer to a question about a company's SEC \
 filings, against a reference (GOLD) answer written by financial analysts. Decide whether the \
