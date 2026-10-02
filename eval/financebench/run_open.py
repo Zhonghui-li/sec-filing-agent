@@ -97,12 +97,23 @@ def _gap_category(question):
     return "line-item: other/uncategorized"
 
 
-def score(run_agent, agent, limit=None):
+def score(run_agent, agent, limit=None, resume=None):
     cases = _load()
     if limit:
         cases = cases[:limit]
+    # Append each row as it lands and skip what a previous attempt already scored. 150 questions
+    # on a reasoning model is 40-60 minutes, and writing only at the end means an OOM kill — four
+    # of them on an 8 GB machine the day this was added — throws away every answer already paid
+    # for. Keyed on financebench_id, so a rerun resumes rather than restarts.
+    done = {}
+    if resume and resume.exists():
+        done = {r["id"]: r for r in (json.loads(l) for l in resume.read_text().splitlines() if l.strip())}
     rows = []
     for i, c in enumerate(cases, 1):
+        if c["financebench_id"] in done:
+            rows.append(done[c["financebench_id"]])
+            print(f"  [{i:>3}/{len(cases)}] cached        {c['company'][:14]:14} {c['question'][:50]}")
+            continue
         out = run_agent(c["question"] + SLOT_INSTRUCTION, agent=agent)
         abstained = _abstained(out)
         gold_numeric = _gold_is_numeric(c["answer"])
@@ -147,6 +158,9 @@ def score(run_agent, agent, limit=None):
                      "q": c["question"],
                      "gold": str(c["answer"])[:40],
                      "got": answer[:90].replace("\n", " ")})
+        if resume:
+            with resume.open("a") as f:          # incremental: survive an interrupted run
+                f.write(json.dumps(rows[-1]) + "\n")
         print(f"  [{i:>3}/{len(cases)}] {verdict:13} {c['company'][:14]:14} {c['question'][:60]}")
     return rows
 
@@ -212,13 +226,25 @@ def main():
     args = ap.parse_args()
     from agents.sec_agent import build_agent, run_agent
     agent = build_agent()
-    rows = score(run_agent, agent, limit=args.limit)
+    partial = HERE / ("_open_partial.jsonl" if args.limit is None
+                      else f"_open_partial.limit{args.limit}.jsonl")
+    rows = score(run_agent, agent, limit=args.limit, resume=partial)
     summary = report(rows)
     # a --limit run is a smoke test, so it must not clobber the full-run artifact (which is
     # gitignored, i.e. unrecoverable once overwritten)
     out = HERE / ("_open_results.json" if args.limit is None
                   else f"_open_results.limit{args.limit}.json")
+    # Archive the previous run's per-case rows before overwriting them. This file is gitignored,
+    # so the copy it holds is the ONLY record of how each question was answered last time — and a
+    # full run silently replaces it. On 2026-10-02 coverage moved 94.4% -> 90.7% and the paired
+    # comparison that would have said whether those two questions were a regression or run-to-run
+    # noise was impossible, because the previous rows had just been overwritten by the run asking
+    # the question.
+    if out.exists():
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        out.replace(out.with_name(f"{out.stem}.{stamp}{out.suffix}"))
     out.write_text(json.dumps(rows, indent=2))
+    partial.unlink(missing_ok=True)              # the run completed; the resume file is spent
     print(f"\nwrote {out}")
     # append this run to the history log -> the coverage progression is tracked and reproducible
     record = {"ts": datetime.now(timezone.utc).isoformat(),
