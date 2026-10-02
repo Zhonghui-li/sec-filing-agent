@@ -44,12 +44,28 @@ OUT = Path(__file__).resolve().parent.parent / "data" / "index_manifest.json"
 
 
 def read_index(dsn):
-    """[{ticker, fiscal_year, pinned, chunks, accessions}] — one entry per indexed company-year."""
+    """[{ticker, fiscal_year, pinned, chunks, accessions, filings}] — one entry per company-year.
+
+    `filings` names the accessions and WHICH SECTION of each one is held, because an accession
+    number alone overstates what is there. A 10-K has around twenty items; ingestion takes three
+    of them — Item 1 business, Item 1A risk factors, Item 7 MD&A — and a 10-Q contributes only its
+    MD&A. The financial statements and the notes, where debt terms and credit facilities are
+    disclosed, are never indexed. A manifest saying "we had this 10-K" would therefore be read as
+    coverage the index never had, and a rebuild driven by accession alone would restore something
+    different from what was evicted.
+    """
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
-        cur.execute("""select ticker, fiscal_year, pinned, count(*), count(distinct accession)
-                       from filing_chunks group by 1, 2, 3 order by 1, 2, 3""")
-        return [{"ticker": t, "fiscal_year": fy, "pinned": p, "chunks": n, "accessions": a}
-                for t, fy, p, n, a in cur.fetchall()]
+        cur.execute("""select ticker, fiscal_year, pinned, accession, section, count(*)
+                       from filing_chunks group by 1, 2, 3, 4, 5 order by 1, 2, 3, 4, 5""")
+        by_year = {}
+        for t, fy, p, accn, sec, n in cur.fetchall():
+            e = by_year.setdefault((t, fy, p), {"ticker": t, "fiscal_year": fy, "pinned": p,
+                                                "chunks": 0, "filings": []})
+            e["chunks"] += n
+            e["filings"].append({"accession": accn, "section": sec, "chunks": n})
+        for e in by_year.values():
+            e["accessions"] = len({f["accession"] for f in e["filings"]})
+        return [by_year[k] for k in sorted(by_year)]
 
 
 def key(e):
@@ -88,8 +104,10 @@ def check(dsn):
     print(f"chunks {total}/{cap} ({total / cap * 100:.1f}% of the LRU cap)")
 
     for k in lost:
+        # Name the sections, not just the count: that is what a rebuild has to reproduce.
+        secs = sorted({f["section"] for f in want[k].get("filings", [])})
         print(f"  LOST    {k[0]:6} FY{k[1]} {'pinned' if k[2] else 'latest'} "
-              f"({want[k]['chunks']} chunks)")
+              f"({want[k]['chunks']} chunks" + (f", {'+'.join(secs)}" if secs else "") + ")")
     for k in new:
         print(f"  NEW     {k[0]:6} FY{k[1]} {'pinned' if k[2] else 'latest'} "
               f"({have[k]['chunks']} chunks) — re-dump to record it")
