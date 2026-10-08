@@ -379,15 +379,32 @@ def _uploaded_doc_names(user_id: str):
 _DEFAULT_EFFORT = "low"
 
 
+def _chat_model(model, temperature=0.0):
+    """ChatOpenAI for `model`, passing only the knob it accepts — which is not the same knob
+    across the models we can migrate to. Measured against bind_tools(TOOLS), 2026-10-08:
+
+        o-series, gpt-5, gpt-5-mini, gpt-5-nano    reasoning_effort yes, temperature=0 REJECTED
+        gpt-5.4, gpt-5.4-mini, gpt-5.4-nano        reasoning_effort REJECTED, temperature=0 yes
+        gpt-5.5                                    neither — "Function tools with reasoning_effort
+                                                   are not supported", and temperature=0 rejected
+                                                   too, so it needs the Responses API, not this one
+
+    The split is the dot: the gpt-5 base line takes reasoning_effort like the o-series, the 5.4
+    line reverts to temperature. Grouping by family name gets it backwards for one of the two, and
+    the failure is a 400 at call time, not at construction — a whole eval would run as errors.
+
+    o4-mini is shut down 2026-10-23, so this path is about to carry a model it never has.
+    """
+    if re.match(r"^(o\d|gpt-5(?!\.))", model):
+        return ChatOpenAI(model=model,
+                          reasoning_effort=os.environ.get("REASONING_EFFORT", _DEFAULT_EFFORT))
+    return ChatOpenAI(model=model, temperature=temperature)
+
+
 def build_agent(model: str = None, temperature: float = 0.0, user_id: str = None,
                 scope_doc: str = None):
     model = model or os.environ.get("GEN_LLM_MODEL", "o4-mini")
-    # o-series reasoning models (o1/o3/o4-...) reject a non-default temperature and instead take a
-    # reasoning_effort knob; only the chat models (gpt-4o, ...) get a temperature.
-    if re.match(r"^o\d", model):
-        llm = ChatOpenAI(model=model, reasoning_effort=os.environ.get("REASONING_EFFORT", _DEFAULT_EFFORT))
-    else:
-        llm = ChatOpenAI(model=model, temperature=temperature)
+    llm = _chat_model(model, temperature)
     # only add the private-docs tools when a user is in scope, so eval/public demo are unchanged
     if user_id:
         tools = TOOLS + _user_docs_tools(user_id, scope_doc=scope_doc)
@@ -482,9 +499,7 @@ def _build_messages(question: str, history) -> List:
 def _llm(model: str = None):
     """The chat model, built the same way as build_agent's (used by the salvage synthesis)."""
     model = model or os.environ.get("GEN_LLM_MODEL", "o4-mini")
-    if re.match(r"^o\d", model):
-        return ChatOpenAI(model=model, reasoning_effort=os.environ.get("REASONING_EFFORT", _DEFAULT_EFFORT))
-    return ChatOpenAI(model=model, temperature=0)
+    return _chat_model(model)
 
 
 _SALVAGE_EMPTY = ("I couldn't find the information needed to answer this in the filings and data "
