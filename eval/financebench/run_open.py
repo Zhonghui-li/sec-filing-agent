@@ -244,15 +244,20 @@ def main():
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         out.replace(out.with_name(f"{out.stem}.{stamp}{out.suffix}"))
     out.write_text(json.dumps(rows, indent=2))
+    # Alongside the rows, what produced them — model, effort, index knobs, commit.
+    from eval.runconfig import snapshot
+    cfg = snapshot()
+    out.with_suffix(".config.json").write_text(json.dumps(cfg, indent=2) + "\n")
     partial.unlink(missing_ok=True)              # the run completed; the resume file is spent
     print(f"\nwrote {out}")
     # append this run to the history log -> the coverage progression is tracked and reproducible
     record = {"ts": datetime.now(timezone.utc).isoformat(),
               # must match agents.sec_agent.build_agent's default, or a run with GEN_LLM_MODEL
               # unset is logged under a model it never used
-              "model": os.environ.get("GEN_LLM_MODEL", "o4-mini"),
-              "reasoning_effort": os.environ.get("REASONING_EFFORT"),
-              "limit": args.limit, "db": bool(os.environ.get("DATABASE_URL")), **summary}
+              "model": cfg["models"]["GEN_LLM_MODEL"],
+              "reasoning_effort": cfg["models"]["REASONING_EFFORT"],
+              "git": cfg["git"]["head"][:8], "dirty": cfg["git"]["dirty"],
+              "limit": args.limit, "db": cfg["database_url_set"], **summary}
     with (HERE / "runs_log.jsonl").open("a") as f:
         f.write(json.dumps(record) + "\n")
     print(f"logged run -> {HERE/'runs_log.jsonl'} (addressable coverage {summary['addressable_coverage']:.0%})")

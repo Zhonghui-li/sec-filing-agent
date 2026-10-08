@@ -400,6 +400,10 @@ def _run_once(cases, agent, run_agent, quality, run_dir, attempt):
     if run_dir:
         path = run_dir / f"run{attempt + 1}.jsonl"
         path.write_text("".join(json.dumps(rec) + "\n" for rec in records))   # rewrite in case order
+        # Which model, effort and commit produced these rows. Taken automatically because the one
+        # time it was done by hand (the 2026-10-07 o4-mini freeze) it was done by remembering to.
+        from eval.runconfig import snapshot
+        (run_dir / "config.json").write_text(json.dumps(snapshot(), indent=2) + "\n")
         cold = sum(len(rec["cold_starts"]) for rec in records)
         print(f"\nwrote {path}  ({len(records)} cases, {cold} cold starts)")
 
