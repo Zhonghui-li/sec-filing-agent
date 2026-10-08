@@ -395,6 +395,13 @@ def _chat_model(model, temperature=0.0):
 
     o4-mini is shut down 2026-10-23, so this path is about to carry a model it never has.
     """
+    # Not reachable from here yet: /v1/responses would accept every one of these models with
+    # tools, including the 5.4 and gpt-6 lines that this endpoint refuses, and langchain exposes
+    # it as ChatOpenAI(use_responses_api=True). Flipping it was tried on 2026-10-08 and the agent
+    # returned `[{'type': 'text', 'text': ...}]` where everything downstream expects a string —
+    # the guardrail regexes, every substring metric, the citation check — and usage came back
+    # without reasoning or cached counts. It fails silently, by matching nothing, which is why
+    # the switch is not left here half-wired. See Obsidian note 37.
     if re.match(r"^(o\d|gpt-5(?!\.))", model):
         return ChatOpenAI(model=model,
                           reasoning_effort=os.environ.get("REASONING_EFFORT", _DEFAULT_EFFORT))

@@ -1,0 +1,25 @@
+{
+  "at": "2026-10-08T20:58:24Z",
+  "models": {
+    "GEN_LLM_MODEL": "gpt-5-nano",
+    "REASONING_EFFORT": "low",
+    "DOMAIN_JUDGE_MODEL": "gpt-4o",
+    "CORRECTNESS_JUDGE_MODEL": "gpt-4o",
+    "RAGAS_JUDGE_MODEL": "gpt-4o-mini",
+    "HYDE_MODEL": "gpt-4o-mini",
+    "EMB_MODEL": "text-embedding-3-small"
+  },
+  "knobs": {
+    "FILINGS_HYDE": "0",
+    "FILING_CHUNKS_MAX": "20000",
+    "FILING_TTL_DAYS": "30",
+    "RERANK": null
+  },
+  "git": {
+    "branch": "fix/hnsw-filtered-recall",
+    "head": "2b83e2200525654cb6e45034c07dcea4ad428a21",
+    "subject": "Check the shape of an answer, not only whether it is right",
+    "dirty": true
+  },
+  "database_url_set": true
+}
