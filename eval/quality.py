@@ -1,4 +1,22 @@
-"""LLM-judged quality metrics (Ragas) for the qualitative answers — the only place an
+"""NOT INSTALLED as of 2026-10-08 — importing this module raises, and nothing but
+`score.py --quality` imports it.
+
+ragas reaches for `langchain_community.chat_models.vertexai`, which langchain-community has
+removed, and langchain-community is itself being sunset. Pinning back to a version that still has
+the module pulls langchain-core down to 0.3.x, which breaks the agent — the two cannot coexist, so
+the langchain 1.x upgrade cost us this file.
+
+Worth knowing before reinstating it: run once on 2026-10-02 over 29 qualitative answers it gave
+faithfulness 0.773, answer_relevancy 0.676, context_precision 0.960. answer_relevancy was the
+weakest number in the whole suite and turned out to measure the wrong thing — it reverse-generates
+questions from the answer, so a correct abstention and a thorough 1200-character answer both score
+low for being insufficiently narrow, which is the shape this agent is built to produce.
+faithfulness overlaps eval/judge.py's grounding judge. context_precision was the one that earned
+its place. Reimplementing that alone is the cheaper path back.
+
+---
+
+LLM-judged quality metrics (Ragas) for the qualitative answers — the only place an
 LLM JUDGE is used. faithfulness = is the narrative grounded in the retrieved filing
 text (no hallucination); answer_relevancy = is it on-topic. Reused from the Slug Advisor
 stack, with the concurrency throttle that avoids judge-API TimeoutError -> NaN.
