@@ -1,0 +1,40 @@
+{
+  "frozen_at": "2026-10-08T05:34:01Z",
+  "why": "o4-mini is shut down 2026-10-23 and is the only snapshot behind its alias. Everything here was produced by it; after that date it cannot be reproduced.",
+  "models": {
+    "agent_generator": "o4-mini",
+    "reasoning_effort": "low",
+    "grounding_judge": "gpt-4o",
+    "correctness_judge": "gpt-4o",
+    "ragas_judge": "gpt-4o-mini",
+    "embedding": "text-embedding-3-small"
+  },
+  "git": {
+    "branch": "fix/hnsw-filtered-recall",
+    "head": "8a70e2cafb747afd5913e279599fca6049600300",
+    "head_subject": "An accession number overstates what the index holds",
+    "dirty": true
+  },
+  "contents": {
+    "baseline_run.jsonl": "pre-2026-10-02 per-case baseline (the gate's reference)",
+    "baseline_run.20261002.jsonl": "2026-10-02 full 144-case run; gate verdict: 0 regressions",
+    "baseline.json": "aggregate rates matching baseline_run.jsonl",
+    "_open_results.json": "FinanceBench 150, 2026-10-02; addressable coverage 90.74%, 1 hallucination",
+    "runs_log.jsonl": "FinanceBench run history (the 44->62->65->73->94->91 progression)",
+    "_narrative_answers.jsonl": "95 captured narrative answers, 2026-09-30",
+    "_narrative_grounding.20261007.json": "grounding on those answers, gpt-4o: 91/95 = 96%",
+    "index_manifest.json": "vector index state — without it retrieval cases are not comparable",
+    "phantom_slices_spent.json": "which PHANTOM rows the judge selection consumed"
+  },
+  "headline_numbers": {
+    "financebench_numeric_addressable_coverage": 0.9074,
+    "financebench_narrative_correctness_in_corpus": "35/82 = 43%",
+    "financebench_narrative_grounding": "91/95 = 96% (unchanged from 2026-09-21)",
+    "internal_baseline_overall": "133/144",
+    "narrative_coverage_boundary": "18/150 of evidence inside indexed sections"
+  },
+  "known_gaps": [
+    "per-case narrative correctness and coverage-boundary results were lost — they lived only in a scratch directory the system reaped. Only the aggregates survive, in Obsidian note 30.",
+    "the index is an LRU cache at 98.6% of cap; it churned during the 2026-10-02 runs, so retrieval-dependent cases saw different coverage depending on their position in the run."
+  ]
+}

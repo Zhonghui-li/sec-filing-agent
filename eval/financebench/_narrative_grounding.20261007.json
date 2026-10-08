@@ -1,0 +1,572 @@
+[
+  {
+    "question": "Is 3M a capital-intensive business based on FY2022 data?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly uses the retrieved context to support its claims. It states that 3M's capex as a percentage of revenue was 5.1% and its asset turnover ratio was 0.73x for FY2022, both of which are directly supported by the context. The interpretation that these figures indicate a capital-intens"
+  },
+  {
+    "question": "What drove operating margin change as of FY2022 for 3M? If operating margin is not a useful metric for a company like this, then please state that and explain why.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly identifies the decline in 3M's operating margin from 20.8% in FY2021 to 19.1% in FY2022, which is supported by the retrieved context. It also accurately attributes the decline to factors such as raw-material inflation, higher logistics costs, and manufacturing productivity headw"
+  },
+  {
+    "question": "If we exclude the impact of M&A, which segment has dragged down 3M's overall growth in 2022?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly identifies the Consumer and Transportation & Electronics segments as having the largest declines in revenue, each down 3.9%, according to the retrieved context. This matches the figures provided in the context, which states that these segments had the most significant negative i"
+  },
+  {
+    "question": "Does 3M have a reasonably healthy liquidity profile based on its quick ratio for Q2 of FY2023? If the quick ratio is not relevant to measure liquidity, please state that and explain why.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing a computed quick ratio, which requires precise calculation using the provided financial figures. The context provides the necessary data to compute the quick ratio, but the assistant does not perform the calculation itself, which is appropriate given "
+  },
+  {
+    "question": "Which debt securities are registered to trade on a national securities exchange under 3M's name as of Q2 of 2023?",
+    "grounded": "bad",
+    "out_of_corpus": false,
+    "why": "The answer correctly states that 3M has a 'well-known seasoned issuer' (WKSI) shelf registration statement effective February 8, 2023, which registers an indeterminate amount of debt or equity securities. It also accurately mentions the Medium-Term Notes Program (Series F) with a capacity of up to $"
+  },
+  {
+    "question": "Does 3M maintain a stable trend of dividend distribution?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly states that 3M has paid dividends since 1916 and has increased its dividend for 65 consecutive years, which is supported by the context. It also accurately mentions the dividend increase to $1.50 per share in February 2023 and to $1.51 per share in February 2024, reflecting a 1%"
+  },
+  {
+    "question": "Does Adobe have an improving operating margin profile as of FY2022? If operating margin is not a useful metric for a company like this, then state that and explain why.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly states that Adobe's operating margin declined from 36.8% in FY2021 to 34.6% in FY2022, which is supported by the retrieved context. The explanation about the usefulness of operating margin for Adobe is a reasonable interpretation based on the nature of Adobe's business, though i"
+  },
+  {
+    "question": "Does Adobe have an improving Free cashflow conversion as of FY2022?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer claims that Adobe's free-cash-flow conversion improved from 1.43 in FY2021 to 1.56 in FY2022. This is supported by the retrieved context, which provides these exact figures for the formula (operating_cash_flow - capital_expenditure) / net_income for both years. The context does not mentio"
+  },
+  {
+    "question": "Roughly how many times has AES Corporation sold its inventory in FY2022? Calculate inventory turnover ratio for the FY2022; if conventional inventory management is not meaningful for the company then state that and explain why.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly states that AES Corporation's inventory turnover ratio for FY2022 was 12.14x, which is supported by the retrieved context. It also appropriately explains that conventional inventory management is not a primary focus for AES due to its business model in power generation and energ"
+  },
+  {
+    "question": "What was the key agenda of the AMCOR's 8k filing dated 1st July 2022?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing an answer because the retrieved context does not contain any information about an AMCOR 8-K filing dated July 1, 2022. The context only includes filings from different dates and does not mention any agenda or details related to a filing on the specifi"
+  },
+  {
+    "question": "Has AMCOR's quick ratio improved or declined between FY2023 and FY2022? If the quick ratio is not something that a financial analyst would ask about a company like this, then state that and explain why.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly states that AMCOR does not disclose 'Inventory' for FY2023, making it impossible to calculate the quick ratio for that year. This is supported by the retrieved context, which notes the absence of inventory data for FY2023. The explanation about why analysts might focus on other "
+  },
+  {
+    "question": "What are major acquisitions that AMCOR has done in FY2023, FY2022 and FY2021?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing details on major acquisitions by Amcor in FY2023, FY2022, and FY2021 because the retrieved context does not contain specific information about individual acquisitions. The context only mentions general acquisition-related expenses and integration chal"
+  },
+  {
+    "question": "What industry does AMCOR primarily operate in?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly identifies Amcor as a global packaging company, which is supported by the retrieved context. The context describes Amcor as a leader in developing and producing packaging solutions across various materials and markets, including food, beverage, pharmaceutical, medical, home, and"
+  },
+  {
+    "question": "Does AMCOR have an improving gross margin profile as of FY2023? If gross margin is not a useful metric for a company like this, then state that and explain why.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly identifies that AMCOR's gross margin declined from 19.4% in FY2022 to 18.5% in FY2023, as supported by the retrieved context. It accurately concludes that AMCOR does not have an improving gross margin profile as of FY2023. The explanation about the relevance of gross margin for "
+  },
+  {
+    "question": "What Was AMCOR's Adjusted Non GAAP EBITDA for FY 2023",
+    "grounded": "good",
+    "out_of_corpus": true,
+    "why": "The assistant correctly identifies that the retrieved context does not provide information on AMCOR's Adjusted Non-GAAP EBITDA for FY 2023. The context only mentions Adjusted EBIT and other financial measures but does not specify EBITDA. Therefore, abstaining from providing a specific EBITDA figure "
+  },
+  {
+    "question": "How much was the Real change in Sales for AMCOR in FY 2023 vs FY 2022, if we exclude the impact of FX movement, passthrough costs and one-off items?",
+    "grounded": "good",
+    "out_of_corpus": true,
+    "why": "The assistant correctly abstained from providing a specific figure for the real change in sales for Amcor in FY 2023 vs FY 2022, excluding the impact of FX movement, passthrough costs, and one-off items. The retrieved context provides detailed sales changes for specific periods within the fiscal yea"
+  },
+  {
+    "question": "Does AMD have a reasonably healthy liquidity profile based on its quick ratio for FY22? If the quick ratio is not relevant to measure liquidity, please state that and explain why.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly states that AMD's quick ratio for FY2022 was 1.77, which is supported by the retrieved context. It also accurately explains that a quick ratio above 1.0 generally indicates a company's ability to cover near-term obligations without relying on inventory sales, which is a standard"
+  },
+  {
+    "question": "What are the major products and services that AMD sells as of FY22?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing a detailed list of AMD's major products and services because the retrieved context does not contain a comprehensive list. The context mentions some embedded products like CPUs, APUs, and GPUs, but it does not provide a full overview of all major produ"
+  },
+  {
+    "question": "What drove revenue change as of the FY22 for AMD?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing a specific computation or figure for the revenue change drivers, which is appropriate given the complexity and potential for error in manual calculations. The retrieved context provides detailed figures and explanations for revenue changes across diff"
+  },
+  {
+    "question": "What drove operating margin change as of the FY22 for AMD? If operating margin is not a useful metric for a company like this, then please state that and explain why.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer accurately identifies the drivers of the operating margin change for AMD in FY 2022, including the amortization of acquisition-related intangible assets, increased R&D investments, and inventory charges. These factors are supported by the retrieved context. The specific operating margin f"
+  },
+  {
+    "question": "Among operations, investing, and financing activities, which brought in the most (or lost the least) cash flow for AMD in FY22?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly identifies the net cash provided by each type of activity for AMD in FY 2022: operating activities provided $3.6 billion, investing activities provided $2.0 billion, and financing activities used $3.3 billion. These figures are directly supported by the retrieved context. The co"
+  },
+  {
+    "question": "From FY21 to FY22, excluding Embedded, in which AMD reporting segment did sales proportionally increase the most?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly identifies the Datacenter segment as having the largest proportional increase in sales from FY2021 to FY2022, excluding the Embedded segment. The retrieved context supports this claim, showing a 63.6% increase in the Datacenter segment's revenue, which is the highest among the s"
+  },
+  {
+    "question": "Did AMD report customer concentration in FY22?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly identifies that AMD reported customer concentration in FY22, specifically noting that one customer accounted for 16% of their consolidated net revenue. This information is directly supported by the retrieved context, which states the same fact. The answer is grounded in the prov"
+  },
+  {
+    "question": "Which debt securities are registered to trade on a national securities exchange under American Express' name as of 2022?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing an answer because the retrieved context does not contain information about debt securities registered to trade on a national securities exchange under American Express's name. The context includes details about various debt securities and financial in"
+  },
+  {
+    "question": "What are the geographies that American Express primarily operates in as of 2022?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly lists the geographic regions where American Express operates as of 2022, as supported by the retrieved context. The regions mentioned are United States, EMEA, APAC, and LACC, which are all present in the context. The answer does not introduce any unsupported claims or contradict"
+  },
+  {
+    "question": "Does AMEX have an improving operating margin profile as of 2022? If operating margin is not a useful metric for a company like this, then state that and explain why.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly states that American Express does not report 'operating income' in its recent filings, which is supported by the context indicating the absence of this metric for 2022 and years after 2009. It appropriately explains why operating margin is not a useful metric for financial servi"
+  },
+  {
+    "question": "What drove gross margin change as of the FY2022 for American Express? If gross margin is not a useful metric for a company like this, then please state that and explain why.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly states that American Express does not report 'gross profit' or 'gross margin' in its financial statements, which is supported by the retrieved context indicating the absence of such metrics. It also appropriately explains why 'gross margin' is not a useful metric for a company l"
+  },
+  {
+    "question": "How much has the effective tax rate of American Express changed between FY2021 and FY2022?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly states that American Express's effective tax rate decreased by 3.0 percentage points from FY2021 to FY2022, with the rates being 24.6% in FY2021 and 21.6% in FY2022. These figures and the calculated difference are supported by the retrieved context, which provides the exact perc"
+  },
+  {
+    "question": "What was the largest liability in American Express's Balance Sheet in 2022?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly identifies 'Customer deposits' as the largest liability for American Express in FY2022, with a total of $110.2 billion. This information is directly supported by the retrieved context, which states the same details. The answer is grounded, on-topic, and does not introduce any un"
+  },
+  {
+    "question": "Was American Express able to retain card members during 2022?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from answering the question about American Express's retention of card members in 2022 because the retrieved context does not provide any information on this topic. The context includes definitions and descriptions of card member loans, receivables, and cards-in-for"
+  },
+  {
+    "question": "Does American Water Works have positive working capital based on FY2022 data? If working capital is not a useful or relevant metric for this company, then please state that and explain why.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing a computed figure for working capital, which is the difference between current assets and current liabilities. The retrieved context provides the necessary figures: current assets of $1,250,000,000 and current liabilities of $2,811,000,000. The assist"
+  },
+  {
+    "question": "Are Best Buy's gross margins historically consistent (not fluctuating more than roughly 2% each year)? If gross margins are not a relevant metric for a company like this, then please state that and explain why.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer accurately summarizes the gross margin data for Best Buy over the past five fiscal years, as provided in the retrieved context. Each year's gross margin is correctly stated, and the year-to-year changes are calculated correctly. The claim that the total high-to-low swing is 1.6 percentage"
+  },
+  {
+    "question": "What are major acquisitions that Best Buy has done in FY2023, FY2022 and FY2021?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly identifies the acquisitions of Current Health Ltd. and Two Peaks, LLC (Yardbird Furniture) in FY2022, as supported by the context. It appropriately abstains from claiming any acquisitions for FY2023 and FY2021, as the retrieved context does not provide such information. The answ"
+  },
+  {
+    "question": "Among operations, investing, and financing activities, which brought in the most (or lost the least) cash flow for Best Buy in FY2023?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly identifies the cash flows from operating, investing, and financing activities for Best Buy in FY2023. The retrieved context provides the figures: operating activities resulted in a net inflow of $1.8 billion, investing activities had a net outflow of $962 million, and financing "
+  },
+  {
+    "question": "Was there any drop in Cash & Cash equivalents between FY 2023 and Q2 of FY2024?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant appropriately abstained from answering the question because there was no retrieved context provided to determine if there was a drop in Cash & Cash equivalents between FY 2023 and Q2 of FY2024. It also asked for clarification on the company in question, which is necessary to provide a "
+  },
+  {
+    "question": "Was there any change in the number of Best Buy stores between Q2 of FY2024 and FY2023?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing an answer because the retrieved context does not contain specific information about the number of Best Buy stores at the end of the second quarter for FY2024 or FY2023. The context provides data on store numbers at different points and plans for futur"
+  },
+  {
+    "question": "Which Best Buy product category performed the best (by top line) in the domestic (USA) Market during Q2 of FY2024?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing an answer because there was no retrieved context available to support any claims about Best Buy's product category performance in the domestic market during Q2 of FY2024. This is an appropriate response when the necessary information is not provided."
+  },
+  {
+    "question": "Are there any product categories / service categories that represent more than 20% of Boeing's revenue for FY2022?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly identifies that both the Commercial Airplanes and Global Services segments represent more than 20% of Boeing's total revenue for FY2022. The calculations provided for the percentage of total revenue are accurate based on the figures given in the retrieved context: Commercial Air"
+  },
+  {
+    "question": "Has Boeing reported any materially important ongoing legal battles from FY2022?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly identifies that Boeing is involved in a number of litigation matters that could materially impact its financial position and results of operations, as stated in the retrieved context. The context does not provide specific details about individual legal battles, and the assistant"
+  },
+  {
+    "question": "Does Boeing have an improving gross margin profile as of FY2022? If gross margin is not a useful metric for a company like this, then state that and explain why.",
+    "grounded": "bad",
+    "out_of_corpus": false,
+    "why": "The retrieved context provides the gross margin figures for Boeing for FY2020, FY2021, and FY2022. The gross margin improved from -9.8% in FY2020 to 4.8% in FY2021, and further to 5.3% in FY2022. This indicates an improving gross margin profile over these years. The assistant's response incorrectly "
+  },
+  {
+    "question": "Who are the primary customers of Boeing as of FY2022?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing an answer because the retrieved context does not explicitly list Boeing's primary customers for FY2022. The context includes information about Boeing's operations, segments, and backlog but does not specify customer names or types. Therefore, the assi"
+  },
+  {
+    "question": "Is Boeing's business subject to cyclicality?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from answering the question about Boeing's business cyclicality because the retrieved context did not contain any relevant information on this topic. The assistant followed the rule of appropriate abstention when the information is not present in the filings."
+  },
+  {
+    "question": "What production rate changes is Boeing forecasting for FY2023?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer accurately reflects the information provided in the retrieved context. It states that Boeing expects to gradually increase the 787 production to 5 per month, resume 777X production, and increase 737 production rates based on market demand and supply chain capacity. These claims are direct"
+  },
+  {
+    "question": "How does Boeing's effective tax rate in FY2022 compare to FY2021?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly states Boeing's effective tax rates for FY2021 and FY2022 as 14.8% and -0.6%, respectively, which are supported by the retrieved context. It also accurately calculates the change in the effective tax rate as a decline of 15.4 percentage points, which is consistent with the provi"
+  },
+  {
+    "question": "How much has the effective tax rate of Corning changed between FY2021 and FY2022?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly identifies the effective tax rates for Corning in FY2021 and FY2022 as 20.5% and 22.9%, respectively, which are supported by the retrieved context. It also accurately calculates the change as +2.4 percentage points, which matches the computed difference provided in the context. "
+  },
+  {
+    "question": "Does Corning have positive working capital based on FY2022 data? If working capital is not a useful or relevant metric for this company, then please state that and explain why.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly states that Corning had positive working capital in FY 2022, supported by the retrieved context showing current assets of $7,453 million and current liabilities of $5,175 million. The calculation of working capital as $2,278 million is also supported by the context. The explanat"
+  },
+  {
+    "question": "Is CVS Health a capital-intensive business based on FY2022 data?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstains from making a definitive statement about whether CVS Health is a capital-intensive business based on FY2022 data. The retrieved context provides specific financial ratios, such as capex as a percentage of revenue and asset turnover, but determining capital intensity "
+  },
+  {
+    "question": "Has CVS Health reported any materially important ongoing legal battles from 2022, 2021 and 2020?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer accurately reflects the retrieved context, which states that CVS Health is routinely subject to litigation, including class actions and qui tam actions, and that these could materially affect the company. The context does not specify any particular ongoing legal battles as uniquely materi"
+  },
+  {
+    "question": "Has CVS Health paid dividends to common shareholders in Q2 of FY2022?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from answering because the retrieved context does not provide information about whether CVS Health paid dividends to common shareholders in Q2 of FY2022. The context mentions regulatory requirements for dividends but does not specify any dividend payments for that q"
+  },
+  {
+    "question": "Does Foot Locker's new CEO have previous CEO experience in a similar company to Footlocker?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from answering the question about Foot Locker's new CEO's previous experience, as the retrieved context does not contain any information about the CEO's background or prior experience. The context provided focuses on cybersecurity governance, human capital, and othe"
+  },
+  {
+    "question": "Were there any board member nominees who had substantially more votes against joining than the other nominees?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant appropriately abstained from answering the question because there was no retrieved context provided to determine if any board member nominees had substantially more votes against them. The assistant also requested clarification to ensure it could provide a relevant answer if possible."
+  },
+  {
+    "question": "Are JnJ's FY2022 financials that of a high growth company?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer accurately reports Johnson & Johnson's FY2022 revenue and net income growth rates, which are supported by the retrieved context. The context confirms a revenue growth of 13.6% and a net income growth of 41.9% year over year. The assistant's characterization of these growth rates as 'high "
+  },
+  {
+    "question": "What drove gross margin change as of FY2022 for JnJ? If gross margin is not a useful metric for a company like this, then please state that and explain why.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstains from providing an answer about gross margin changes because the retrieved context does not discuss gross margin as a metric for Johnson & Johnson. The context mentions other metrics and segment-level analyses but does not provide information on gross margin. The assi"
+  },
+  {
+    "question": "Roughly how many times has JnJ sold its inventory in FY2022? Calculate inventory turnover ratio for FY2022; if conventional inventory management is not meaningful for the company then state that and explain why.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly states that Johnson & Johnson's inventory turnover ratio for FY2022 was 3.03 times, which is supported by the retrieved context. The explanation about why conventional inventory management might not be meaningful for J&J is reasonable and aligns with the context of the company's"
+  },
+  {
+    "question": "Is growth in JnJ's adjusted EPS expected to accelerate in FY2023?",
+    "grounded": "good",
+    "out_of_corpus": true,
+    "why": "The assistant correctly abstained from answering the question because there was no retrieved context provided to support any claims about JnJ's adjusted EPS growth expectations for FY2023. This is an appropriate response given the lack of information."
+  },
+  {
+    "question": "How did JnJ's US sales growth compare to international sales growth in FY2022?",
+    "grounded": "good",
+    "out_of_corpus": true,
+    "why": "The answer correctly states that in FY 2022, Johnson & Johnson's U.S. sales grew by 3.3% and international sales declined by 0.2%. These figures are supported by the retrieved context, which provides the same growth rates for U.S. and international sales in 2022. The answer is grounded in the provid"
+  },
+  {
+    "question": "Which business segment of JnJ will be treated as a discontinued operation from August 30, 2023 onward?",
+    "grounded": "bad",
+    "out_of_corpus": false,
+    "why": "The answer claims that Johnson & Johnson's Consumer Health business, to be operated as Kenvue, will be treated as a discontinued operation from August 30, 2023. The retrieved context supports this by stating that Kenvue's historical results will be shown as discontinued operations once J&J no longer"
+  },
+  {
+    "question": "What is the amount of the gain accruing to JnJ as a result of the separation of its Consumer Health business segment, as of August 30, 2023?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing a specific figure for the gain accruing to Johnson & Johnson from the separation of its Consumer Health business, as the retrieved context does not contain this information. The context only mentions the separation of the Consumer Health business but "
+  },
+  {
+    "question": "What is the amount of the cash proceeds that JnJ realised from the separation of Kenvue (formerly Consumer Health business segment), as of August 30, 2023?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The retrieved context provides specific figures related to the Kenvue separation, such as $8.0 billion from proceeds of short and long-term debt related to Kenvue and $4.2 billion from Kenvue's initial public offering. However, the context does not explicitly state the total cash proceeds realized b"
+  },
+  {
+    "question": "Did JnJ's net earnings as a percent of sales increase in Q2 of FY2023 compared to Q2 of FY2022?",
+    "grounded": "good",
+    "out_of_corpus": true,
+    "why": "The assistant correctly abstained from providing a computed answer, as it does not have the capability to perform calculations. The retrieved context provides the necessary figures for net income and revenue for both Q2 FY2023 and Q2 FY2022, but the assistant appropriately refrains from calculating "
+  },
+  {
+    "question": "Which of JPM's business segments had the lowest net revenue in 2021 Q1?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing an answer because there was no retrieved context to support any claims about JPMorgan Chase's business segments' net revenue for Q1 2021. It appropriately explained the limitation regarding the availability of structured XBRL data."
+  },
+  {
+    "question": "If JPM went bankrupted by the end by 2021 Q1 and liquidated all of its assets to pay its shareholders, how much could each shareholder get?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstains from providing a per-share liquidation amount due to the lack of information on the number of common shares outstanding, which is necessary to perform the calculation. The retrieved context confirms that no quarterly common shares outstanding data is available for JP"
+  },
+  {
+    "question": "Are JPM's gross margins historically consistent (not fluctuating more than roughly 2% each year)? If gross margins are not a relevant metric for a company like this, then please state that and explain why.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly states that JPMorgan Chase & Co. does not report gross profit, and thus gross margin is not a relevant metric for the company. It explains why gross margin is not applicable to a financial institution like JPM, which relies on interest income, fees, and trading gains rather than"
+  },
+  {
+    "question": "In 2022 Q2, which of JPM's business segments had the highest net income?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing an answer because there was no retrieved context to support any claims about JPMorgan Chase's business segments' net income for Q2 2022. This is an appropriate abstention as the information is not available in the provided context."
+  },
+  {
+    "question": "Looking at VaR, did the risk that JPM faced in the second fiscal quarter of 2023 decrease compared to the same period in the prior year?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly states that the average total VaR decreased by $7 million for the three months ended June 30, 2023, compared with the same period in the prior year. This information is directly supported by the retrieved context, which mentions the decrease in VaR and the factors contributing t"
+  },
+  {
+    "question": "Has MGM Resorts paid dividends to common shareholders in FY2022?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly states that MGM Resorts paid dividends to common shareholders in FY2022, amounting to $4.0 million. This information is directly supported by the retrieved context, which lists 'Dividends paid to common shareholders: $-4.0M' in the cash flow statement. The answer is grounded, on"
+  },
+  {
+    "question": "Which region had the Highest EBITDAR Contribution for MGM during FY2022?",
+    "grounded": "good",
+    "out_of_corpus": true,
+    "why": "The answer claims that the Las Vegas Strip Resorts segment was the largest contributor to MGM's Adjusted Property EBITDAR in FY 2022. The retrieved context provides figures for Adjusted Property EBITDAR for different segments, showing $1,418,901 for Las Vegas Strip Resorts and $653,129 for Regional "
+  },
+  {
+    "question": "What was MGM's interest coverage ratio using FY2022 Adjusted EBIT as the numerator and annual Interest Expense as the denominator?",
+    "grounded": "good",
+    "out_of_corpus": true,
+    "why": "The assistant correctly abstained from answering because there was no retrieved context provided to support any factual claims about MGM's interest coverage ratio or the necessary financial figures. Abstaining is appropriate when the information is not available."
+  },
+  {
+    "question": "Which region had the worst topline performance for MGM during FY2022?",
+    "grounded": "good",
+    "out_of_corpus": true,
+    "why": "The assistant correctly abstained from providing an answer because the retrieved context does not contain specific information about the regional topline performance for MGM during FY2022. The context includes various financial metrics and performance indicators, but it does not specify which region"
+  },
+  {
+    "question": "Which type of debt received the largest investment among the short term investments for MGM in H1 FY2023?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing an answer because the retrieved context does not contain any information about the types of debt or their respective investments within MGM's short-term investments for H1 FY2023. The context focuses on general investing activities and liquidity manag"
+  },
+  {
+    "question": "Has Microsoft increased its debt on balance sheet between FY2023 and the FY2022 period?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly states that Microsoft's long-term debt decreased by 10.7% from $47.03 billion in FY2022 to $41.99 billion in FY2023. This is fully supported by the retrieved context, which provides the same figures and percentage change. The answer is on-topic and accurately reflects the inform"
+  },
+  {
+    "question": "Among operations, investing, and financing activities, which brought in the most (or lost the least) cash flow for Nike in FY2023?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly identifies the cash flows from operating, investing, and financing activities for Nike in FY2023 as $5.8 billion, $0.564 billion, and -$7.4 billion, respectively. These figures are directly supported by the retrieved context. The conclusion that operating activities brought in t"
+  },
+  {
+    "question": "Does Paypal have positive working capital based on FY2022 data? If working capital is not a useful or relevant metric for this company, then please state that and explain why.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly calculates PayPal's working capital for FY2022 using the provided current assets and liabilities figures, resulting in a positive working capital of $12,416 million. It also appropriately explains why traditional working capital analysis may not be relevant for PayPal due to its"
+  },
+  {
+    "question": "What are the geographies that Pepsico primarily operates in as of FY2022?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer lists the geographies where PepsiCo operates, which are supported by the retrieved context. The context provides a breakdown of PepsiCo's revenue by segment, which aligns with the geographic regions mentioned in the answer. Each region listed in the answer corresponds to a segment in the "
+  },
+  {
+    "question": "Has Pepsico reported any materially important ongoing legal battles from FY2022 and FY2021?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer accurately reflects the retrieved context, which states that PepsiCo and its subsidiaries are involved in various legal proceedings but does not specify any as individually material. The assistant correctly notes that these matters are discussed in aggregate in the Risk Factors section wi"
+  },
+  {
+    "question": "What is the quantity of restructuring costs directly outlined in Pepsico's income statements for FY2022? If restructuring costs are not explicitly outlined then state 0.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The retrieved context provides a detailed breakdown of PepsiCo's FY2022 income statement, but it does not mention restructuring costs as a separate line item. The assistant correctly identifies that restructuring costs are not explicitly outlined in the provided context and appropriately states the "
+  },
+  {
+    "question": "At the Pepsico AGM held on May 3, 2023, what was the outcome of the shareholder vote on the shareholder proposal for a congruency report by Pepsico on net-zero emissions policies?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing an answer because the retrieved context does not contain any information about the outcome of the shareholder vote on the proposal for a congruency report on net-zero emissions policies at the PepsiCo AGM held on May 3, 2023. The context provided is f"
+  },
+  {
+    "question": "As of May 26, 2023, what is the total amount Pepsico may borrow under its unsecured revolving credit agreements?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing a specific total borrowing amount as of May 26, 2023, because the retrieved context does not directly provide a total figure for that date. The context provides details on various credit agreements and their limits, but calculating a total borrowing c"
+  },
+  {
+    "question": "As of FY2023Q1, why did Pepsico raise full year guidance for FY2023?",
+    "grounded": "good",
+    "out_of_corpus": true,
+    "why": "The assistant correctly abstained from providing an answer because the retrieved context does not contain any information about PepsiCo raising its full-year guidance for FY2023. The context provided is related to accounting pronouncements and does not address the question asked."
+  },
+  {
+    "question": "As of FY2023Q1, by how many percentage points did Pepsico raise full year guidance in respect of core constant currency EPS growth?",
+    "grounded": "good",
+    "out_of_corpus": true,
+    "why": "The assistant correctly abstained from providing an answer because the retrieved context does not contain any information about PepsiCo raising its full-year guidance for core constant currency EPS growth. The context lacks any mention of guidance changes, making abstention appropriate."
+  },
+  {
+    "question": "Did Pfizer grow its PPNE between FY20 and FY21?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly states that Pfizer's net property, plant, and equipment (PP&E) grew by 7.1% from $13.90 billion in FY2020 to $14.88 billion in FY2021. These figures are directly supported by the retrieved context, which provides the same growth percentage and dollar amounts for the respective f"
+  },
+  {
+    "question": "Were there any potential events that are not in Pfizer's standard business operations that substantially increased net income in 2019?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing a specific answer because the retrieved context does not mention any non-recurring events that substantially increased Pfizer's net income in 2019. The context discusses various risks, strategic initiatives, and accounting changes, but none are explic"
+  },
+  {
+    "question": "What are three main companies acquired by Pfizer mentioned in this 10K report?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly identifies that the retrieved context only mentions the acquisitions of Seagen and Metsera by Pfizer. There is no mention of a third company acquired by Pfizer in the provided excerpts. Therefore, the assistant's response is appropriately grounded in the context and abstains "
+  },
+  {
+    "question": "For Pfizer, which geographic region had the biggest drop in Q22023 year over year revenues (on a percentage basis)?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing an answer because there was no retrieved context to support any claims about Pfizer's geographic revenue changes. It appropriately noted the lack of specific data in the XBRL disclosures."
+  },
+  {
+    "question": "As of Q2'2023, is Pfizer spinning off any large business segments?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The retrieved context does not contain any information about Pfizer planning to spin off a large business segment as of Q2 2023. The assistant correctly abstains from making unsupported claims about a spin-off, as the context does not provide relevant details on this topic. The answer appropriately "
+  },
+  {
+    "question": "Which debt securities are registered to trade on a national securities exchange under Ulta Beauty's name as of FY2023?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing an answer because the retrieved context does not contain any information about debt securities registered to trade on a national securities exchange under Ulta Beauty's name as of FY2023. The context primarily includes details about financial statemen"
+  },
+  {
+    "question": "What are major acquisitions that Ulta Beauty has done in FY2023 and FY2022?",
+    "grounded": "bad",
+    "out_of_corpus": false,
+    "why": "The answer claims that Ulta Beauty did not report any material acquisitions during FY2023 and FY2022. However, the retrieved context does not provide any information about acquisitions, nor does it confirm the absence of such events. The assistant should have abstained from making a definitive claim"
+  },
+  {
+    "question": "What drove the reduction in SG&A expense as a percent of net sales in FY2023?",
+    "grounded": "good",
+    "out_of_corpus": true,
+    "why": "The assistant appropriately abstained from answering the question because there was no retrieved context provided. It requested clarification on the company in question, which is necessary to provide an accurate and grounded response. Without specific company data, the assistant cannot fabricate an "
+  },
+  {
+    "question": "What drove the increase in Ulta Beauty's merchandise inventories balance at end of FY2023?",
+    "grounded": "good",
+    "out_of_corpus": true,
+    "why": "The answer accurately reflects the information provided in the retrieved context. It correctly identifies the four main factors contributing to the $206.6 million increase in Ulta Beauty's merchandise inventories at the end of FY2023: $76 million for increased demand and product cost increases, $49 "
+  },
+  {
+    "question": "Did Ulta Beauty's wages expense as a percent of net sales increase or decrease in FY2023?",
+    "grounded": "good",
+    "out_of_corpus": true,
+    "why": "The assistant correctly abstains from providing an answer because the retrieved context does not specifically mention 'wages expense as a percentage of net sales' for Ulta Beauty in FY2023. The context provides percentages for selling, general, and administrative expenses, but not specifically for w"
+  },
+  {
+    "question": "Among all of the derivative instruments that Verizon used to manage the exposure to fluctuations of foreign currencies exchange rates or interest rates, which one had the highest notional value in FY 2021?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstained from providing an answer because the retrieved context does not contain information about the notional values of Verizon's derivative instruments for FY 2021. The context primarily discusses collateral related to derivative contracts and does not specify the notiona"
+  },
+  {
+    "question": "As of FY 2021, how much did Verizon expect to pay for its retirees in 2024?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The retrieved context does not provide any specific figures or estimates regarding the amount Verizon expects to pay for its retirees in 2024. The context mentions postretirement benefit payments and their uncertainty but does not specify amounts for future years like 2024. Therefore, the assistant "
+  },
+  {
+    "question": "Does Verizon have a reasonably healthy liquidity profile based on its quick ratio for FY 2022? If the quick ratio is not relevant to measure liquidity, please state that and explain why.",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly states that Verizon's quick ratio for FY 2022 is 0.71, which is supported by the retrieved context. It also accurately explains that a quick ratio below 1.0 is generally considered less healthy, but notes that for capital-intensive companies like Verizon, other factors such as c"
+  },
+  {
+    "question": "Is Verizon a capital intensive business based on FY 2022 data?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The answer correctly states that Verizon's capital expenditures represented 16.9% of revenue for FY 2022, which is supported by the retrieved context. The claim that this level is typical of capital-intensive network operators is a general statement and not directly supported by the context, but it "
+  },
+  {
+    "question": "Has Verizon increased its debt on balance sheet between 2022 and the 2021 fiscal period?",
+    "grounded": "good",
+    "out_of_corpus": false,
+    "why": "The assistant correctly abstains from answering the question about Verizon's debt between 2022 and 2021 because the retrieved context does not provide any financial data for those years. The context only includes long-term debt data up to FY 2013, making it impossible to determine changes in debt fo"
+  }
+]

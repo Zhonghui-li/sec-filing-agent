@@ -1,0 +1,2939 @@
+{
+  "generated_at": "2026-10-02T18:14:00Z",
+  "filing_chunks_max": 20000,
+  "total_chunks": 19716,
+  "entries": [
+    {
+      "ticker": "AAPL",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 152,
+      "filings": [
+        {
+          "accession": "0000320193-25-000071",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000320193-25-000073",
+          "section": "mda_10q",
+          "chunks": 22
+        },
+        {
+          "accession": "0000320193-25-000077",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000320193-25-000079",
+          "section": "business",
+          "chunks": 20
+        },
+        {
+          "accession": "0000320193-25-000079",
+          "section": "mda",
+          "chunks": 19
+        },
+        {
+          "accession": "0000320193-25-000079",
+          "section": "risk_factors",
+          "chunks": 82
+        },
+        {
+          "accession": "0001140361-25-018400",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001140361-25-025275",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001140361-25-027340",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001140361-25-044561",
+          "section": "8k",
+          "chunks": 1
+        }
+      ],
+      "accessions": 8
+    },
+    {
+      "ticker": "AAPL",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 79,
+      "filings": [
+        {
+          "accession": "0000320193-26-000005",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000320193-26-000006",
+          "section": "mda_10q",
+          "chunks": 21
+        },
+        {
+          "accession": "0000320193-26-000011",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000320193-26-000013",
+          "section": "mda_10q",
+          "chunks": 24
+        },
+        {
+          "accession": "0000320193-26-000018",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000320193-26-000020",
+          "section": "mda_10q",
+          "chunks": 24
+        },
+        {
+          "accession": "0001140361-26-000199",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001140361-26-006577",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001140361-26-015711",
+          "section": "8k",
+          "chunks": 1
+        }
+      ],
+      "accessions": 9
+    },
+    {
+      "ticker": "AMZN",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 247,
+      "filings": [
+        {
+          "accession": "0001018724-25-000086",
+          "section": "mda_10q",
+          "chunks": 49
+        },
+        {
+          "accession": "0001018724-25-000123",
+          "section": "mda_10q",
+          "chunks": 51
+        },
+        {
+          "accession": "0001018724-26-000004",
+          "section": "business",
+          "chunks": 16
+        },
+        {
+          "accession": "0001018724-26-000004",
+          "section": "mda",
+          "chunks": 55
+        },
+        {
+          "accession": "0001018724-26-000004",
+          "section": "risk_factors",
+          "chunks": 76
+        }
+      ],
+      "accessions": 3
+    },
+    {
+      "ticker": "AMZN",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 114,
+      "filings": [
+        {
+          "accession": "0001018724-26-000012",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001018724-26-000014",
+          "section": "mda_10q",
+          "chunks": 43
+        },
+        {
+          "accession": "0001018724-26-000024",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001018724-26-000026",
+          "section": "mda_10q",
+          "chunks": 48
+        },
+        {
+          "accession": "0001018724-26-000036",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001104659-26-027729",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001104659-26-028556",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001104659-26-041034",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001104659-26-042880",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001104659-26-065717",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001104659-26-072140",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001104659-26-073562",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001104659-26-082293",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001104659-26-107526",
+          "section": "8k",
+          "chunks": 2
+        }
+      ],
+      "accessions": 14
+    },
+    {
+      "ticker": "BA",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 313,
+      "filings": [
+        {
+          "accession": "0000012927-25-000062",
+          "section": "mda_10q",
+          "chunks": 56
+        },
+        {
+          "accession": "0001628280-25-047023",
+          "section": "mda_10q",
+          "chunks": 62
+        },
+        {
+          "accession": "0001628280-26-004357",
+          "section": "business",
+          "chunks": 20
+        },
+        {
+          "accession": "0001628280-26-004357",
+          "section": "mda",
+          "chunks": 102
+        },
+        {
+          "accession": "0001628280-26-004357",
+          "section": "risk_factors",
+          "chunks": 73
+        }
+      ],
+      "accessions": 3
+    },
+    {
+      "ticker": "BA",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 50,
+      "filings": [
+        {
+          "accession": "0001628280-26-050038",
+          "section": "mda_10q",
+          "chunks": 50
+        }
+      ],
+      "accessions": 1
+    },
+    {
+      "ticker": "COST",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 153,
+      "filings": [
+        {
+          "accession": "0000909832-25-000033",
+          "section": "mda_10q",
+          "chunks": 37
+        },
+        {
+          "accession": "0000909832-25-000061",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000909832-25-000064",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000909832-25-000093",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000909832-25-000101",
+          "section": "business",
+          "chunks": 24
+        },
+        {
+          "accession": "0000909832-25-000101",
+          "section": "mda",
+          "chunks": 28
+        },
+        {
+          "accession": "0000909832-25-000101",
+          "section": "risk_factors",
+          "chunks": 53
+        },
+        {
+          "accession": "0000909832-25-000105",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000909832-25-000107",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000909832-25-000164",
+          "section": "8k",
+          "chunks": 2
+        }
+      ],
+      "accessions": 8
+    },
+    {
+      "ticker": "COST",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 126,
+      "filings": [
+        {
+          "accession": "0000909832-25-000169",
+          "section": "mda_10q",
+          "chunks": 34
+        },
+        {
+          "accession": "0000909832-26-000016",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0000909832-26-000025",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000909832-26-000029",
+          "section": "mda_10q",
+          "chunks": 39
+        },
+        {
+          "accession": "0000909832-26-000041",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000909832-26-000046",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000909832-26-000051",
+          "section": "mda_10q",
+          "chunks": 40
+        },
+        {
+          "accession": "0000909832-26-000060",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000909832-26-000084",
+          "section": "8k",
+          "chunks": 2
+        }
+      ],
+      "accessions": 9
+    },
+    {
+      "ticker": "CSCO",
+      "fiscal_year": 2025,
+      "pinned": true,
+      "chunks": 507,
+      "filings": [
+        {
+          "accession": "0000858877-24-000030",
+          "section": "mda_10q",
+          "chunks": 71
+        },
+        {
+          "accession": "0000858877-25-000004",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000858877-25-000007",
+          "section": "mda_10q",
+          "chunks": 80
+        },
+        {
+          "accession": "0000858877-25-000014",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000858877-25-000021",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000858877-25-000033",
+          "section": "mda_10q",
+          "chunks": 81
+        },
+        {
+          "accession": "0000858877-25-000046",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000858877-25-000103",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000858877-25-000111",
+          "section": "business",
+          "chunks": 56
+        },
+        {
+          "accession": "0000858877-25-000111",
+          "section": "mda",
+          "chunks": 81
+        },
+        {
+          "accession": "0000858877-25-000111",
+          "section": "risk_factors",
+          "chunks": 117
+        },
+        {
+          "accession": "0000858877-25-000145",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000858877-25-000199",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001193125-25-025114",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-25-033389",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001193125-25-119864",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-25-179820",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-25-277624",
+          "section": "8k",
+          "chunks": 2
+        }
+      ],
+      "accessions": 16
+    },
+    {
+      "ticker": "CVS",
+      "fiscal_year": 2020,
+      "pinned": true,
+      "chunks": 536,
+      "filings": [
+        {
+          "accession": "0000064803-21-000011",
+          "section": "business",
+          "chunks": 203
+        },
+        {
+          "accession": "0000064803-21-000011",
+          "section": "mda",
+          "chunks": 147
+        },
+        {
+          "accession": "0000064803-21-000011",
+          "section": "risk_factors",
+          "chunks": 186
+        }
+      ],
+      "accessions": 1
+    },
+    {
+      "ticker": "CVS",
+      "fiscal_year": 2021,
+      "pinned": true,
+      "chunks": 543,
+      "filings": [
+        {
+          "accession": "0000064803-22-000008",
+          "section": "business",
+          "chunks": 216
+        },
+        {
+          "accession": "0000064803-22-000008",
+          "section": "mda",
+          "chunks": 139
+        },
+        {
+          "accession": "0000064803-22-000008",
+          "section": "risk_factors",
+          "chunks": 188
+        }
+      ],
+      "accessions": 1
+    },
+    {
+      "ticker": "F",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 585,
+      "filings": [
+        {
+          "accession": "0000037996-25-000147",
+          "section": "mda_10q",
+          "chunks": 98
+        },
+        {
+          "accession": "0000037996-25-000186",
+          "section": "mda_10q",
+          "chunks": 101
+        },
+        {
+          "accession": "0000037996-26-000015",
+          "section": "business",
+          "chunks": 93
+        },
+        {
+          "accession": "0000037996-26-000015",
+          "section": "mda",
+          "chunks": 171
+        },
+        {
+          "accession": "0000037996-26-000015",
+          "section": "risk_factors",
+          "chunks": 122
+        }
+      ],
+      "accessions": 3
+    },
+    {
+      "ticker": "F",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 214,
+      "filings": [
+        {
+          "accession": "0000037996-26-000011",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000037996-26-000014",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000037996-26-000073",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000037996-26-000075",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000037996-26-000079",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0000037996-26-000081",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0000037996-26-000084",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000037996-26-000086",
+          "section": "mda_10q",
+          "chunks": 92
+        },
+        {
+          "accession": "0000037996-26-000090",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000037996-26-000093",
+          "section": "8k",
+          "chunks": 4
+        },
+        {
+          "accession": "0000037996-26-000151",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000037996-26-000155",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000037996-26-000156",
+          "section": "mda_10q",
+          "chunks": 96
+        },
+        {
+          "accession": "0000037996-26-000184",
+          "section": "8k",
+          "chunks": 3
+        }
+      ],
+      "accessions": 14
+    },
+    {
+      "ticker": "FL",
+      "fiscal_year": 2024,
+      "pinned": false,
+      "chunks": 251,
+      "filings": [
+        {
+          "accession": "0001437749-24-028967",
+          "section": "mda_10q",
+          "chunks": 44
+        },
+        {
+          "accession": "0001437749-24-037241",
+          "section": "mda_10q",
+          "chunks": 47
+        },
+        {
+          "accession": "0001437749-25-009620",
+          "section": "business",
+          "chunks": 13
+        },
+        {
+          "accession": "0001437749-25-009620",
+          "section": "mda",
+          "chunks": 70
+        },
+        {
+          "accession": "0001437749-25-009620",
+          "section": "risk_factors",
+          "chunks": 77
+        }
+      ],
+      "accessions": 3
+    },
+    {
+      "ticker": "FL",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 54,
+      "filings": [
+        {
+          "accession": "0001104659-25-052446",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001104659-25-088056",
+          "section": "8k",
+          "chunks": 5
+        },
+        {
+          "accession": "0001437749-25-020093",
+          "section": "mda_10q",
+          "chunks": 46
+        }
+      ],
+      "accessions": 3
+    },
+    {
+      "ticker": "GOOGL",
+      "fiscal_year": 2023,
+      "pinned": true,
+      "chunks": 372,
+      "filings": [
+        {
+          "accession": "0001193125-23-011424",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001193125-23-110657",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001193125-23-163590",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001652044-23-000005",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001652044-23-000013",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001652044-23-000034",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001652044-23-000041",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001652044-23-000045",
+          "section": "mda_10q",
+          "chunks": 47
+        },
+        {
+          "accession": "0001652044-23-000067",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001652044-23-000070",
+          "section": "mda_10q",
+          "chunks": 56
+        },
+        {
+          "accession": "0001652044-23-000088",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001652044-23-000094",
+          "section": "mda_10q",
+          "chunks": 62
+        },
+        {
+          "accession": "0001652044-24-000022",
+          "section": "business",
+          "chunks": 35
+        },
+        {
+          "accession": "0001652044-24-000022",
+          "section": "mda",
+          "chunks": 63
+        },
+        {
+          "accession": "0001652044-24-000022",
+          "section": "risk_factors",
+          "chunks": 92
+        }
+      ],
+      "accessions": 13
+    },
+    {
+      "ticker": "GOOGL",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 287,
+      "filings": [
+        {
+          "accession": "0001652044-25-000062",
+          "section": "mda_10q",
+          "chunks": 51
+        },
+        {
+          "accession": "0001652044-25-000091",
+          "section": "mda_10q",
+          "chunks": 54
+        },
+        {
+          "accession": "0001652044-26-000018",
+          "section": "business",
+          "chunks": 30
+        },
+        {
+          "accession": "0001652044-26-000018",
+          "section": "mda",
+          "chunks": 53
+        },
+        {
+          "accession": "0001652044-26-000018",
+          "section": "risk_factors",
+          "chunks": 99
+        }
+      ],
+      "accessions": 3
+    },
+    {
+      "ticker": "GOOGL",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 127,
+      "filings": [
+        {
+          "accession": "0001193125-26-216986",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-26-234488",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-26-257724",
+          "section": "8k",
+          "chunks": 4
+        },
+        {
+          "accession": "0001193125-26-259830",
+          "section": "8k",
+          "chunks": 4
+        },
+        {
+          "accession": "0001193125-26-267578",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001193125-26-342390",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001652044-26-000026",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001652044-26-000031",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001652044-26-000034",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001652044-26-000043",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001652044-26-000048",
+          "section": "mda_10q",
+          "chunks": 50
+        },
+        {
+          "accession": "0001652044-26-000059",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001652044-26-000066",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001652044-26-000071",
+          "section": "mda_10q",
+          "chunks": 52
+        }
+      ],
+      "accessions": 14
+    },
+    {
+      "ticker": "INTC",
+      "fiscal_year": 2025,
+      "pinned": true,
+      "chunks": 194,
+      "filings": [
+        {
+          "accession": "0000050863-25-000004",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000050863-25-000024",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000050863-25-000036",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0000050863-25-000060",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000050863-25-000063",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0000050863-25-000070",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000050863-25-000079",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000050863-25-000084",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000050863-25-000107",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0000050863-25-000123",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000050863-25-000126",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0000050863-25-000129",
+          "section": "8k",
+          "chunks": 5
+        },
+        {
+          "accession": "0000050863-25-000135",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0000050863-25-000147",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000050863-25-000149",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000050863-25-000153",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0000050863-25-000155",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0000050863-25-000159",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000050863-25-000169",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000050863-25-000194",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0000050863-25-000204",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000050863-26-000011",
+          "section": "business",
+          "chunks": 7
+        },
+        {
+          "accession": "0000050863-26-000011",
+          "section": "risk_factors",
+          "chunks": 135
+        },
+        {
+          "accession": "0001193125-25-079727",
+          "section": "8k",
+          "chunks": 2
+        }
+      ],
+      "accessions": 23
+    },
+    {
+      "ticker": "JNJ",
+      "fiscal_year": 2022,
+      "pinned": true,
+      "chunks": 275,
+      "filings": [
+        {
+          "accession": "0000200406-22-000022",
+          "section": "business",
+          "chunks": 38
+        },
+        {
+          "accession": "0000200406-22-000022",
+          "section": "mda",
+          "chunks": 76
+        },
+        {
+          "accession": "0000200406-22-000022",
+          "section": "risk_factors",
+          "chunks": 47
+        },
+        {
+          "accession": "0000200406-22-000071",
+          "section": "mda_10q",
+          "chunks": 56
+        },
+        {
+          "accession": "0000200406-22-000086",
+          "section": "mda_10q",
+          "chunks": 58
+        }
+      ],
+      "accessions": 3
+    },
+    {
+      "ticker": "JNJ",
+      "fiscal_year": 2023,
+      "pinned": true,
+      "chunks": 317,
+      "filings": [
+        {
+          "accession": "0000200406-23-000056",
+          "section": "mda_10q",
+          "chunks": 42
+        },
+        {
+          "accession": "0000200406-23-000073",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000200406-23-000082",
+          "section": "mda_10q",
+          "chunks": 58
+        },
+        {
+          "accession": "0000200406-23-000102",
+          "section": "mda_10q",
+          "chunks": 51
+        },
+        {
+          "accession": "0000200406-24-000013",
+          "section": "business",
+          "chunks": 40
+        },
+        {
+          "accession": "0000200406-24-000013",
+          "section": "mda",
+          "chunks": 73
+        },
+        {
+          "accession": "0000200406-24-000013",
+          "section": "risk_factors",
+          "chunks": 51
+        }
+      ],
+      "accessions": 5
+    },
+    {
+      "ticker": "JNJ",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 279,
+      "filings": [
+        {
+          "accession": "0000200406-25-000178",
+          "section": "mda_10q",
+          "chunks": 54
+        },
+        {
+          "accession": "0000200406-25-000201",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0000200406-25-000209",
+          "section": "mda_10q",
+          "chunks": 54
+        },
+        {
+          "accession": "0000200406-26-000016",
+          "section": "business",
+          "chunks": 41
+        },
+        {
+          "accession": "0000200406-26-000016",
+          "section": "mda",
+          "chunks": 75
+        },
+        {
+          "accession": "0000200406-26-000016",
+          "section": "risk_factors",
+          "chunks": 52
+        }
+      ],
+      "accessions": 4
+    },
+    {
+      "ticker": "JNJ",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 88,
+      "filings": [
+        {
+          "accession": "0000200406-26-000076",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0000200406-26-000087",
+          "section": "mda_10q",
+          "chunks": 33
+        },
+        {
+          "accession": "0000200406-26-000153",
+          "section": "mda_10q",
+          "chunks": 50
+        },
+        {
+          "accession": "0000200406-26-000163",
+          "section": "8k",
+          "chunks": 2
+        }
+      ],
+      "accessions": 4
+    },
+    {
+      "ticker": "JPM",
+      "fiscal_year": 2023,
+      "pinned": true,
+      "chunks": 1973,
+      "filings": [
+        {
+          "accession": "0000019617-23-000310",
+          "section": "mda_10q",
+          "chunks": 566
+        },
+        {
+          "accession": "0000019617-23-000432",
+          "section": "mda_10q",
+          "chunks": 696
+        },
+        {
+          "accession": "0000019617-23-000524",
+          "section": "mda_10q",
+          "chunks": 711
+        }
+      ],
+      "accessions": 3
+    },
+    {
+      "ticker": "JPM",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 1389,
+      "filings": [
+        {
+          "accession": "0000019617-25-000615",
+          "section": "mda_10q",
+          "chunks": 604
+        },
+        {
+          "accession": "0001628280-25-048859",
+          "section": "mda_10q",
+          "chunks": 621
+        },
+        {
+          "accession": "0001628280-26-008131",
+          "section": "business",
+          "chunks": 45
+        },
+        {
+          "accession": "0001628280-26-008131",
+          "section": "mda",
+          "chunks": 1
+        },
+        {
+          "accession": "0001628280-26-008131",
+          "section": "risk_factors",
+          "chunks": 118
+        }
+      ],
+      "accessions": 3
+    },
+    {
+      "ticker": "JPM",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 1201,
+      "filings": [
+        {
+          "accession": "0000019617-26-000119",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000019617-26-000228",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000019617-26-000241",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000019617-26-000288",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-26-211978",
+          "section": "8k",
+          "chunks": 4
+        },
+        {
+          "accession": "0001193125-26-242018",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-26-253533",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-26-314128",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-029344",
+          "section": "mda_10q",
+          "chunks": 558
+        },
+        {
+          "accession": "0001628280-26-045167",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-045169",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-048078",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-048086",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-054343",
+          "section": "mda_10q",
+          "chunks": 617
+        }
+      ],
+      "accessions": 14
+    },
+    {
+      "ticker": "KO",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 511,
+      "filings": [
+        {
+          "accession": "0000021344-25-000054",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000021344-25-000061",
+          "section": "mda_10q",
+          "chunks": 88
+        },
+        {
+          "accession": "0001552781-25-000454",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-25-045223",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-25-045577",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-25-046054",
+          "section": "mda_10q",
+          "chunks": 94
+        },
+        {
+          "accession": "0001628280-26-010047",
+          "section": "business",
+          "chunks": 65
+        },
+        {
+          "accession": "0001628280-26-010047",
+          "section": "mda",
+          "chunks": 127
+        },
+        {
+          "accession": "0001628280-26-010047",
+          "section": "risk_factors",
+          "chunks": 129
+        }
+      ],
+      "accessions": 7
+    },
+    {
+      "ticker": "KO",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 169,
+      "filings": [
+        {
+          "accession": "0001552781-26-000017",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001552781-26-000366",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-006642",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-010052",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-027723",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-028802",
+          "section": "mda_10q",
+          "chunks": 67
+        },
+        {
+          "accession": "0001628280-26-029230",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001628280-26-048466",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001628280-26-049922",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-050503",
+          "section": "mda_10q",
+          "chunks": 88
+        }
+      ],
+      "accessions": 10
+    },
+    {
+      "ticker": "META",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 449,
+      "filings": [
+        {
+          "accession": "0001193125-25-262593",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-25-036719",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-25-036791",
+          "section": "mda_10q",
+          "chunks": 56
+        },
+        {
+          "accession": "0001628280-25-047114",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-25-047240",
+          "section": "mda_10q",
+          "chunks": 58
+        },
+        {
+          "accession": "0001628280-25-056768",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-25-058337",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001628280-26-003942",
+          "section": "business",
+          "chunks": 29
+        },
+        {
+          "accession": "0001628280-26-003942",
+          "section": "mda",
+          "chunks": 67
+        },
+        {
+          "accession": "0001628280-26-003942",
+          "section": "risk_factors",
+          "chunks": 230
+        }
+      ],
+      "accessions": 8
+    },
+    {
+      "ticker": "META",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 125,
+      "filings": [
+        {
+          "accession": "0001193125-26-204128",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-002429",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001628280-26-003832",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-025108",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001628280-26-028364",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-028526",
+          "section": "mda_10q",
+          "chunks": 56
+        },
+        {
+          "accession": "0001628280-26-039193",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001628280-26-050596",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-050705",
+          "section": "mda_10q",
+          "chunks": 58
+        }
+      ],
+      "accessions": 9
+    },
+    {
+      "ticker": "MGM",
+      "fiscal_year": 2022,
+      "pinned": true,
+      "chunks": 510,
+      "filings": [
+        {
+          "accession": "0000789570-22-000017",
+          "section": "mda_10q",
+          "chunks": 72
+        },
+        {
+          "accession": "0000789570-22-000027",
+          "section": "mda_10q",
+          "chunks": 88
+        },
+        {
+          "accession": "0000789570-22-000038",
+          "section": "mda_10q",
+          "chunks": 90
+        },
+        {
+          "accession": "0000789570-23-000008",
+          "section": "business",
+          "chunks": 68
+        },
+        {
+          "accession": "0000789570-23-000008",
+          "section": "mda",
+          "chunks": 92
+        },
+        {
+          "accession": "0000789570-23-000008",
+          "section": "risk_factors",
+          "chunks": 100
+        }
+      ],
+      "accessions": 4
+    },
+    {
+      "ticker": "MGM",
+      "fiscal_year": 2023,
+      "pinned": true,
+      "chunks": 450,
+      "filings": [
+        {
+          "accession": "0000789570-23-000013",
+          "section": "mda_10q",
+          "chunks": 58
+        },
+        {
+          "accession": "0000789570-23-000019",
+          "section": "mda_10q",
+          "chunks": 67
+        },
+        {
+          "accession": "0000789570-23-000024",
+          "section": "mda_10q",
+          "chunks": 75
+        },
+        {
+          "accession": "0000789570-24-000005",
+          "section": "business",
+          "chunks": 66
+        },
+        {
+          "accession": "0000789570-24-000005",
+          "section": "mda",
+          "chunks": 79
+        },
+        {
+          "accession": "0000789570-24-000005",
+          "section": "risk_factors",
+          "chunks": 105
+        }
+      ],
+      "accessions": 4
+    },
+    {
+      "ticker": "MSFT",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 73,
+      "filings": [
+        {
+          "accession": "0000950170-25-061032",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000950170-25-061046",
+          "section": "mda_10q",
+          "chunks": 61
+        },
+        {
+          "accession": "0000950170-25-100226",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-25-154103",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-25-225125",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001193125-25-256310",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001193125-25-311196",
+          "section": "8k",
+          "chunks": 2
+        }
+      ],
+      "accessions": 7
+    },
+    {
+      "ticker": "MSFT",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 393,
+      "filings": [
+        {
+          "accession": "0001193125-25-256321",
+          "section": "mda_10q",
+          "chunks": 53
+        },
+        {
+          "accession": "0001193125-26-027198",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-26-027207",
+          "section": "mda_10q",
+          "chunks": 65
+        },
+        {
+          "accession": "0001193125-26-191457",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-26-191507",
+          "section": "mda_10q",
+          "chunks": 66
+        },
+        {
+          "accession": "0001193125-26-224155",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-26-258667",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001193125-26-323632",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-26-323660",
+          "section": "business",
+          "chunks": 43
+        },
+        {
+          "accession": "0001193125-26-323660",
+          "section": "mda",
+          "chunks": 57
+        },
+        {
+          "accession": "0001193125-26-323660",
+          "section": "risk_factors",
+          "chunks": 98
+        },
+        {
+          "accession": "0001193125-26-380280",
+          "section": "8k",
+          "chunks": 2
+        }
+      ],
+      "accessions": 10
+    },
+    {
+      "ticker": "NKE",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 70,
+      "filings": [
+        {
+          "accession": "0000320187-25-000016",
+          "section": "mda_10q",
+          "chunks": 65
+        },
+        {
+          "accession": "0000320187-25-000115",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0000320187-25-000138",
+          "section": "8k",
+          "chunks": 2
+        }
+      ],
+      "accessions": 3
+    },
+    {
+      "ticker": "NKE",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 449,
+      "filings": [
+        {
+          "accession": "0000320187-25-000097",
+          "section": "mda_10q",
+          "chunks": 49
+        },
+        {
+          "accession": "0000320187-25-000151",
+          "section": "mda_10q",
+          "chunks": 62
+        },
+        {
+          "accession": "0000320187-26-000017",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000320187-26-000020",
+          "section": "8k",
+          "chunks": 4
+        },
+        {
+          "accession": "0000320187-26-000026",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000320187-26-000037",
+          "section": "mda_10q",
+          "chunks": 67
+        },
+        {
+          "accession": "0000320187-26-000068",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0000320187-26-000070",
+          "section": "8k",
+          "chunks": 4
+        },
+        {
+          "accession": "0000320187-26-000076",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000320187-26-000088",
+          "section": "business",
+          "chunks": 44
+        },
+        {
+          "accession": "0000320187-26-000088",
+          "section": "mda",
+          "chunks": 76
+        },
+        {
+          "accession": "0000320187-26-000088",
+          "section": "risk_factors",
+          "chunks": 126
+        },
+        {
+          "accession": "0000320187-26-000112",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000320187-26-000143",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000320187-26-000170",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0000320187-26-000184",
+          "section": "8k",
+          "chunks": 3
+        }
+      ],
+      "accessions": 14
+    },
+    {
+      "ticker": "NVDA",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 317,
+      "filings": [
+        {
+          "accession": "0001045810-25-000209",
+          "section": "mda_10q",
+          "chunks": 36
+        },
+        {
+          "accession": "0001045810-25-000230",
+          "section": "mda_10q",
+          "chunks": 36
+        },
+        {
+          "accession": "0001045810-26-000003",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001045810-26-000019",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001045810-26-000021",
+          "section": "business",
+          "chunks": 55
+        },
+        {
+          "accession": "0001045810-26-000021",
+          "section": "mda",
+          "chunks": 36
+        },
+        {
+          "accession": "0001045810-26-000021",
+          "section": "risk_factors",
+          "chunks": 135
+        },
+        {
+          "accession": "0001045810-26-000024",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001045810-26-000026",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001045810-26-000028",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001045810-26-000051",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001045810-26-000056",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001045810-26-000060",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001045810-26-000069",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001045810-26-000073",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001045810-26-000078",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001193125-26-275783",
+          "section": "8k",
+          "chunks": 2
+        }
+      ],
+      "accessions": 15
+    },
+    {
+      "ticker": "NVDA",
+      "fiscal_year": 2027,
+      "pinned": false,
+      "chunks": 75,
+      "filings": [
+        {
+          "accession": "0001045810-26-000052",
+          "section": "mda_10q",
+          "chunks": 32
+        },
+        {
+          "accession": "0001045810-26-000075",
+          "section": "mda_10q",
+          "chunks": 43
+        }
+      ],
+      "accessions": 2
+    },
+    {
+      "ticker": "PEP",
+      "fiscal_year": 2021,
+      "pinned": true,
+      "chunks": 387,
+      "filings": [
+        {
+          "accession": "0000077476-22-000010",
+          "section": "business",
+          "chunks": 46
+        },
+        {
+          "accession": "0000077476-22-000010",
+          "section": "mda",
+          "chunks": 269
+        },
+        {
+          "accession": "0000077476-22-000010",
+          "section": "risk_factors",
+          "chunks": 72
+        }
+      ],
+      "accessions": 1
+    },
+    {
+      "ticker": "PEP",
+      "fiscal_year": 2022,
+      "pinned": true,
+      "chunks": 407,
+      "filings": [
+        {
+          "accession": "0000077476-23-000007",
+          "section": "business",
+          "chunks": 47
+        },
+        {
+          "accession": "0000077476-23-000007",
+          "section": "mda",
+          "chunks": 286
+        },
+        {
+          "accession": "0000077476-23-000007",
+          "section": "risk_factors",
+          "chunks": 74
+        }
+      ],
+      "accessions": 1
+    },
+    {
+      "ticker": "PEP",
+      "fiscal_year": 2023,
+      "pinned": true,
+      "chunks": 669,
+      "filings": [
+        {
+          "accession": "0000077476-23-000023",
+          "section": "mda_10q",
+          "chunks": 74
+        },
+        {
+          "accession": "0000077476-23-000046",
+          "section": "mda_10q",
+          "chunks": 88
+        },
+        {
+          "accession": "0000077476-23-000058",
+          "section": "mda_10q",
+          "chunks": 89
+        },
+        {
+          "accession": "0000077476-24-000008",
+          "section": "business",
+          "chunks": 47
+        },
+        {
+          "accession": "0000077476-24-000008",
+          "section": "mda",
+          "chunks": 287
+        },
+        {
+          "accession": "0000077476-24-000008",
+          "section": "risk_factors",
+          "chunks": 84
+        }
+      ],
+      "accessions": 4
+    },
+    {
+      "ticker": "PEP",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 394,
+      "filings": [
+        {
+          "accession": "0000077476-26-000007",
+          "section": "business",
+          "chunks": 42
+        },
+        {
+          "accession": "0000077476-26-000007",
+          "section": "mda",
+          "chunks": 264
+        },
+        {
+          "accession": "0000077476-26-000007",
+          "section": "risk_factors",
+          "chunks": 88
+        }
+      ],
+      "accessions": 1
+    },
+    {
+      "ticker": "PFE",
+      "fiscal_year": 2019,
+      "pinned": true,
+      "chunks": 244,
+      "filings": [
+        {
+          "accession": "0000078003-20-000014",
+          "section": "business",
+          "chunks": 122
+        },
+        {
+          "accession": "0000078003-20-000014",
+          "section": "mda",
+          "chunks": 1
+        },
+        {
+          "accession": "0000078003-20-000014",
+          "section": "risk_factors",
+          "chunks": 121
+        }
+      ],
+      "accessions": 1
+    },
+    {
+      "ticker": "PFE",
+      "fiscal_year": 2020,
+      "pinned": true,
+      "chunks": 344,
+      "filings": [
+        {
+          "accession": "0000078003-20-000003",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000078003-20-000006",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000078003-20-000016",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000078003-20-000019",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000078003-20-000021",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000078003-20-000029",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000078003-20-000031",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000078003-20-000034",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000078003-20-000056",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000078003-20-000065",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000078003-21-000038",
+          "section": "business",
+          "chunks": 92
+        },
+        {
+          "accession": "0000078003-21-000038",
+          "section": "mda",
+          "chunks": 127
+        },
+        {
+          "accession": "0000078003-21-000038",
+          "section": "risk_factors",
+          "chunks": 80
+        },
+        {
+          "accession": "0000930413-20-000918",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-20-146185",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-20-150192",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-20-154311",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-20-157434",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-20-181098",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001193125-20-212094",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-20-282739",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-20-286896",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-20-293176",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001193125-20-294847",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-20-296989",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001193125-20-298356",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001193125-20-317074",
+          "section": "8k",
+          "chunks": 2
+        }
+      ],
+      "accessions": 25
+    },
+    {
+      "ticker": "PFE",
+      "fiscal_year": 2023,
+      "pinned": true,
+      "chunks": 346,
+      "filings": [
+        {
+          "accession": "0000078003-23-000004",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000078003-23-000019",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000078003-23-000081",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000078003-23-000085",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000078003-23-000099",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000078003-23-000111",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000078003-23-000118",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000078003-23-000120",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000078003-24-000039",
+          "section": "business",
+          "chunks": 107
+        },
+        {
+          "accession": "0000078003-24-000039",
+          "section": "mda",
+          "chunks": 110
+        },
+        {
+          "accession": "0000078003-24-000039",
+          "section": "risk_factors",
+          "chunks": 102
+        },
+        {
+          "accession": "0001193125-23-068538",
+          "section": "8k",
+          "chunks": 4
+        },
+        {
+          "accession": "0001193125-23-144089",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001193125-23-149364",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-23-294930",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001628280-23-014368",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0001628280-23-014759",
+          "section": "8k",
+          "chunks": 2
+        }
+      ],
+      "accessions": 15
+    },
+    {
+      "ticker": "PFE",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 339,
+      "filings": [
+        {
+          "accession": "0000078003-26-000026",
+          "section": "business",
+          "chunks": 113
+        },
+        {
+          "accession": "0000078003-26-000026",
+          "section": "mda",
+          "chunks": 118
+        },
+        {
+          "accession": "0000078003-26-000026",
+          "section": "risk_factors",
+          "chunks": 108
+        }
+      ],
+      "accessions": 1
+    },
+    {
+      "ticker": "SBUX",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 244,
+      "filings": [
+        {
+          "accession": "0000829224-25-000058",
+          "section": "mda_10q",
+          "chunks": 56
+        },
+        {
+          "accession": "0000829224-25-000067",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0000829224-25-000074",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000829224-25-000079",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000829224-25-000114",
+          "section": "business",
+          "chunks": 44
+        },
+        {
+          "accession": "0000829224-25-000114",
+          "section": "mda",
+          "chunks": 66
+        },
+        {
+          "accession": "0000829224-25-000114",
+          "section": "risk_factors",
+          "chunks": 71
+        }
+      ],
+      "accessions": 5
+    },
+    {
+      "ticker": "SBUX",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 191,
+      "filings": [
+        {
+          "accession": "0000829224-26-000010",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000829224-26-000011",
+          "section": "mda_10q",
+          "chunks": 48
+        },
+        {
+          "accession": "0000829224-26-000058",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000829224-26-000064",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000829224-26-000078",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000829224-26-000080",
+          "section": "mda_10q",
+          "chunks": 62
+        },
+        {
+          "accession": "0000829224-26-000088",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000829224-26-000094",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000829224-26-000106",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000829224-26-000129",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000829224-26-000130",
+          "section": "mda_10q",
+          "chunks": 67
+        },
+        {
+          "accession": "0000829224-26-000145",
+          "section": "8k",
+          "chunks": 2
+        }
+      ],
+      "accessions": 12
+    },
+    {
+      "ticker": "TSLA",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 347,
+      "filings": [
+        {
+          "accession": "0001104659-25-087862",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001104659-25-108507",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001628280-25-035806",
+          "section": "mda_10q",
+          "chunks": 52
+        },
+        {
+          "accession": "0001628280-25-043530",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-25-045861",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-25-045968",
+          "section": "mda_10q",
+          "chunks": 57
+        },
+        {
+          "accession": "0001628280-26-003952",
+          "section": "business",
+          "chunks": 53
+        },
+        {
+          "accession": "0001628280-26-003952",
+          "section": "mda",
+          "chunks": 66
+        },
+        {
+          "accession": "0001628280-26-003952",
+          "section": "risk_factors",
+          "chunks": 110
+        }
+      ],
+      "accessions": 7
+    },
+    {
+      "ticker": "TSLA",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 115,
+      "filings": [
+        {
+          "accession": "0001628280-26-000016",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-003837",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-022956",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-026551",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-026673",
+          "section": "mda_10q",
+          "chunks": 43
+        },
+        {
+          "accession": "0001628280-26-046717",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-049213",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001628280-26-049270",
+          "section": "mda_10q",
+          "chunks": 54
+        },
+        {
+          "accession": "0001628280-26-063820",
+          "section": "8k",
+          "chunks": 4
+        },
+        {
+          "accession": "0001628280-26-064366",
+          "section": "8k",
+          "chunks": 2
+        }
+      ],
+      "accessions": 10
+    },
+    {
+      "ticker": "ULTA",
+      "fiscal_year": 2023,
+      "pinned": true,
+      "chunks": 292,
+      "filings": [
+        {
+          "accession": "0001558370-23-010464",
+          "section": "mda_10q",
+          "chunks": 36
+        },
+        {
+          "accession": "0001558370-23-010870",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001558370-23-015253",
+          "section": "mda_10q",
+          "chunks": 38
+        },
+        {
+          "accession": "0001558370-23-015855",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001558370-23-019393",
+          "section": "mda_10q",
+          "chunks": 39
+        },
+        {
+          "accession": "0001558370-24-003941",
+          "section": "business",
+          "chunks": 60
+        },
+        {
+          "accession": "0001558370-24-003941",
+          "section": "mda",
+          "chunks": 47
+        },
+        {
+          "accession": "0001558370-24-003941",
+          "section": "risk_factors",
+          "chunks": 67
+        }
+      ],
+      "accessions": 6
+    },
+    {
+      "ticker": "ULTA",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 271,
+      "filings": [
+        {
+          "accession": "0001104659-25-078160",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001104659-25-099926",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001104659-25-118457",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001104659-25-118458",
+          "section": "mda_10q",
+          "chunks": 40
+        },
+        {
+          "accession": "0001104659-25-122603",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001104659-26-035243",
+          "section": "business",
+          "chunks": 47
+        },
+        {
+          "accession": "0001104659-26-035243",
+          "section": "mda",
+          "chunks": 48
+        },
+        {
+          "accession": "0001104659-26-035243",
+          "section": "risk_factors",
+          "chunks": 81
+        },
+        {
+          "accession": "0001558370-25-011702",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001558370-25-011803",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001558370-25-011804",
+          "section": "mda_10q",
+          "chunks": 41
+        }
+      ],
+      "accessions": 9
+    },
+    {
+      "ticker": "ULTA",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 92,
+      "filings": [
+        {
+          "accession": "0001104659-26-027061",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001104659-26-069464",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001104659-26-069491",
+          "section": "mda_10q",
+          "chunks": 35
+        },
+        {
+          "accession": "0001104659-26-071896",
+          "section": "8k",
+          "chunks": 4
+        },
+        {
+          "accession": "0001104659-26-083524",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001104659-26-097497",
+          "section": "8k",
+          "chunks": 3
+        },
+        {
+          "accession": "0001104659-26-102438",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001104659-26-102442",
+          "section": "mda_10q",
+          "chunks": 41
+        }
+      ],
+      "accessions": 8
+    },
+    {
+      "ticker": "VZ",
+      "fiscal_year": 2021,
+      "pinned": true,
+      "chunks": 528,
+      "filings": [
+        {
+          "accession": "0000732712-21-000024",
+          "section": "mda_10q",
+          "chunks": 85
+        },
+        {
+          "accession": "0000732712-21-000046",
+          "section": "mda_10q",
+          "chunks": 100
+        },
+        {
+          "accession": "0000732712-21-000054",
+          "section": "mda_10q",
+          "chunks": 109
+        },
+        {
+          "accession": "0000732712-22-000008",
+          "section": "business",
+          "chunks": 65
+        },
+        {
+          "accession": "0000732712-22-000008",
+          "section": "mda",
+          "chunks": 137
+        },
+        {
+          "accession": "0000732712-22-000008",
+          "section": "risk_factors",
+          "chunks": 32
+        }
+      ],
+      "accessions": 4
+    },
+    {
+      "ticker": "WMT",
+      "fiscal_year": 2025,
+      "pinned": false,
+      "chunks": 7,
+      "filings": [
+        {
+          "accession": "0000104169-25-000172",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000104169-25-000177",
+          "section": "8k",
+          "chunks": 4
+        },
+        {
+          "accession": "0000104169-25-000238",
+          "section": "8k",
+          "chunks": 1
+        }
+      ],
+      "accessions": 3
+    },
+    {
+      "ticker": "WMT",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 336,
+      "filings": [
+        {
+          "accession": "0000104169-25-000137",
+          "section": "mda_10q",
+          "chunks": 48
+        },
+        {
+          "accession": "0000104169-25-000191",
+          "section": "mda_10q",
+          "chunks": 51
+        },
+        {
+          "accession": "0000104169-26-000008",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000104169-26-000023",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000104169-26-000032",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000104169-26-000055",
+          "section": "business",
+          "chunks": 43
+        },
+        {
+          "accession": "0000104169-26-000055",
+          "section": "mda",
+          "chunks": 67
+        },
+        {
+          "accession": "0000104169-26-000055",
+          "section": "risk_factors",
+          "chunks": 113
+        },
+        {
+          "accession": "0000104169-26-000067",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000104169-26-000095",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0000104169-26-000111",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0000104169-26-000145",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-26-194086",
+          "section": "8k",
+          "chunks": 2
+        }
+      ],
+      "accessions": 11
+    },
+    {
+      "ticker": "WMT",
+      "fiscal_year": 2027,
+      "pinned": false,
+      "chunks": 101,
+      "filings": [
+        {
+          "accession": "0000104169-26-000102",
+          "section": "mda_10q",
+          "chunks": 48
+        },
+        {
+          "accession": "0000104169-26-000154",
+          "section": "mda_10q",
+          "chunks": 53
+        }
+      ],
+      "accessions": 2
+    },
+    {
+      "ticker": "XOM",
+      "fiscal_year": 2026,
+      "pinned": false,
+      "chunks": 45,
+      "filings": [
+        {
+          "accession": "0000034088-26-000093",
+          "section": "mda_10q",
+          "chunks": 39
+        },
+        {
+          "accession": "0001193125-26-373026",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0001193125-26-402986",
+          "section": "8k",
+          "chunks": 2
+        },
+        {
+          "accession": "0002115436-26-000003",
+          "section": "8k",
+          "chunks": 1
+        },
+        {
+          "accession": "0002115436-26-000006",
+          "section": "8k",
+          "chunks": 1
+        }
+      ],
+      "accessions": 5
+    }
+  ]
+}

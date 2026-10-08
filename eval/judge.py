@@ -49,7 +49,11 @@ from langchain_openai import ChatOpenAI
 #
 # So: gpt-4o stays until an evaluative-answer labelled set exists. DOMAIN_JUDGE_MODEL switches it
 # for anyone who wants the stronger factual detector and accepts that cost. Do not re-decide this
-# from the PHANTOM slices already spent (scratchpad/phantom_{dev,test}_slice.json) — reusing them
+# from the PHANTOM slices already spent — their row numbers are in
+# eval/labeling/phantom_slices_spent.json (400 of the 994 in the 10k seed; 594 remain there, plus
+# the 8k/497k/def14a seeds). They were nearly lost a second way: they lived only in a scratch
+# directory the system reaped, so this warning pointed at nothing until they were regenerated from
+# their seeds and committed. Reusing them
 # turns held-out back into tuning data, which is how the previous held-out was lost in the first
 # place.
 JUDGE_MODEL = os.environ.get("DOMAIN_JUDGE_MODEL", "gpt-4o")
