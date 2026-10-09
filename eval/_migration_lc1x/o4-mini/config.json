@@ -1,0 +1,25 @@
+{
+  "at": "2026-10-08T22:48:59Z",
+  "models": {
+    "GEN_LLM_MODEL": "o4-mini",
+    "REASONING_EFFORT": "low",
+    "DOMAIN_JUDGE_MODEL": "gpt-4o",
+    "CORRECTNESS_JUDGE_MODEL": "gpt-4o",
+    "RAGAS_JUDGE_MODEL": "gpt-4o-mini",
+    "HYDE_MODEL": "gpt-4o-mini",
+    "EMB_MODEL": "text-embedding-3-small"
+  },
+  "knobs": {
+    "FILINGS_HYDE": "0",
+    "FILING_CHUNKS_MAX": "20000",
+    "FILING_TTL_DAYS": "30",
+    "RERANK": null
+  },
+  "git": {
+    "branch": "main",
+    "head": "66b81fd7455b32dcb427eb9f22786ad2e2da41fa",
+    "subject": "Phase-1 selection: gpt-5-mini, and why the other two are out",
+    "dirty": true
+  },
+  "database_url_set": true
+}

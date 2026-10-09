@@ -36,6 +36,11 @@ jobs:
       # updated the agent, observability, the FinanceBench harness and deploy.sh — and missed this
       # file, so every manual L2 run since has scored a model that was replaced three months ago,
       # and replaced precisely because its tool routing was unstable.
+      #
+      # ⏰ o4-mini is shut down by OpenAI on 2026-10-23. It is named in four places: this line,
+      # service/deploy.sh's --set-env-vars, and the two os.environ defaults in agents/sec_agent.py
+      # (build_agent and _llm). Change all four together — missing one is exactly what the note
+      # above records going wrong last time.
       GEN_LLM_MODEL: o4-mini
       REASONING_EFFORT: low
       RERANK: "1"
@@ -45,5 +50,8 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
-      - name: L2 — full agent eval + Ragas + regression gate (exits non-zero on regression)
-        run: python -m eval.score --quality
+      # --quality is gone with ragas: it imported a module langchain-community removed, from a
+      # package being sunset, and holding that back pins langchain-core to 0.3.x. See
+      # requirements.txt. The deterministic metrics and the regression gate are unaffected.
+      - name: L2 — full agent eval + regression gate (exits non-zero on regression)
+        run: python -m eval.score

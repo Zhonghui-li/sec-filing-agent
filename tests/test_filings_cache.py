@@ -6,6 +6,10 @@ import os
 
 import pytest
 
+# Both conditions, not just the URL: a machine with DATABASE_URL exported but without psycopg
+# installed — the CI L1 lane with a developer's shell variables, say — turned these into errors
+# instead of skips.
+pytest.importorskip("psycopg")
 pytestmark = pytest.mark.skipif(not os.environ.get("DATABASE_URL"), reason="needs the filings DB")
 
 _ZERO = "[" + ",".join(["0.0"] * 1536) + "]"
