@@ -510,7 +510,10 @@ if __name__ == "__main__":
                     help="overwrite eval/baseline.json (rates, for reading) AND "
                          "eval/baseline_run.jsonl (per-case outcomes, what the gate compares)")
     ap.add_argument("--quality", action="store_true",
-                    help="also run Ragas faithfulness/relevancy (LLM judge) on qualitative answers")
+                    help="also run Ragas faithfulness/relevancy (LLM judge) on qualitative "
+                         "answers. Needs `pip install ragas`, which is deliberately NOT in "
+                         "requirements.txt — it pins langchain-core to 0.3.x; see the rationale "
+                         "there. Without it this flag raises ModuleNotFoundError at import.")
     ap.add_argument("--only", metavar="IDS",
                     help='subset to run: "trajectory" for every case with a trajectory block, '
                          'or a comma-separated id list (e.g. M01,M02)')
