@@ -45,6 +45,10 @@ jobs:
       # cannot import it: this line, and service/deploy.sh's --set-env-vars. Change both with it.
       GEN_LLM_MODEL: o4-mini
       REASONING_EFFORT: low
+      # Explicit although it is also the code default, for the same reason REASONING_EFFORT is:
+      # a default that is not what ships makes "run it locally" mean something else. Set to 0 to
+      # score the legacy chat/completions path.
+      RESPONSES_API: "1"
       RERANK: "1"
     steps:
       - uses: actions/checkout@v4

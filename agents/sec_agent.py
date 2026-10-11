@@ -396,10 +396,15 @@ def _chat_model(model, temperature=0.0):
 
     o4-mini is shut down 2026-10-23, so this path is about to carry a model it never has.
     """
-    # RESPONSES_API=1 routes to /v1/responses, which accepts every model above WITH tools,
-    # including the 5.4 and gpt-6 lines this endpoint refuses. Off by default: the flag exists so
-    # the migration can be measured with the API path as the only variable, and is meant to be
-    # deleted once /v1/responses is the only path.
+    # /v1/responses is the default path since the 2026-10-11 paired run (144 cases per arm,
+    # o4-mini both sides, 0 REGRESSED — eval/_migration_responses/RESULTS.md). It accepts every
+    # model above WITH tools, including the 5.4 and gpt-6 lines chat/completions refuses.
+    # RESPONSES_API=0 is the escape hatch back to chat/completions; it is kept only until Phase
+    # 1.7 has reselected, then both it and this branch go.
+    #
+    # ⚠️ The model/knob table above was measured against chat/completions and has NOT been
+    # re-measured on /v1/responses. o4-mini is verified on both. Phase 1.7 must re-measure the
+    # 5.4 and gpt-6 lines before trusting which knob they take here.
     #
     # The 2026-10-08 attempt failed because `.content` there is a list of blocks
     # (`[{'type': 'reasoning', ...}, {'type': 'text', ...}]`) where everything downstream expects
@@ -407,7 +412,7 @@ def _chat_model(model, temperature=0.0):
     # and failed silently. The fix is `.text`, which returns the same string on BOTH paths.
     # The other half of that note was wrong: usage_metadata DOES carry reasoning and cache_read
     # on /v1/responses, under the same keys sum_usage already reads. See Obsidian note 37.
-    api = {"use_responses_api": True} if os.environ.get("RESPONSES_API") == "1" else {}
+    api = {} if os.environ.get("RESPONSES_API") == "0" else {"use_responses_api": True}
     if re.match(r"^(o\d|gpt-5(?!\.))", model):
         return ChatOpenAI(model=model, **api,
                           reasoning_effort=os.environ.get("REASONING_EFFORT", _DEFAULT_EFFORT))

@@ -30,7 +30,7 @@ _DEFAULTS = {"GEN_LLM_MODEL": DEFAULT_GEN_MODEL, "REASONING_EFFORT": "low",
              "RAGAS_JUDGE_MODEL": "gpt-4o-mini", "HYDE_MODEL": "gpt-4o-mini",
              "EMB_MODEL": "text-embedding-3-small", "FILINGS_HYDE": "0",
              "FILING_CHUNKS_MAX": "20000", "FILING_TTL_DAYS": "30",
-             "RESPONSES_API": "0"}
+             "RESPONSES_API": "1"}
 
 
 def _git(*args):
