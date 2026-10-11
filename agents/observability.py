@@ -10,9 +10,11 @@ so the agent runs unchanged without an account.
 import os
 from contextlib import contextmanager
 
+from agents import DEFAULT_GEN_MODEL
+
 LANGFUSE_ENABLED = bool(
     os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"))
-_MODEL = os.environ.get("GEN_LLM_MODEL", "o4-mini")
+_MODEL = os.environ.get("GEN_LLM_MODEL", DEFAULT_GEN_MODEL)
 
 
 def sum_usage(messages):

@@ -25,6 +25,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from langgraph.errors import GraphRecursionError
 
+from agents import DEFAULT_GEN_MODEL
 from agents.finance_tools import (get_financials as _get_financials, compute as _compute,
                                   get_ratio as _get_ratio, get_growth as _get_growth,
                                   compute_formula as _compute_formula)
@@ -410,7 +411,7 @@ def _chat_model(model, temperature=0.0):
 
 def build_agent(model: str = None, temperature: float = 0.0, user_id: str = None,
                 scope_doc: str = None):
-    model = model or os.environ.get("GEN_LLM_MODEL", "o4-mini")
+    model = model or os.environ.get("GEN_LLM_MODEL", DEFAULT_GEN_MODEL)
     llm = _chat_model(model, temperature)
     # only add the private-docs tools when a user is in scope, so eval/public demo are unchanged
     if user_id:
@@ -505,7 +506,7 @@ def _build_messages(question: str, history) -> List:
 
 def _llm(model: str = None):
     """The chat model, built the same way as build_agent's (used by the salvage synthesis)."""
-    model = model or os.environ.get("GEN_LLM_MODEL", "o4-mini")
+    model = model or os.environ.get("GEN_LLM_MODEL", DEFAULT_GEN_MODEL)
     return _chat_model(model)
 
 

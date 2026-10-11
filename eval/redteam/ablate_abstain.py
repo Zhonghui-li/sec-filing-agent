@@ -26,6 +26,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+from agents import DEFAULT_GEN_MODEL
 import agents.sec_agent as sa
 from eval.redteam.run_redteam import SET, _judge, report
 
@@ -127,7 +128,7 @@ def main():
 
     OUT.write_text(json.dumps(
         {"ts": datetime.now(timezone.utc).isoformat(),
-         "model": os.environ.get("GEN_LLM_MODEL", "o4-mini"),
+         "model": os.environ.get("GEN_LLM_MODEL", DEFAULT_GEN_MODEL),
          "n_items": len(items), "substitutions": len(SUBS),
          "WITH_abstain": results["WITH_abstain"]["summary"],
          "WITHOUT_abstain": results["WITHOUT_abstain"]["summary"],

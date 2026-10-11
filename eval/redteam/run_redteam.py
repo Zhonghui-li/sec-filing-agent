@@ -32,6 +32,7 @@ from pathlib import Path
 
 from langchain_openai import ChatOpenAI
 
+from agents import DEFAULT_GEN_MODEL
 from agents.guardrail import _fetched_figures, _parse_money, _MONEY_TOL
 
 # Deterministic backstop for the LLM judge's unreliable "hand-computed / unsupported number" call:
@@ -236,7 +237,7 @@ def main():
               "mode": "rescore" if args.rescore else "full",
               # must match agents.sec_agent.build_agent's default, or a run with GEN_LLM_MODEL
               # unset is logged under a model it never used
-              "model": os.environ.get("GEN_LLM_MODEL", "o4-mini"), **summary}
+              "model": os.environ.get("GEN_LLM_MODEL", DEFAULT_GEN_MODEL), **summary}
     with (HERE / "runs_log.jsonl").open("a") as f:
         f.write(json.dumps(record) + "\n")
     print(f"logged -> {HERE/'runs_log.jsonl'} (fabrication rate {summary['fabrication_rate']:.0%})")

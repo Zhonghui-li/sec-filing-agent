@@ -13,13 +13,15 @@ import os
 import subprocess
 from datetime import datetime, timezone
 
+from agents import DEFAULT_GEN_MODEL
+
 _MODEL_VARS = ("GEN_LLM_MODEL", "REASONING_EFFORT", "DOMAIN_JUDGE_MODEL",
                "CORRECTNESS_JUDGE_MODEL", "RAGAS_JUDGE_MODEL", "HYDE_MODEL", "EMB_MODEL")
 _KNOB_VARS = ("FILINGS_HYDE", "FILING_CHUNKS_MAX", "FILING_TTL_DAYS", "RERANK")
 
 # The defaults the code falls back to, so a snapshot taken with nothing exported still records
 # what actually ran. Keep in step with the modules that read these.
-_DEFAULTS = {"GEN_LLM_MODEL": "o4-mini", "REASONING_EFFORT": "low",
+_DEFAULTS = {"GEN_LLM_MODEL": DEFAULT_GEN_MODEL, "REASONING_EFFORT": "low",
              "DOMAIN_JUDGE_MODEL": "gpt-4o", "CORRECTNESS_JUDGE_MODEL": "gpt-4o",
              "RAGAS_JUDGE_MODEL": "gpt-4o-mini", "HYDE_MODEL": "gpt-4o-mini",
              "EMB_MODEL": "text-embedding-3-small", "FILINGS_HYDE": "0",

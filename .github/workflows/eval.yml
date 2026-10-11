@@ -37,10 +37,12 @@ jobs:
       # file, so every manual L2 run since has scored a model that was replaced three months ago,
       # and replaced precisely because its tool routing was unstable.
       #
-      # ⏰ o4-mini is shut down by OpenAI on 2026-10-23. It is named in four places: this line,
-      # service/deploy.sh's --set-env-vars, and the two os.environ defaults in agents/sec_agent.py
-      # (build_agent and _llm). Change all four together — missing one is exactly what the note
-      # above records going wrong last time.
+      # ⏰ o4-mini is shut down by OpenAI on 2026-10-23. The count in this comment has now been
+      # wrong twice (first "three places", then "four"); the actual Python side was six call
+      # sites, including two that only RECORD which model ran — eval/redteam's run metadata —
+      # where drift does not break the run, it mislabels the results. They now all read
+      # agents.DEFAULT_GEN_MODEL, so the Python side is ONE edit. Two sites remain, and they
+      # cannot import it: this line, and service/deploy.sh's --set-env-vars. Change both with it.
       GEN_LLM_MODEL: o4-mini
       REASONING_EFFORT: low
       RERANK: "1"
