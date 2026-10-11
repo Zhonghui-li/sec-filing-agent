@@ -17,7 +17,11 @@ from agents import DEFAULT_GEN_MODEL
 
 _MODEL_VARS = ("GEN_LLM_MODEL", "REASONING_EFFORT", "DOMAIN_JUDGE_MODEL",
                "CORRECTNESS_JUDGE_MODEL", "RAGAS_JUDGE_MODEL", "HYDE_MODEL", "EMB_MODEL")
-_KNOB_VARS = ("FILINGS_HYDE", "FILING_CHUNKS_MAX", "FILING_TTL_DAYS", "RERANK")
+_KNOB_VARS = ("FILINGS_HYDE", "FILING_CHUNKS_MAX", "FILING_TTL_DAYS", "RERANK",
+              # Which OpenAI API path answered. Without it the two arms of the
+              # /v1/responses migration produce byte-identical config snapshots and
+              # the only thing separating them is the commit hash.
+              "RESPONSES_API")
 
 # The defaults the code falls back to, so a snapshot taken with nothing exported still records
 # what actually ran. Keep in step with the modules that read these.
@@ -25,7 +29,8 @@ _DEFAULTS = {"GEN_LLM_MODEL": DEFAULT_GEN_MODEL, "REASONING_EFFORT": "low",
              "DOMAIN_JUDGE_MODEL": "gpt-4o", "CORRECTNESS_JUDGE_MODEL": "gpt-4o",
              "RAGAS_JUDGE_MODEL": "gpt-4o-mini", "HYDE_MODEL": "gpt-4o-mini",
              "EMB_MODEL": "text-embedding-3-small", "FILINGS_HYDE": "0",
-             "FILING_CHUNKS_MAX": "20000", "FILING_TTL_DAYS": "30"}
+             "FILING_CHUNKS_MAX": "20000", "FILING_TTL_DAYS": "30",
+             "RESPONSES_API": "0"}
 
 
 def _git(*args):

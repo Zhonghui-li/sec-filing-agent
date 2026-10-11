@@ -396,17 +396,22 @@ def _chat_model(model, temperature=0.0):
 
     o4-mini is shut down 2026-10-23, so this path is about to carry a model it never has.
     """
-    # Not reachable from here yet: /v1/responses would accept every one of these models with
-    # tools, including the 5.4 and gpt-6 lines that this endpoint refuses, and langchain exposes
-    # it as ChatOpenAI(use_responses_api=True). Flipping it was tried on 2026-10-08 and the agent
-    # returned `[{'type': 'text', 'text': ...}]` where everything downstream expects a string —
-    # the guardrail regexes, every substring metric, the citation check — and usage came back
-    # without reasoning or cached counts. It fails silently, by matching nothing, which is why
-    # the switch is not left here half-wired. See Obsidian note 37.
+    # RESPONSES_API=1 routes to /v1/responses, which accepts every model above WITH tools,
+    # including the 5.4 and gpt-6 lines this endpoint refuses. Off by default: the flag exists so
+    # the migration can be measured with the API path as the only variable, and is meant to be
+    # deleted once /v1/responses is the only path.
+    #
+    # The 2026-10-08 attempt failed because `.content` there is a list of blocks
+    # (`[{'type': 'reasoning', ...}, {'type': 'text', ...}]`) where everything downstream expects
+    # a string — guardrail regexes, every substring metric, the citation check. It matched nothing
+    # and failed silently. The fix is `.text`, which returns the same string on BOTH paths.
+    # The other half of that note was wrong: usage_metadata DOES carry reasoning and cache_read
+    # on /v1/responses, under the same keys sum_usage already reads. See Obsidian note 37.
+    api = {"use_responses_api": True} if os.environ.get("RESPONSES_API") == "1" else {}
     if re.match(r"^(o\d|gpt-5(?!\.))", model):
-        return ChatOpenAI(model=model,
+        return ChatOpenAI(model=model, **api,
                           reasoning_effort=os.environ.get("REASONING_EFFORT", _DEFAULT_EFFORT))
-    return ChatOpenAI(model=model, temperature=temperature)
+    return ChatOpenAI(model=model, temperature=temperature, **api)
 
 
 def build_agent(model: str = None, temperature: float = 0.0, user_id: str = None,
@@ -529,8 +534,10 @@ def _salvage(question: str, messages: List) -> str:
            "the available filings. Never use outside knowledge, and never state a number that is not "
            "present verbatim in the retrieved text.")
     try:
+        # .text, not .content: on /v1/responses the latter is a list of blocks and every
+        # downstream string check would quietly match nothing.
         return _llm().invoke([SystemMessage(sys),
-                              HumanMessage(f"Question: {question}\n\nRetrieved:\n{retrieved[:8000]}")]).content
+                              HumanMessage(f"Question: {question}\n\nRetrieved:\n{retrieved[:8000]}")]).text
     except Exception:
         return _SALVAGE_EMPTY
 
@@ -560,7 +567,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
                                            {"recursion_limit": recursion_limit}, stream_mode="values"):
                 pass
             messages = last_state["messages"]
-            answer = messages[-1].content
+            answer = messages[-1].text
             # ONE retry, never a loop: a second no-tool answer is returned as it is and recorded.
             # Holding a user in a retry loop to make a metric look better is the wrong trade.
             if _needs_routing_retry(answer, [m for m in messages
@@ -571,7 +578,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
                         {"recursion_limit": recursion_limit}, stream_mode="values"):
                     pass
                 messages = last_state["messages"]
-                answer = messages[-1].content
+                answer = messages[-1].text
         except GraphRecursionError:
             # The agent looped without converging (over-searching, or retrying an absent metric),
             # ignoring the soft tool budgets. Salvage: force ONE final answer from the passages it
