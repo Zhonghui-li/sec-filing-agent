@@ -53,7 +53,16 @@ def _filing(cik, fiscal_year):
     for f in Company(int(cik)).get_filings(form="10-K"):
         if f.form != "10-K":
             continue
-        period = str(getattr(f, "period_of_report", "") or "")
+        # One unreadable filing must not hide the other 29. Reading period_of_report fetches the
+        # filing's homepage, and edgartools raises when that page has no dates to unpack —
+        # CVS's 1995 10-K (0000891092-95-000026) does exactly that, which took out every CVS
+        # segment question including the FY2025 one that holds the answer. The loop already
+        # skips a filing whose period is not a four-digit year; this is the same intent for a
+        # period that cannot be read at all.
+        try:
+            period = str(getattr(f, "period_of_report", "") or "")
+        except Exception:
+            continue
         if not period[:4].isdigit():
             continue
         yr = str(cal.fiscal_year(period))
