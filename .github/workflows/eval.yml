@@ -24,6 +24,47 @@ jobs:
       - name: L1 — tools + scorer logic (no LLM / DB / secrets)
         run: python -m pytest tests/ -q
 
+  # L1 runs against requirements.txt. The image installs service/requirements.txt. Until this job
+  # existed, nothing built the image, so on 2026-10-11 two defects reached production in one
+  # afternoon that no local check could see: langchain-core 0.3.x (where `.text` is a method, not
+  # a property) and pyarrow 26 against a pinned numpy 1.26.4. Both are properties of the resolved
+  # dependency set, so neither needs a key, a database or a cent to catch — see service/smoke.py.
+  l1b-image:
+    name: L1b image builds, imports and serves
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image the way Cloud Build does
+        run: docker build -f service/Dockerfile -t sec-filing-agent:ci .
+      - name: Contracts the installed dependency set must satisfy
+        run: docker run --rm sec-filing-agent:ci python -m service.smoke
+      # A liveness probe alone would have passed on 10-11: the app started fine and only
+      # narrative questions failed. It is here to catch the startup failures smoke.py cannot,
+      # not as the main check. The key is a placeholder — build_agent() constructs ChatOpenAI at
+      # startup, which validates that a key EXISTS; no request is made and nothing is billed.
+      - name: Container starts and serves /health
+        run: |
+          docker run -d --name ci -p 8080:8080 \
+            -e OPENAI_API_KEY=ci-construction-only-not-a-real-key \
+            sec-filing-agent:ci
+          ok=
+          for _ in $(seq 1 45); do
+            if curl -fsS http://localhost:8080/health >/dev/null; then ok=1; break; fi
+            sleep 2
+          done
+          docker logs ci
+          docker rm -f ci
+          test -n "$ok"
+      # What a clean linux resolve actually picked. requirements.txt states ranges; this is the
+      # record of which versions those ranges became, on the platform that serves traffic, and is
+      # the raw material for pinning them properly.
+      - name: Record the resolved linux dependency set
+        run: docker run --rm sec-filing-agent:ci pip freeze > resolved-linux.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resolved-linux
+          path: resolved-linux.txt
+
   l2-agent-eval:
     name: L2 agent eval vs baseline
     if: github.event_name == 'workflow_dispatch'
