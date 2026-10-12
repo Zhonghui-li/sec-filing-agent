@@ -382,17 +382,32 @@ _DEFAULT_EFFORT = "low"
 
 def _chat_model(model, temperature=0.0):
     """ChatOpenAI for `model`, passing only the knob it accepts — which is not the same knob
-    across the models we can migrate to. Measured against bind_tools(TOOLS), 2026-10-08:
+    across the models we can migrate to, AND not the same knob on both API paths.
 
-        o-series, gpt-5, gpt-5-mini, gpt-5-nano    reasoning_effort yes, temperature=0 REJECTED
-        gpt-5.4, gpt-5.4-mini, gpt-5.4-nano        reasoning_effort REJECTED, temperature=0 yes
-        gpt-5.5                                    neither — "Function tools with reasoning_effort
-                                                   are not supported", and temperature=0 rejected
-                                                   too, so it needs the Responses API, not this one
+    Measured against bind_tools(TOOLS) on 2026-10-11, every cell a real call (reasoning_effort
+    is "effort", temperature=0 is "temp"):
 
-    The split is the dot: the gpt-5 base line takes reasoning_effort like the o-series, the 5.4
-    line reverts to temperature. Grouping by family name gets it backwards for one of the two, and
-    the failure is a 400 at call time, not at construction — a whole eval would run as errors.
+                      chat/effort   chat/temp   responses/effort   responses/temp
+        gpt-4o            no           YES            no                YES
+        o4-mini           YES          no             YES               no
+        gpt-5-mini        YES          YES            YES               YES
+        gpt-5-nano        YES          YES            YES               YES
+        gpt-5.4           no           YES            YES               YES
+        gpt-5.4-mini      no           YES            YES               YES
+        gpt-6-astra       YES          no             YES               no
+
+    The rule that falls out: everything except the gpt-4 line takes reasoning_effort, EXCEPT that
+    the gpt-5.4 family refuses it on chat/completions only. So the pattern has to depend on the
+    path, which is why it is not a constant. Where both knobs work (the gpt-5 mini/nano line),
+    reasoning_effort is the one we want — temperature=0 there means reasoning is off.
+
+    Two corrections to the 2026-10-08 table this replaces. gpt-6-astra now calls tools on
+    chat/completions; that table and note 37 §八 recorded "Function tools ... not supported".
+    Whether OpenAI changed it or the earlier probe was wrong is not determinable from here, but
+    today's reading is a real call. gpt-5.5 is not in the new table because it was not re-measured.
+
+    Getting this wrong is a 400 at call time, not at construction, so a whole eval runs as errors.
+    tests/test_model_knobs.py pins the routing without spending anything.
 
     o4-mini is shut down 2026-10-23, so this path is about to carry a model it never has.
     """
@@ -412,8 +427,12 @@ def _chat_model(model, temperature=0.0):
     # and failed silently. The fix is `.text`, which returns the same string on BOTH paths.
     # The other half of that note was wrong: usage_metadata DOES carry reasoning and cache_read
     # on /v1/responses, under the same keys sum_usage already reads. See Obsidian note 37.
-    api = {} if os.environ.get("RESPONSES_API") == "0" else {"use_responses_api": True}
-    if re.match(r"^(o\d|gpt-5(?!\.))", model):
+    responses = os.environ.get("RESPONSES_API") != "0"
+    api = {"use_responses_api": True} if responses else {}
+    # The gpt-5.4 family is the only one whose knob depends on the path, so the pattern does too.
+    # `(?!\.)` is what excludes it: "gpt-5-mini" has no dot after the 5, "gpt-5.4-mini" does.
+    reasoning_models = r"^(o\d|gpt-5|gpt-6)" if responses else r"^(o\d|gpt-5(?!\.)|gpt-6)"
+    if re.match(reasoning_models, model):
         return ChatOpenAI(model=model, **api,
                           reasoning_effort=os.environ.get("REASONING_EFFORT", _DEFAULT_EFFORT))
     return ChatOpenAI(model=model, temperature=temperature, **api)
