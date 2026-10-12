@@ -177,9 +177,13 @@ section ("liabilities", "assets", "equity") — the exact answer to "what is X's
 asset?". The max/min is computed in code, so USE THIS rather than pulling a whole statement and \
 eyeballing which number is biggest.
 - get_segment_breakdown: revenue (or operating_income) broken down BY BUSINESS SEGMENT or BY \
-GEOGRAPHY — dimension="segment" or "geography" — for questions like "revenue by segment/region", \
-"which segment is largest", "how is revenue split geographically". This is dimensional XBRL data \
-that get_financials (a single consolidated figure) cannot give.
+GEOGRAPHY — dimension="segment" or "geography". Use it for AMOUNTS — "revenue by segment/region", \
+"which segment is largest", "how is revenue split geographically" — AND to find out WHICH SEGMENTS \
+EXIST: "what are the company's reportable/business segments", "how is the company organised", \
+"name its divisions". It returns the segment NAMES alongside their figures, so it answers the \
+list question directly and is the RIGHT first call for it — do NOT reach for search_filings to \
+find a segment list. This is dimensional XBRL data that get_financials (a single consolidated \
+figure) cannot give.
 - get_segment_growth: year-over-year GROWTH of revenue (or operating_income) by segment or geography \
 — for "which segment grew fastest / dragged down growth". Uses the filing's recast prior year (so it \
 survives segment restructurings). NOTE it is AS-REPORTED growth, not organic/ex-M&A (that non-GAAP \
