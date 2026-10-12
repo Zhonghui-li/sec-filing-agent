@@ -1,0 +1,26 @@
+{
+  "at": "2026-10-12T21:08:12Z",
+  "models": {
+    "GEN_LLM_MODEL": "gpt-5-mini",
+    "REASONING_EFFORT": "low",
+    "DOMAIN_JUDGE_MODEL": "gpt-4o",
+    "CORRECTNESS_JUDGE_MODEL": "gpt-4o",
+    "RAGAS_JUDGE_MODEL": "gpt-4o-mini",
+    "HYDE_MODEL": "gpt-4o-mini",
+    "EMB_MODEL": "text-embedding-3-small"
+  },
+  "knobs": {
+    "FILINGS_HYDE": "0",
+    "FILING_CHUNKS_MAX": "20000",
+    "FILING_TTL_DAYS": "30",
+    "RERANK": null,
+    "RESPONSES_API": "1"
+  },
+  "git": {
+    "branch": "main",
+    "head": "b2b0104f445377d3ed237c40bb9671c0f3f8eadc",
+    "subject": "Say that get_segment_breakdown also answers which segments exist",
+    "dirty": true
+  },
+  "database_url_set": true
+}
