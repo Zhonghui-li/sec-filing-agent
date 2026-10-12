@@ -11,7 +11,17 @@ call, the gpt-5.4 line was recorded backwards.
 """
 import pytest
 
-from agents.sec_agent import _chat_model
+# L1 installs pytest and pandas only — deliberately, so it catches anything that depends on a
+# package the minimal environment lacks. Importing agents.sec_agent pulls in langchain, so without
+# this guard the module raises during COLLECTION, which does not skip one test: it interrupts the
+# run and the other 203 never execute. test_filings_cache.py guards psycopg the same way.
+#
+# The consequence is that these tests run locally and skip in L1, so they catch a wrong knob at
+# the moment the table is edited rather than in CI. Running the suite inside the built image,
+# where langchain exists, is what would close that — see note 38's action list.
+pytest.importorskip("langchain_openai")
+
+from agents.sec_agent import _chat_model  # noqa: E402  (must follow the guard)
 
 # model -> (knob on chat/completions, knob on /v1/responses), as measured 2026-10-11.
 # "effort" = reasoning_effort accepted; "temp" = only temperature=0 accepted.
