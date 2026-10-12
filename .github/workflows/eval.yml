@@ -53,6 +53,22 @@ jobs:
         run: docker build -f service/Dockerfile -t sec-filing-agent:ci .
       - name: Contracts the installed dependency set must satisfy
         run: docker run --rm sec-filing-agent:ci python -m service.smoke
+      # The suite, run against the versions that SHIP rather than the ones a dev venv happens to
+      # hold. This is the lane that directly answers the 2026-10-11 root cause — tests passing in
+      # one environment while a different one was deployed. It is also the only place
+      # tests/test_model_knobs.py actually executes: L1 installs pytest and pandas only, so it
+      # skips there, and L2 has never run.
+      #
+      # DATABASE_URL is deliberately NOT passed: the filings-cache tests skip without it, the same
+      # way they do locally, and pointing them at the empty throwaway postgres would turn skips
+      # into errors. The key is a placeholder because ChatOpenAI validates that one exists at
+      # construction; no request is made.
+      - name: The suite, against the versions that ship
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src -e PYTHONPATH=/src \
+            -e OPENAI_API_KEY=ci-construction-only-not-a-real-key \
+            sec-filing-agent:ci \
+            sh -c "pip install -q pytest && python -m pytest tests/ -q"
       # A liveness probe alone would have passed on 10-11: the app started fine and only
       # narrative questions failed. It is here to catch the startup failures smoke.py cannot,
       # not as the main check. The key is a placeholder — build_agent() constructs ChatOpenAI at
