@@ -26,6 +26,7 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.errors import GraphRecursionError
 
 from agents import DEFAULT_GEN_MODEL
+from agents.companyfacts import SourceUnavailable
 from agents.finance_tools import (get_financials as _get_financials, compute as _compute,
                                   get_ratio as _get_ratio, get_growth as _get_growth,
                                   compute_formula as _compute_formula)
@@ -111,7 +112,18 @@ def _budgeted(fn):
             return ("You have made many data lookups this turn without converging. Do NOT call "
                     "another data tool. Answer from the figures you already have, or call abstain "
                     "(not_reported / not_in_filings) if the requested figure isn't in the data.")
-        return fn(*args, **kwargs)
+        try:
+            return fn(*args, **kwargs)
+        except SourceUnavailable as e:
+            # The distinction this whole project rests on: a source we could not reach is not a
+            # fact about what the filing contains. Said plainly, because the model's default is to
+            # treat an empty tool result as evidence of absence and then abstain "not_in_filings".
+            print(f"[tools] SEC source unavailable: {e}")
+            return ("RETRIEVAL FAILURE: the SEC data source could not be reached for this lookup. "
+                    "This says NOTHING about whether the figure is in the filings. Do NOT conclude "
+                    "it is absent and do NOT abstain with not_in_filings or not_reported. Retry "
+                    "this same tool once; if it fails again, tell the user the data source is "
+                    "temporarily unavailable and that the question should be retried.")
     return wrapped
 
 TOOLS = [tool(_budgeted(_get_financials)), tool(_budgeted(_compute)), tool(_budgeted(_get_ratio)),

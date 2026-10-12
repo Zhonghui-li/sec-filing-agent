@@ -13,6 +13,8 @@ import os
 import re
 from pathlib import Path
 
+from agents.companyfacts import SourceUnavailable
+
 _DATA = Path(__file__).resolve().parent.parent / "data" / "financials.json"
 _ROWS = None
 
@@ -91,7 +93,13 @@ def _rows_for(ticker):
     try:
         from agents.companyfacts import company_rows
         live = company_rows(tk)
-    except Exception:
+    except SourceUnavailable:
+        if not local:
+            raise          # nothing to serve; the caller must say so, not claim the data is absent
+        print(f"[finance_tools] live companyfacts unavailable for {tk}; curated rows only")
+        live = []
+    except Exception as e:
+        print(f"[finance_tools] live companyfacts failed for {tk}: {type(e).__name__}: {e}")
         live = []
     if not local:
         return live

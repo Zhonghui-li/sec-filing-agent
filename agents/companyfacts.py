@@ -13,6 +13,8 @@ Results are cached on disk (per company) so a ticker is fetched from SEC at most
 import json
 import os
 import re
+import time
+import urllib.error
 import urllib.request
 from collections import Counter
 from datetime import date, datetime, timezone
@@ -85,10 +87,41 @@ METRICS = {
 _SPLIT_ADJUSTED_METRICS = {"eps_diluted", "dividends_per_share"}
 
 
-def _get_json(url, timeout=90):
-    req = urllib.request.Request(url, headers=_UA)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode())
+class SourceUnavailable(Exception):
+    """SEC could not be reached. Deliberately NOT the same as a company that does not exist.
+
+    Collapsing the two is what let the agent tell a user "I could not find CVS Health's main
+    business segments in the available filings" on 2026-10-12, labelled NOT IN THE FILINGS, when
+    the FY2025 10-K states them plainly and the fetch had simply failed. A wrong number is a
+    failure this project is built to prevent; a confident claim about what a filing does not
+    contain is the same failure wearing different clothes."""
+
+
+_RETRYABLE_STATUS = (429, 500, 502, 503, 504)
+
+
+def _get_json(url, timeout=90, attempts=3):
+    """GET + parse, retrying the failures that are transient by nature.
+
+    The deployed container starts with an EMPTY companyfacts cache (data/cache/ is gitignored and
+    the image copies only data/financials.json), so any company outside the curated snapshot —
+    CVS among them — depends on this call succeeding at request time. One flaky call used to
+    become "no data for CVS"."""
+    last = None
+    for attempt in range(attempts):
+        try:
+            req = urllib.request.Request(url, headers=_UA)
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read().decode())
+        except urllib.error.HTTPError as e:
+            if e.code not in _RETRYABLE_STATUS:
+                raise                      # 404 and friends are answers, not failures
+            last = e
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+            last = e
+        if attempt < attempts - 1:
+            time.sleep(0.5 * 2 ** attempt)
+    raise last
 
 
 # --- ticker -> CIK ---------------------------------------------------------------------------
@@ -749,14 +782,18 @@ def company_rows(ticker):
     if cached is not None:
         _rows_mem[tk] = cached
         return cached
-    cik = cik_for(tk)
+    try:
+        cik = cik_for(tk)
+    except Exception as e:
+        raise SourceUnavailable(f"could not reach SEC to resolve {tk!r}: {type(e).__name__}") from e
     if not cik:
         _rows_mem[tk] = []
-        return []
+        return []                      # resolved cleanly: SEC has no such filer
     try:
         entity, gaap = fetch_company(cik)
-    except Exception:
-        return []                      # transient failure — don't cache
+    except Exception as e:
+        # Not cached, and NOT an empty result: the caller must be able to tell these apart.
+        raise SourceUnavailable(f"could not fetch SEC XBRL for {tk!r}: {type(e).__name__}") from e
     rows = extract_rows(gaap, tk, cik)
     if not rows:
         # A live ticker that extracts nothing is usually a successor registrant holding the ticker
