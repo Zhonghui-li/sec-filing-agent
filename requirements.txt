@@ -14,6 +14,13 @@ httpx
 psycopg[binary]==3.3.4
 pgvector==0.4.2
 numpy==1.26.4
+# pyarrow is a TRANSITIVE dep (edgartools -> pandas/pyarrow) and it has to be capped, because
+# pyarrow 26 requires numpy >= 2.0 and this file pins numpy 1.26.4. A clean resolve picks 26 and
+# the pair imports fine until something actually touches it: on 2026-10-11 the deployed image got
+# 26, the numeric tools kept working (they read a baked JSON), and every narrative question died
+# with "ImportError: pyarrow requires NumPy 2.0 or newer". 25.0.1 is what the venv that produced
+# every eval number has. Lifting this means moving to numpy 2 deliberately, not by resolver drift.
+pyarrow<26
 
 # LangChain / LangGraph 1.x. Ranges, not pins: the 0.4.5-era pins on langgraph-prebuilt,
 # -checkpoint and -sdk existed because an unpinned prebuilt expected langgraph._internal, which
