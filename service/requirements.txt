@@ -9,15 +9,25 @@ uvicorn==0.35.0
 python-multipart==0.0.30   # required by FastAPI for the /upload form/file endpoint
 google-auth>=2.35,<3       # verify Google ID tokens for optional sign-in (per-account isolation)
 requests>=2.31             # used by google.auth.transport.requests to verify the ID token
-langchain-openai==0.3.17
-langchain-community==0.3.24
-langchain-core
-langgraph==0.4.5
-langgraph-prebuilt==0.1.8
-langgraph-checkpoint==2.0.26
-langgraph-sdk==0.1.69
+# Must track the ranges in the ROOT requirements.txt. They did not, between 3a205de (2026-10-08,
+# "on langchain 1.x") and 2026-10-11: that commit upgraded the root file and the local venv and
+# never touched this one, so the container kept building langchain-core 0.3.x while every local
+# test and every eval number came from 1.4.4. Nothing failed, because nothing compared them —
+# until `.text` (a property in 1.x, a METHOD in 0.3.x) reached production and every answer became
+# "TypeError: expected string or bytes-like object, got 'method'".
+#
+# langchain-community is GONE, not upgraded: no module under agents/ or service/ imports it, and
+# its 0.3.x pin is what dragged langchain-core back to 0.3 regardless of what was asked for here.
+# langchain-text-splitters is now explicit because agents/ imports it directly and it used to
+# arrive only as community's dependency.
+# The langgraph-prebuilt/-checkpoint/-sdk pins are dropped for the reason the root file states:
+# they existed because 0.4.5 lacked langgraph._internal, which 1.x resolved.
+langchain-core>=1.0,<2
+langchain-openai>=1.0,<2
+langchain-text-splitters>=1.0,<2
+langgraph>=1.0,<2
 sentence-transformers==5.2.2
-openai==1.75.0
+openai>=2,<4
 psycopg[binary]==3.3.4
 pgvector==0.4.2
 # statement-level tools: XBRL presentation linkbase (financials, segments, cash-flow capex fallback)
