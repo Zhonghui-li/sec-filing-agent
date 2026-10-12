@@ -32,6 +32,21 @@ jobs:
   l1b-image:
     name: L1b image builds, imports and serves
     runs-on: ubuntu-latest
+    # The app cannot start without one: lifespan calls _ensure_doc_schema, which reads
+    # os.environ["DATABASE_URL"] and raises KeyError when it is absent. A throwaway instance is
+    # enough — this job never asks a question, so nothing reads a filing out of it.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - name: Build the image the way Cloud Build does
@@ -42,10 +57,13 @@ jobs:
       # narrative questions failed. It is here to catch the startup failures smoke.py cannot,
       # not as the main check. The key is a placeholder — build_agent() constructs ChatOpenAI at
       # startup, which validates that a key EXISTS; no request is made and nothing is billed.
+      # --network host so the container reaches the postgres service on localhost, the same way
+      # it reaches its own port 8080 from the runner.
       - name: Container starts and serves /health
         run: |
-          docker run -d --name ci -p 8080:8080 \
+          docker run -d --name ci --network host \
             -e OPENAI_API_KEY=ci-construction-only-not-a-real-key \
+            -e DATABASE_URL=postgresql://postgres:ci@localhost:5432/ci \
             sec-filing-agent:ci
           ok=
           for _ in $(seq 1 45); do
