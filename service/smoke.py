@@ -59,8 +59,9 @@ def check_responses_api_is_reachable():
     """The default path since a76c961. Construction only — no request, so no key and no cost."""
     import os
     from langchain_openai import ChatOpenAI
+    from agents import DEFAULT_GEN_MODEL
     os.environ.setdefault("OPENAI_API_KEY", "smoke-test-not-a-real-key")
-    llm = ChatOpenAI(model="o4-mini", use_responses_api=True)
+    llm = ChatOpenAI(model=DEFAULT_GEN_MODEL, use_responses_api=True)
     assert llm.use_responses_api is True, "ChatOpenAI ignored use_responses_api"
     print("responses api ok")
 

@@ -112,13 +112,14 @@ jobs:
       # file, so every manual L2 run since has scored a model that was replaced three months ago,
       # and replaced precisely because its tool routing was unstable.
       #
-      # ⏰ o4-mini is shut down by OpenAI on 2026-10-23. The count in this comment has now been
-      # wrong twice (first "three places", then "four"); the actual Python side was six call
-      # sites, including two that only RECORD which model ran — eval/redteam's run metadata —
-      # where drift does not break the run, it mislabels the results. They now all read
-      # agents.DEFAULT_GEN_MODEL, so the Python side is ONE edit. Two sites remain, and they
-      # cannot import it: this line, and service/deploy.sh's --set-env-vars. Change both with it.
-      GEN_LLM_MODEL: o4-mini
+      # Moved off o4-mini on 2026-10-12, ahead of its 2026-10-23 shutdown, to gpt-5.4-mini —
+      # Phase 1.7, eval/_migration_17_round3/RESULTS.md. The count in this comment was wrong
+      # twice before that (first "three places", then "four"); the Python side was six call
+      # sites, two of which only RECORD which model ran, where drift does not break a run, it
+      # mislabels it. They all read agents.DEFAULT_GEN_MODEL now, so the Python side is ONE
+      # edit. Two sites cannot import it and must be changed by hand with it: this line, and
+      # service/deploy.sh's --set-env-vars.
+      GEN_LLM_MODEL: gpt-5.4-mini
       REASONING_EFFORT: low
       # Explicit although it is also the code default, for the same reason REASONING_EFFORT is:
       # a default that is not what ships makes "run it locally" mean something else. Set to 0 to

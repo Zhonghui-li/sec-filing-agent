@@ -6,8 +6,10 @@ so every manual L2 run after it evaluated a model the repo had already replaced.
 value itself is not the point — the point is that a run's recorded model and the model
 that actually answered cannot drift apart if they read the same name.
 
-o4-mini is shut down 2026-10-23. Changing it here changes the Python side in one edit;
-the two non-Python sites (.github/workflows/eval.yml, service/deploy.sh) set the env var
-explicitly and must be changed with it.
+Changed from o4-mini to gpt-5.4-mini on 2026-10-12, ahead of o4-mini's 2026-10-23 shutdown,
+by Phase 1.7 (eval/_migration_17_round3/RESULTS.md). Changing it here changes the Python side
+in one edit — the six call sites and eval/runconfig's snapshot default all read this name. The
+two non-Python sites (.github/workflows/eval.yml, service/deploy.sh) set the env var explicitly
+and must be changed with it.
 """
-DEFAULT_GEN_MODEL = "o4-mini"
+DEFAULT_GEN_MODEL = "gpt-5.4-mini"
