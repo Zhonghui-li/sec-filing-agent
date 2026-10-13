@@ -81,7 +81,10 @@ not for the incumbent, because o4-mini is being retired and re-measuring it at 1
 more than the comparison was worth. Anything quoting these figures should say which set they are
 from.
 
-## What it costs
+## What choosing gpt-5.4-mini over gpt-5-mini costs
+
+Against the other CANDIDATE, not against what production ran. The comparison with the replaced
+model is above.
 
 ```
 per question          $0.0013 -> $0.0028
