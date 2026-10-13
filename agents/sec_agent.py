@@ -238,6 +238,10 @@ way you pass fiscal_year to get_financials. If a FOLLOW-UP question omits the ye
 conversation has been about a specific fiscal year, CARRY that same fiscal_year forward to both \
 get_financials and search_filings (do not silently drop to the latest); only use the latest when the \
 user clearly starts a NEW request about the current period or a different company. \
+A follow-up that SAYS "latest" or "most recent" is NOT an omitted year — it names one, and it \
+overrides anything earlier in the conversation. Carry a year forward only when the new message \
+gives no year AND no relative-time term; the moment it says "latest", call the tools WITHOUT a \
+fiscal_year, search_filings included. \
 For requests that are NOT financial-analysis questions \
 answerable from filings — writing tasks, opinions, investment/buy-sell advice, forecasts or \
 predictions, or real-time market data like stock prices — call `abstain` with reason off_topic. \
@@ -582,12 +586,62 @@ def _salvage(question: str, messages: List) -> str:
         return _SALVAGE_EMPTY
 
 
+_LATEST_RE = re.compile(r"\b(latest|most[- ]recent|this past|current)\s+(fiscal\s+)?(year|fy)\b", re.I)
+_YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
+# Deliberately does NOT name what the latest year is. The detector's `latest` is the newest year
+# across ALL metrics for that ticker, and the newest year differs per metric — MSFT had 2026 for
+# some and 2025 for operating_income, and naming 2026 sent the agent to ask for a figure that does
+# not exist. The instruction the agent needs is to stop passing a year at all; the tools already
+# resolve the latest one per metric.
+_ANCHOR_RETRY = (
+    "You answered a question about the LATEST fiscal year using {year}, which is the year the "
+    "EARLIER part of this conversation was about — not the latest. Redo the lookup: call the "
+    "tools WITHOUT a fiscal_year argument, which returns the most recent year available for that "
+    "metric, rather than carrying a year over from a previous turn. Do not name a year yourself "
+    "and do not reuse {year} unless the question asks for it.")
+
+
+def _anchored_year(question: str, history, trace):
+    """Did a "latest fiscal year" question get answered with a year inherited from earlier turns?
+
+    This is deliberately NOT a check that the year is *right* — the agent legitimately uses older
+    years for comparisons, and the newest year differs per metric, so "is this the latest" has no
+    single answer. It checks the specific failure instead: a year that appears in the PRIOR TURNS
+    being reused for a question that explicitly asked for the latest.
+
+    Found 2026-10-12. After a turn about Microsoft's fiscal 2024, "what drove the change in its
+    operating margin in its latest fiscal year" was answered for FY2024 — and because the
+    narrative index holds FY2026 and FY2025 but not FY2024, the search came back empty and the
+    agent abstained. A wrong year wearing a clean abstention, which nothing alarms on. It
+    reproduced on 2 of 3 runs, so a prompt line alone is not a fix: see the search budget above,
+    where the same conclusion was reached for the same reason.
+
+    Returns (ticker, inherited_year, latest_year) or None.
+    """
+    if not history or not _LATEST_RE.search(question or ""):
+        return None
+    prior_years = {int(y) for turn in history
+                   for y in _YEAR_RE.findall(str((turn or {}).get("content") or ""))}
+    if not prior_years:
+        return None
+    from agents.finance_tools import latest_fiscal_year
+    for step in trace or []:
+        args = step.get("args") or {}
+        year, ticker = args.get("fiscal_year"), args.get("ticker")
+        if not isinstance(year, int) or year not in prior_years or not ticker:
+            continue
+        latest = latest_fiscal_year(ticker)
+        if latest and year < latest:
+            return ticker, year, latest
+    return None
+
+
 def run_agent(question: str, agent=None, history=None, verbose: bool = False,
               recursion_limit: int = DEFAULT_RECURSION_LIMIT) -> Dict:
     """Run the agent on a question. `history` (optional) is prior turns [{role, content}, ...]
     for multi-turn (Model B). Returns {answer, trace, tools_used, tool_outputs}."""
     agent = agent or build_agent()
-    usage, tool_outputs, salvaged, routing_retry = None, [], False, False
+    usage, tool_outputs, salvaged, routing_retry, anchor_retry = None, [], False, False, False
     _search_state["n"] = 0                    # reset the per-turn search budget for this run
     _numeric_state["n"] = 0                   # reset the per-turn numeric-tool budget for this run
     # Timed on the same boundary as the Langfuse span below, deliberately: the two numbers then
@@ -615,6 +669,20 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
                 routing_retry = True
                 for last_state in agent.stream(
                         {"messages": messages + [HumanMessage(_ROUTE_RETRY)]},
+                        {"recursion_limit": recursion_limit}, stream_mode="values"):
+                    pass
+                messages = last_state["messages"]
+                answer = messages[-1].text
+            # A SECOND kind of one-shot retry, for a different mistake: a "latest fiscal year"
+            # question answered with a year carried over from an earlier turn. Like the routing
+            # retry it fires at most once and never loops.
+            anchored = _anchored_year(question, history, _extract_trace(messages))
+            if anchored:
+                anchor_retry = True
+                _tk, yr, _latest = anchored
+                for last_state in agent.stream(
+                        {"messages": messages + [HumanMessage(
+                            _ANCHOR_RETRY.format(year=yr))]},
                         {"recursion_limit": recursion_limit}, stream_mode="values"):
                     pass
                 messages = last_state["messages"]
@@ -685,6 +753,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
                  "no_tool_answer": not tools_used,
                  "text_abstain": bool(text_abstain),
                  "routing_retry": routing_retry,
+                 "anchor_retry": anchor_retry,
                  "cold_starts": cold_starts,
                  "abstain_reason": next((t["args"].get("reason")
                                          for t in trace if t["tool"] == "abstain"), None),
@@ -703,7 +772,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
     # token cost without a second pass or a trace fetch. None when observability is disabled.
     return {"answer": answer, "trace": trace, "tool_outputs": tool_outputs,
             "tools_used": tools_used, "trace_id": trace_id, "salvaged": salvaged,
-            "cold_starts": cold_starts,
+            "cold_starts": cold_starts, "anchor_retry": anchor_retry,
             "guardrail_reason": guardrail_reason, "usage": usage,
             "agent_latency_ms": (time.perf_counter() - agent_start) * 1000}
 

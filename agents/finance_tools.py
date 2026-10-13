@@ -135,6 +135,21 @@ def cik_for(ticker):
     return hits[0]["cik"] if hits else None
 
 
+def latest_fiscal_year(ticker):
+    """The newest fiscal year this ticker has any figure for, or None.
+
+    Exists so the agent loop can tell "the user asked for the latest year" from "the agent used a
+    year it carried over from an earlier turn". Reads the same rows the tools answer from, so it
+    cannot disagree with them.
+    """
+    try:
+        yrs = [r.get("fiscal_year") for r in _rows_for(ticker)]
+    except Exception:
+        return None
+    yrs = [y for y in yrs if isinstance(y, int)]
+    return max(yrs) if yrs else None
+
+
 def _no_company_msg(ticker):
     """The 'not found' message — upgraded to explain a FOREIGN PRIVATE ISSUER (a 20-F filer whose
     ticker resolves but whose us-GAAP 10-K figures aren't in the data) instead of the misleading
