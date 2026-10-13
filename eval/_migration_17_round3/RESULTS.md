@@ -53,6 +53,34 @@ from 4 regressions / 0 improvements to 1 / 1.
 - Phase 1's selection of gpt-5-mini was not wrong on its own terms. It was made on an
   architecture we no longer run, against a tool description that has since been corrected.
 
+## What production actually changed to, and from
+
+Rounds 1 to 3 compare *candidates to each other*, and the cost table below is gpt-5-mini against
+gpt-5.4-mini. That is not the change production made. Production ran **o4-mini**, which is being
+retired; a reader checking this file finds a 2.09x cost increase and has no way to see what shipping
+actually did. So, measured on the round-1 dev slice at one commit with the model as the only
+variable:
+
+| 54 cases, same commit | o4-mini (replaced) | gpt-5.4-mini (shipped) | |
+|---|---|---|---|
+| cost | $0.356 | $0.165 | **54% cheaper** |
+| per question | $0.0066 | $0.0031 | |
+| p50 latency | 4.66s | 3.53s | **24% faster** |
+| median answer length | 154 chars | 136 chars | |
+| prompt-cache hit | 89% | 87% | |
+
+Two things this does not say.
+
+**gpt-5.4-mini was not the cheapest candidate.** gpt-5-mini was, by a further 2.09x, and it was
+eligible. The rule in this directory's DECISION_RULE.md ranks quality and latency ahead of cost
+under a 3x ceiling, and that rule was fixed before the winner was known. Shipping the more
+expensive of two tied candidates is the decision that rule produces, deliberately.
+
+**The o4-mini comparison is on 54 cases, not 144.** The full set was run for the two candidates,
+not for the incumbent, because o4-mini is being retired and re-measuring it at 144 would have cost
+more than the comparison was worth. Anything quoting these figures should say which set they are
+from.
+
 ## What it costs
 
 ```
