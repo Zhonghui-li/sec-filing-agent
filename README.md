@@ -14,7 +14,9 @@ Answers financial questions about **any U.S. public company** from its SEC filin
 **finance bar**: a wrong or unsupported number is unacceptable.
 
 > **Validated on FinanceBench**, an external benchmark we didn't write:
-> **94% addressable coverage on the numeric set at a zero-fabrication rate, with 96% of narrative answers grounded in a cited filing or tool output.**
+> **92% addressable coverage on the numeric set at a zero-fabrication rate, with 97% of narrative
+> answers grounded in a cited filing or tool output.**
+> *(gpt-5.4-mini, 2026-10-12 — every figure here is dated and names the model that produced it)*
 > → [full brief](eval/financebench/REPORT.md)
 
 ## Architecture
@@ -44,8 +46,8 @@ Answers financial questions about **any U.S. public company** from its SEC filin
                              ▼
                answer + clickable EDGAR citations
 
-   wrapped by a 3-layer eval:  deterministic CI gate ·
-   domain judge (κ=0.76) ·  FinanceBench (94%, 0 fab)
+   wrapped by six eval layers:  unit tests · image contracts ·
+   paired regression gate · red team · FinanceBench · the miss queue
 ```
 
 Two paths, one bar. Exact figures come from **deterministic tools over XBRL** (the LLM never does
@@ -109,34 +111,54 @@ the conventions into fixed formulas removes that whole class of error.
 
 ## Evaluation — the part most agent demos skip
 
-**1 · Internal CI gate.** 84 cases: numeric answers self-grounded from XBRL (correct by construction)
-over 7 curated companies, plus 27 narrative cases with gold evidence across ~20 companies. Scored by
-a complementary suite (`numerical`, `grounded`, `citation`, `tool` trajectory, `abstain`,
-`context_recall`, `forbid` injection); the 9 deterministic metrics gate CI, 3 LLM-judge metrics monitor only.
+**What is scored.** Every answer is judged on five things, not one: whether the number is right,
+whether it is *grounded* in a tool output or a cited passage, whether the citation resolves to the
+filing it claims, whether the agent abstained when it should have, and whether it took a defensible
+route to get there. Deterministic metrics gate CI; LLM-judged ones monitor.
 
-**2 · Calibrated judges.** Both the **faithfulness** judge and the **answer-correctness** judge are
-calibrated and stress-tested against human labels (faithfulness at **Cohen's κ = 0.76**, with **zero
-false-positives on hedged/abstaining answers**). The judges are audited too, not just the agent: the
-faithfulness judge is fed the tool outputs, not only retrieved prose, so a figure from a tool counts
-as grounded even when it isn't in the text.
+**The judges are audited too, not just the agent.** Grounding and correctness are judged by models
+calibrated against human labels, and the judge is shown the *tool outputs* as well as the retrieved
+prose — so a figure that came from a tool counts as grounded even when no sentence contains it.
+An external labelled set later rated a different model the stronger factual judge; switching to it
+collapsed grounding from 96% to 54%, because it fails *evaluative* conclusions ("liquidity is
+healthy") that nearly half our narrative questions ask for and that the set contains none of. It
+was not adopted. The reasoning is in the harness doc.
 
-**3 · External benchmark — [FinanceBench](https://github.com/patronus-ai/financebench) (Patronus AI).**
-150 questions / 32 companies we did *not* write. **94% addressable coverage on the numeric set at a
-zero-fabrication rate** (all 50 metrics-generated questions correct), with narrative correctness
-**38/82 = 46% addressable** at **96% grounded**.
-What it misses, it misses by declining, not inventing. Scored from a declared `ANSWER:` line rather
-than by scanning the prose for numbers, at FinQA's 1% tolerance — see the 2026-09 update in the brief
-for why both matter. Reproducible harness with a tracked runs log.
-→ [`eval/financebench/`](eval/financebench/) · [REPORT.md](eval/financebench/REPORT.md)
+**Regressions are measured case by case, not by rate.** A percentage cannot compare two metrics
+whose denominators differ by a factor of fifteen, and it reads three breaks alongside three fixes as
+three breaks. The gate pairs each case against a recorded baseline and returns a verdict per
+metric — including *undecided*, when the two runs disagree too rarely to call it.
 
-**4 · Adversarial red-team.** A 50-question trust suite — 15 failure modes that *tempt* fabrication
-(nonexistent metrics, false premises, prompt injection, unit/precision traps, hand-computable derived
-metrics) plus answerable controls — scored three ways: fabrication vs *safe over-abstention* vs pass,
-so declining a trap counts as a pass, not a miss. It drove the fabrication rate **from 11% to 0**
-(the two real leaks — hand-computing CCC/EBITDA-margin/FCF, and dropping restatement caveats — are
-fixed), and each answer is **re-verifiable**: `agents/replay.py` re-runs the deterministic tool calls
-from the audit trail and confirms the figures still reproduce from source.
+**External benchmark — [FinanceBench](https://github.com/patronus-ai/financebench) (Patronus AI),
+150 questions over 32 companies we did not write.** Numeric answers are read from a declared
+`ANSWER:` line rather than by scanning prose for numbers, at FinQA's 1% tolerance. *Addressable*
+excludes questions whose evidence lives only in an earnings release, which the ingester skips by
+design — taken from the benchmark's own evidence labels, never from whether we got it right. What
+it misses, it misses by declining, not inventing.
+→ [REPORT.md](eval/financebench/REPORT.md)
+
+**Adversarial red team.** Traps that *tempt* fabrication — nonexistent metrics and years, wrong
+company, false premises, anchoring, prompt injection, unit and precision traps, hand-computable
+derived figures, non-GAAP — plus answerable controls, scored three ways so that declining a trap
+counts as a pass rather than a miss. It drove the fabrication rate **from 11% to 0**. Each answer is
+**re-verifiable**: `agents/replay.py` re-runs the deterministic tool calls from the audit trail and
+confirms the figures still reproduce from source.
 → [`eval/redteam/`](eval/redteam/)
+
+### Where each check runs
+
+| Layer | Runs | Checks |
+|---|---|---|
+| Unit tests | every push | tool logic, scorer maths, guardrail rules, and that the dev and runtime dependency files agree |
+| Image contracts | every push | that the artifact which ships imports, satisfies the API contracts the code assumes, and starts |
+| Regression gate | before a release | per-case behaviour against a recorded baseline |
+| Red team | before a release | fabrication under adversarial prompts |
+| FinanceBench | before a release | an external set we did not write |
+| Production | continuous | the miss queue — every metric a user asked for that the tools could not return |
+
+→ **[How the harness works](docs/EVALUATION.md)** — what each layer is blind to, why the image is
+built in CI, how the gate reaches a verdict, why the judge model has not been upgraded, and how to
+run each layer yourself.
 
 > Built eval-driven: the eval surfaced the failures that drove the agent. It once *guessed* fiscal
 > years, *substituted revenue as a proxy for gross profit*, and *over-refused* answerable questions.
@@ -154,7 +176,7 @@ attributed to the wrong file. Heavy ingestion runs async in an isolated venv.
 ## Run it
 
 ```bash
-pip install -r requirements.txt
+python3.11 -m venv .venv && .venv/bin/pip install -r requirements.txt   # its OWN venv, not a shared one
 
 python -m pytest tests/                                                   # deterministic tests (no keys)
 DATABASE_URL=… OPENAI_API_KEY=… uvicorn service.app:app --port 8100       # demo at http://localhost:8100
@@ -164,8 +186,8 @@ DATABASE_URL=… OPENAI_API_KEY=… python -m agents.sec_agent "How did NVIDIA's
 The service exposes `/ask` (answer + citations + a collapsible **audit trail** of tool calls),
 `/export` (deterministic CSV of metrics × years), `/upload` + `/file/{doc_id}` (private docs), and an
 **OpenAI-compatible** `/v1/chat/completions` that drops into open-webui / LibreChat. Default model
-**o4-mini**. Deployed on Cloud Run with `max-instances=1`, so the in-memory daily quota is an exact
-global cap.
+**gpt-5.4-mini**, over OpenAI's `/v1/responses`. Deployed on Cloud Run with `max-instances=1`, so
+the in-memory daily quota is an exact global cap.
 
 ## The miss queue — what to check after a deploy
 
@@ -189,7 +211,10 @@ over a multiplication sign or a fiscal year. An `implausible_magnitude` record w
 
 ## Under the hood
 
-- **Numbers**: SEC `companyfacts` XBRL, live for any company; 7 companies cached in
+- **Model**: `gpt-5.4-mini` over OpenAI's `/v1/responses`, which preserves reasoning across tool
+  calls where chat/completions drops it. Chosen over the incumbent by a paired, three-round
+  selection with the decision rule written down before each round.
+- **Numbers**: SEC `companyfacts` XBRL, live for any company; 9 companies cached in
   `data/financials.json` as the deterministic eval baseline.
 - **Narrative**: 10-K sections, recent 10-Q MD&A, and recent 8-K events (each 8-K chunked per item)
   via `edgartools` → **pgvector**, indexed live on first query for **any** company and **any fiscal
