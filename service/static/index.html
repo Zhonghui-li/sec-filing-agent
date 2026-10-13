@@ -331,8 +331,31 @@ function toolGloss(name){
   const g = { get_financials:'Fetched XBRL figure', compute:'Computed', compute_formula:'Computed from formula',
     get_ratio:'Computed ratio', get_growth:'Computed year-over-year', get_statement:'Read statement line items',
     largest_line_item:'Ranked line items', get_segment_breakdown:'Broke out by segment',
-    get_segment_growth:'Segment growth', search_filings:'Searched filing text', abstain:'Declined · not in the filings' };
+    get_segment_growth:'Segment growth', search_filings:'Searched filing text', abstain:'Declined' };
   return g[name] || name;
+}
+
+// The badge used to read "not in the filings" for every abstention, whichever of the five reasons
+// the agent actually gave. A refusal to forecast a stock price was therefore displayed as a claim
+// about what the filings contain — an assertion about the world, made by the UI, that the agent
+// never made. Same failure as a retrieval error shown as "not in the filings"; this one just lived
+// in the frontend.
+const ABSTAIN_LABEL = {
+  off_topic:        'outside SEC-filings analysis',
+  not_in_filings:   'not in the filings',
+  not_reported:     'the company does not report this',
+  out_of_scope:     'this company files no 10-K / 10-Q / 8-K',
+  year_unavailable: 'that fiscal year is unavailable',
+};
+function abstainBadge(d){
+  const call = (d.trace || []).find(s => s.tool === 'abstain');
+  const reason = call && call.args && call.args.reason;
+  const label = ABSTAIN_LABEL[reason] || 'declined';
+  // An answer that cites sources AND abstains withheld PART of itself — the operating-margin case,
+  // where the ratio was computed and cited and only the "what drove it" half was declined.
+  // Labelling that "Withheld" undersells what it did give.
+  const partial = (d.sources || []).length > 0;
+  return '<div class="abstain-tag">⊘ ' + (partial ? 'Partly withheld' : 'Withheld') + ' · ' + label + '</div>';
 }
 
 form.addEventListener('submit', async (e) => {
@@ -355,7 +378,7 @@ form.addEventListener('submit', async (e) => {
     const srcMap = {};
     (d.sources || []).forEach(s => { srcMap[s.accession] = s.url; });
     let html = '';
-    if (abstained) html += '<div class="abstain-tag">⊘ Withheld · not in the filings</div>';
+    if (abstained) html += abstainBadge(d);
     html += '<span class="num">' + linkAccessions(linkify(esc(d.answer)), srcMap) + '</span>';
 
     // provenance — sources as first-class chips
