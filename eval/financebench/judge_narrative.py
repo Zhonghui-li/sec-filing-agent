@@ -25,6 +25,21 @@ HERE = Path(__file__).resolve().parent
 _CACHE = HERE / "_open_cache.jsonl"
 _CAP = HERE / "_narrative_answers.jsonl"      # full answers + contexts we capture
 
+
+def _produced_by():
+    """What generated an answer, so a capture cannot be silently reused across a change.
+
+    The capture was keyed on question text alone. On 2026-10-12, hours after production moved from
+    o4-mini on chat/completions to gpt-5.4-mini on /v1/responses, a rerun printed "cached" for all
+    95 questions and judged answers two generations old — and reported them as the new model's. A
+    run's rows have to say what produced them; that is what eval/runconfig.py exists for, and this
+    file predated it.
+    """
+    from agents import DEFAULT_GEN_MODEL
+    model = os.environ.get("GEN_LLM_MODEL", DEFAULT_GEN_MODEL)
+    api = "chat" if os.environ.get("RESPONSES_API") == "0" else "responses"
+    return f"{model}|{api}"
+
 CORRECTNESS_RUBRIC = """You are grading an AI assistant's answer to a question about a company's SEC \
 filings, against a reference (GOLD) answer written by financial analysts. Decide whether the \
 assistant's ANSWER is factually correct RELATIVE TO THE GOLD answer.
@@ -100,10 +115,20 @@ def capture(limit=None):
     # Append as we go and skip what is already captured. A 95-question capture takes ~40 minutes,
     # and writing only at the end means an OOM kill (8 GB machine, this happened) throws all of it
     # away. Keyed on the question text, so a rerun resumes rather than restarts.
-    done = {}
+    # Reuse only what THIS configuration produced. Rows from another model stay in the file as
+    # history; they are not fed to the judges and they do not suppress a re-run.
+    produced_by, done, stale = _produced_by(), {}, 0
     if _CAP.exists():
-        done = {json.loads(l)["question"]: json.loads(l)
-                for l in _CAP.read_text().splitlines() if l.strip()}
+        for line in _CAP.read_text().splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if row.get("produced_by") == produced_by:
+                done[row["question"]] = row
+            else:
+                stale += 1
+    print(f"capture config: {produced_by}"
+          + (f"  ({stale} cached answers came from something else and will be re-run)" if stale else ""))
     rows = []
     for i, c in enumerate(narrative, 1):
         if c["question"] in done:
@@ -135,6 +160,7 @@ def capture(limit=None):
         # self-issued excuse; it mirrors the STRUCTURAL split run_open applies to abstains.
         ev = [str(e.get("doc_name", "")).upper() for e in (c.get("evidence") or [])]
         rows.append({"question": c["question"], "question_type": c.get("question_type"),
+                     "produced_by": produced_by,
                      "gold": str(c["answer"]), "answer": out["answer"],
                      "out_of_corpus": bool(ev) and all("EARNINGS" in d for d in ev),
                      "contexts": ctxs, "tool_outputs": tool_outs})
@@ -152,7 +178,13 @@ def main():
     args = ap.parse_args()
 
     if args.judge_only and _CAP.exists():
+        produced_by = _produced_by()
         rows = [json.loads(l) for l in _CAP.read_text().splitlines() if l.strip()]
+        rows = [r for r in rows if r.get("produced_by") == produced_by]
+        if not rows:
+            print(f"no captured answers for {produced_by}; run without --judge-only to capture them")
+            return 1
+        print(f"judging {len(rows)} answers captured by {produced_by}")
     else:
         rows = capture(args.limit)
 
