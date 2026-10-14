@@ -12,9 +12,9 @@ section below names its own blind spot, because each one was found by being surp
 
 | # | Layer | Runs | Needs | Cost |
 |---|---|---|---|---|
-| 1 | Unit tests — 226 tests, 17 files | every push, and locally in ~3s | nothing | free |
+| 1 | Unit tests — 244 tests, 19 files | every push, and locally in ~3s | nothing | free |
 | 2 | Image contracts — build, smoke, the suite re-run inside the image, `/health` | every push | Docker (CI has it) | free |
-| 3 | Regression gate — 144 cases, 17 gated metrics | before a release | OpenAI key, database | ~$0.40 |
+| 3 | Regression gate — 149 cases, 17 gated metrics | before a release | OpenAI key, database | ~$0.40 |
 | 4 | Red team — 50 questions, 17 trap categories | before a release | OpenAI key | ~$0.30 |
 | 5 | FinanceBench — 150 questions / 32 companies | before a release | OpenAI key, database | ~$5 |
 | 6 | Production — miss queue, traces, a manual check | continuously | — | — |
@@ -52,15 +52,19 @@ where layer 1 compares them. Its current checks:
 - `AIMessage.text` **is** a string, rather than something that becomes one when called
 - `ChatOpenAI` honours `use_responses_api`
 
+Layer 1 also pins two things the scorer must keep doing, both found by being wrong: that every
+written form of a figure parses to the same number (`$77.67B` and `$77.67 billion`), and that a
+comparison is scored on the conclusion it asserts rather than on the figures it lists.
+
 **Blind to:** whether the answers are any good. And `/health` is weaker than it looks — see below.
 
 ### 3 · Regression gate
 
-`python -m eval.score` runs 144 labelled cases and scores 17 metrics plus 4 monitor-only ones. It
+`python -m eval.score` runs 149 labelled cases and scores 17 metrics plus 1 monitor-only one. It
 compares against `eval/baseline_run.jsonl`, a recorded per-case run, and exits non-zero on a
 regression.
 
-**Blind to:** anything the 144 cases do not contain. This is not a small caveat — see
+**Blind to:** anything the 149 cases do not contain. This is not a small caveat — see
 *[What a slice cannot see](#what-a-slice-cannot-see)*.
 
 ### 4 · Red team
