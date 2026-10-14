@@ -239,7 +239,7 @@ def ask(q: Query, request: Request):
     if key is not None:
         hit = _RESP_CACHE.get(key)
         if hit and hit[0] > time.time():
-            _record_usage(user_id, True, "abstain" in (hit[1].get("tools_used") or []), 0)
+            _record_usage(user_id, q.question, True, "abstain" in (hit[1].get("tools_used") or []), 0)
             return {**hit[1], "cached": True}                 # served without an LLM call
     if not check_daily_quota():                               # only real (uncached) answers cost budget
         raise HTTPException(429, "This demo has reached its daily limit. Please try again tomorrow.")
@@ -260,7 +260,7 @@ def ask(q: Query, request: Request):
         if len(_RESP_CACHE) >= _RESP_CACHE_MAX:
             _RESP_CACHE.pop(next(iter(_RESP_CACHE)))          # simple bound: evict the oldest entry
         _RESP_CACHE[key] = (time.time() + _RESP_CACHE_TTL, resp)
-    _record_usage(user_id, False, "abstain" in (out.get("tools_used") or []),
+    _record_usage(user_id, q.question, False, "abstain" in (out.get("tools_used") or []),
                   int(out.get("agent_latency_ms") or 0))
     return resp
 
@@ -420,27 +420,39 @@ def _ensure_doc_schema():
                 error text, n_pages int, parse_quality text,
                 created_at timestamptz default now(),
                 primary key (user_id, doc_id))""")
-        # How much the service is actually used. Cloud Run's filesystem dies with the instance and
-        # Cloud Logging expires, so neither can answer "how many people have used this" a month
-        # later. Deliberately NO question text: counting usage does not require keeping what
-        # strangers typed, and storing that would be a separate decision.
+        # How much the service is actually used, and what for. Cloud Run's filesystem dies with
+        # the instance and Cloud Logging expires, so neither can answer "how many people have used
+        # this" a month later, let alone what they asked. The question text is kept deliberately
+        # and the UI says so; the reasoning is in _record_usage.
         cur.execute("""create table if not exists usage_log (
                 ts timestamptz not null default now(),
                 session_hash text,          -- sha256(user id)[:16]: a visitor, not a person
+                question text,              -- what was asked; see the note in _record_usage
                 cached boolean not null default false,
                 abstained boolean not null default false,
                 latency_ms int)""")
+        # The table predates the column by one commit, so an existing deployment gets it added
+        # rather than silently keeping a schema that no longer matches the insert.
+        cur.execute("alter table usage_log add column if not exists question text")
         cur.execute("create index if not exists usage_log_ts on usage_log (ts)")
         conn.commit()
 
 
-def _record_usage(user_id, cached, abstained, latency_ms):
-    """Best effort, always. A counter that can fail a request is worse than no counter."""
+def _record_usage(user_id, question, cached, abstained, latency_ms):
+    """Best effort, always. A counter that can fail a request is worse than no counter.
+
+    The question text is kept because what people ask is the one signal nothing else gives: the
+    miss queue records which METRIC failed, never which question led there. It is already leaving
+    the service anyway — observability.py sends it to Langfuse as the trace input on every run —
+    so this keeps it somewhere we control rather than adding a new place it goes. The UI says so,
+    which is the part that matters once strangers are the ones typing.
+    """
     try:
         h = hashlib.sha256((user_id or "").encode()).hexdigest()[:16]
         with psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=3) as conn, conn.cursor() as cur:
-            cur.execute("insert into usage_log (session_hash, cached, abstained, latency_ms) "
-                        "values (%s,%s,%s,%s)", (h, cached, abstained, latency_ms))
+            cur.execute("insert into usage_log (session_hash, question, cached, abstained, latency_ms) "
+                        "values (%s,%s,%s,%s,%s)", (h, (question or "")[:MAX_INPUT_CHARS],
+                                                    cached, abstained, latency_ms))
             conn.commit()
     except Exception as e:
         print(f"[usage] not recorded: {type(e).__name__}: {e}")
