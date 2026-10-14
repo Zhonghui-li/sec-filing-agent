@@ -31,9 +31,12 @@ EMAIL = "owner@example.com"
 
 
 class Req:
-    """The two things _user_id reads off a request. A real Request needs an ASGI scope."""
-    def __init__(self, cookies=None, scheme="https"):
+    """What the identity path reads off a request. A real Request needs an ASGI scope, so the
+    cookie-shape rules are exercised against this instead; anything that depends on headers or
+    on the proxy in front goes through TestClient below, where a stub cannot quietly diverge."""
+    def __init__(self, cookies=None, scheme="https", headers=None):
         self.cookies = cookies or {}
+        self.headers = headers or {}
         self.url = type("U", (), {"scheme": scheme})()
 
 
@@ -150,10 +153,37 @@ def test_logout_clears_the_cookie(client):
 
 
 def test_over_plain_http_the_cookie_is_not_marked_secure(client):
-    """Secure is derived from the request scheme, not hardcoded -- otherwise the cookie is
-    silently dropped at http://localhost and local dev cannot sign in at all."""
+    """Secure is derived from the request, not hardcoded -- otherwise the cookie is silently
+    dropped at http://localhost and local dev cannot sign in at all."""
     r = client.post("http://testserver/auth/login", json={"token": "good-token"})
     assert "secure" not in r.headers["set-cookie"].lower()
+
+
+def test_a_proxy_terminating_tls_still_yields_a_secure_cookie(client):
+    """The bug the first deploy actually shipped. Cloud Run terminates TLS at its front end and
+    forwards over plain HTTP, so the scheme inside the container is "http" and Secure went
+    missing in production while every test passed -- a test sets the scheme directly and so
+    cannot see a proxy in front of it. X-Forwarded-Proto is the only evidence that survives."""
+    r = client.post("http://testserver/auth/login", json={"token": "good-token"},
+                    headers={"X-Forwarded-Proto": "https"})
+    assert "secure" in r.headers["set-cookie"].lower()
+
+
+def test_the_first_hop_decides_when_several_proxies_appended_themselves(client):
+    """X-Forwarded-Proto accumulates left to right, so the browser's own protocol is the FIRST
+    entry. Reading the last one would report the hop nearest us, which is the plaintext one."""
+    r = client.post("http://testserver/auth/login", json={"token": "good-token"},
+                    headers={"X-Forwarded-Proto": "https, http"})
+    assert "secure" in r.headers["set-cookie"].lower()
+
+
+def test_signing_out_replaces_the_cookie_with_matching_attributes(client):
+    """A browser matches attributes when deciding which cookie a Set-Cookie replaces, so a delete
+    that drops Secure/SameSite can leave the original in place and sign-out silently fails."""
+    r = client.post("http://testserver/auth/logout", cookies={"vsid": SID},
+                    headers={"X-Forwarded-Proto": "https"})
+    sc = r.headers["set-cookie"].lower()
+    assert "secure" in sc and "samesite=lax" in sc and "httponly" in sc
 
 
 def test_mydocs_without_a_cookie_is_401_and_never_reaches_the_database(client):

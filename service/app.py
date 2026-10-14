@@ -125,12 +125,33 @@ def _session_destroy(sid):
         print(f"[auth] session destroy failed: {type(e).__name__}: {e}")
 
 
+def _is_https(request):
+    """Was the ORIGINAL request https?
+
+    Not the same question as `request.url.scheme`. Cloud Run terminates TLS at its front end and
+    forwards to the container over plain HTTP, so inside the container the scheme is "http" even
+    though the browser spoke https -- and a cookie whose `secure` flag is derived from the scheme
+    silently ships without it. That is exactly what happened on the first deploy of this cookie:
+    the attribute was pinned by a test, but the test sets the scheme directly and so could not
+    see a proxy sitting in front. X-Forwarded-Proto is what the proxy leaves behind, and
+    _client_ip already reads X-Forwarded-For the same way.
+
+    Trusting the header means trusting whatever fronts this service. On Cloud Run that front end
+    is the only route to the container, so a client cannot forge it. Run this behind something
+    that passes a client-supplied X-Forwarded-Proto through and that stops being true."""
+    proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    return (proto or request.url.scheme) == "https"
+
+
+def _cookie_attrs(request):
+    # The delete has to carry the same attributes as the set, or signing out can leave the cookie
+    # in place: a browser matches them when deciding which cookie a Set-Cookie replaces.
+    return {"httponly": True, "secure": _is_https(request), "samesite": "lax", "path": "/"}
+
+
 def _set_identity_cookie(response, value, request):
-    # `secure` is derived from the scheme rather than hardcoded True: over plain http the browser
-    # would drop a Secure cookie silently and local dev could never sign in. Cloud Run is https.
-    response.set_cookie(key=_COOKIE, value=value, httponly=True,
-                        secure=request.url.scheme == "https",
-                        samesite="lax", max_age=_SESSION_DAYS * 86400, path="/")
+    response.set_cookie(key=_COOKIE, value=value,
+                        max_age=_SESSION_DAYS * 86400, **_cookie_attrs(request))
 
 
 def _user_id(request, response=None, require=True):
@@ -292,7 +313,7 @@ def auth_logout(request: Request, response: Response):
     sid = request.cookies.get(_COOKIE)
     if sid:
         _session_destroy(sid)        # server-side, so the cookie is dead even if a copy escaped
-    response.delete_cookie(_COOKIE, path="/")
+    response.delete_cookie(_COOKIE, **_cookie_attrs(request))
     return {"ok": True}
 
 
