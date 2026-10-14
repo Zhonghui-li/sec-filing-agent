@@ -641,12 +641,48 @@ def _anchored_year(question: str, history, trace):
     return None
 
 
+_COMPARE_RE = re.compile(
+    r"\b(which|who|whose)\b.{0,90}?\b(more|higher|larger|greater|bigger|highest|largest|greatest)\b",
+    re.I | re.S)
+_FIGURE_TOOLS = {"get_financials", "get_ratio", "get_growth", "compute", "compute_formula",
+                 "get_statement", "largest_line_item", "get_segment_breakdown", "get_segment_growth"}
+_COMPARE_RETRY = (
+    "You fetched the figures and then declined to use them. Naming which of two numbers a tool has "
+    "ALREADY RETURNED is larger derives no new number, so the rule about routing calculations "
+    "through compute does not apply to it. Report both figures with their citations and say which "
+    "is larger. If the question also asks BY HOW MUCH, get that difference from compute.")
+
+
+def _declined_with_figures_in_hand(question, trace, answer):
+    """A comparison question answered with no figures, after tools returned some.
+
+    Not a check on the word "compare": it checks the shape of the failure. Across 60 scored draws
+    on 2026-10-13 the agent produced, verbatim, "I can't give a reliable figure for this, it needs
+    a computation I don't have a deterministic tool for" for three different comparison questions,
+    on roughly 8% of draws, having fetched both figures first. The rule that numbers come only from
+    tools was being applied to saying which of two tool-returned numbers is larger, which derives
+    nothing.
+
+    A prompt carve-out was added first and measured: the rate did not move. That is the third time
+    in this file that a rule the model must remember needed something that fires when it forgets,
+    after the search budget and _anchored_year.
+    """
+    if not _COMPARE_RE.search(question or ""):
+        return False
+    with_figures = [s for s in trace or []
+                    if s.get("tool") in _FIGURE_TOOLS and re.search(r"[\d]", str(s.get("output") or ""))]
+    if len(with_figures) < 2:
+        return False
+    return not re.search(r"\$\s?[\d,]", answer or "")
+
+
 def run_agent(question: str, agent=None, history=None, verbose: bool = False,
               recursion_limit: int = DEFAULT_RECURSION_LIMIT) -> Dict:
     """Run the agent on a question. `history` (optional) is prior turns [{role, content}, ...]
     for multi-turn (Model B). Returns {answer, trace, tools_used, tool_outputs}."""
     agent = agent or build_agent()
-    usage, tool_outputs, salvaged, routing_retry, anchor_retry = None, [], False, False, False
+    usage, tool_outputs, salvaged, routing_retry, anchor_retry, compare_retry = (
+        None, [], False, False, False, False)
     _search_state["n"] = 0                    # reset the per-turn search budget for this run
     _numeric_state["n"] = 0                   # reset the per-turn numeric-tool budget for this run
     # Timed on the same boundary as the Langfuse span below, deliberately: the two numbers then
@@ -681,6 +717,16 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
             # A SECOND kind of one-shot retry, for a different mistake: a "latest fiscal year"
             # question answered with a year carried over from an earlier turn. Like the routing
             # retry it fires at most once and never loops.
+            # Same shape as the anchoring retry below: one specific bad state, one retry, no loop.
+            tr = _extract_trace(messages)
+            if _declined_with_figures_in_hand(question, tr, answer):
+                compare_retry = True
+                for last_state in agent.stream(
+                        {"messages": messages + [HumanMessage(_COMPARE_RETRY)]},
+                        {"recursion_limit": recursion_limit}, stream_mode="values"):
+                    pass
+                messages = last_state["messages"]
+                answer = messages[-1].text
             anchored = _anchored_year(question, history, _extract_trace(messages))
             if anchored:
                 anchor_retry = True
@@ -759,6 +805,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
                  "text_abstain": bool(text_abstain),
                  "routing_retry": routing_retry,
                  "anchor_retry": anchor_retry,
+                 "compare_retry": compare_retry,
                  "cold_starts": cold_starts,
                  "abstain_reason": next((t["args"].get("reason")
                                          for t in trace if t["tool"] == "abstain"), None),
@@ -778,6 +825,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
     return {"answer": answer, "trace": trace, "tool_outputs": tool_outputs,
             "tools_used": tools_used, "trace_id": trace_id, "salvaged": salvaged,
             "cold_starts": cold_starts, "anchor_retry": anchor_retry,
+            "compare_retry": compare_retry,
             "guardrail_reason": guardrail_reason, "usage": usage,
             "agent_latency_ms": (time.perf_counter() - agent_start) * 1000}
 
