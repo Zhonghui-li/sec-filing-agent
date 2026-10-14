@@ -134,6 +134,43 @@ def near(cands, target):
     return any(abs(v - target) <= TOL * abs(target) for v in cands) if target else False
 
 
+# The names an answer actually uses for a ticker. Only the companies comparison cases name need to
+# be here; an unmapped ticker makes the winner check INCONCLUSIVE rather than failed, so adding a
+# case for a new company can never silently start failing on wording.
+_TICKER_NAMES = {
+    "AAPL": ["apple"], "MSFT": ["microsoft"], "AMZN": ["amazon"], "GOOGL": ["alphabet", "google"],
+    "META": ["meta", "facebook"], "JPM": ["jpmorgan", "jp morgan"], "NVDA": ["nvidia"],
+    "TSLA": ["tesla"], "KO": ["coca-cola", "coca cola"], "CVS": ["cvs"], "ORCL": ["oracle"],
+}
+_BIGGER = r"(?:more|higher|larger|greater|bigger|highest|largest|greatest)"
+
+
+def _claims_bigger(answer, aliases):
+    """Does the answer assert, within one clause, that this company is the larger one?
+
+    A period only ends the clause when it is not a decimal point. Without that, "Apple, at $133.05
+    billion, had higher operating income" reads as two clauses and the claim is lost, which is the
+    shape the agent writes most often.
+    """
+    pat = "|".join(re.escape(a) for a in aliases)
+    gap = r"(?:[^.;!?\n]|\.(?=\d))"          # any non-terminator, or a decimal point
+    return bool(re.search(rf"\b(?:{pat})\b{gap}{{0,60}}?\b{_BIGGER}\b", answer, re.I))
+
+
+def _names_the_larger(answer, winner, loser):
+    """True / False / None, where None means the check does not apply to these tickers.
+
+    Clause-scoped on purpose: "Microsoft had higher net income" is a claim, while "Amazon (AMZN)
+    FY2025: $77.67B" followed later by "Microsoft had higher" is not a claim about Amazon. The
+    60-character window inside one clause is what keeps the two apart.
+    """
+    wa = _TICKER_NAMES.get((winner or "").upper())
+    la = _TICKER_NAMES.get((loser or "").upper())
+    if not wa or not la:
+        return None
+    return _claims_bigger(answer, wa + [winner]) and not _claims_bigger(answer, la + [loser])
+
+
 def score_case(case, answer, tools_used, trace, tool_outputs):
     a = answer.lower()
     nums = extract_numbers(answer)
@@ -209,12 +246,26 @@ def score_case(case, answer, tools_used, trace, tool_outputs):
         res["grounded"] = all(any(abs(v - s) <= TOL * abs(s) for s in sanctioned if s)
                               for v in qualifying) if qualifying else True
 
-    # compare case (X02): both values present + winner named
+    # compare case: both values present AND the right one named as larger.
+    #
+    # The comment here used to say "winner named" and the code never checked it: compare.winner
+    # was read by nothing, so an answer listing both figures and naming the WRONG company scored
+    # the same as a correct one. The conclusion was carried by `facts` substring groups written
+    # per case, which is how X06 failed a correct answer on 2026-10-13 for saying "had THE higher"
+    # against a group listing "had higher".
+    #
+    # `fiscal_year` is passed through now as well. Without it _lookup returns the latest figure
+    # whatever the question asked, so a comparison about a stated year could not be authored.
     if "compare" in case:
         cmp = case["compare"]
-        va, _ = _lookup(cmp["a"]["ticker"], cmp["a"]["metric"])
-        vb, _ = _lookup(cmp["b"]["ticker"], cmp["b"]["metric"])
+        va, _ = _lookup(cmp["a"]["ticker"], cmp["a"]["metric"], cmp["a"].get("fiscal_year"))
+        vb, _ = _lookup(cmp["b"]["ticker"], cmp["b"]["metric"], cmp["b"].get("fiscal_year"))
         res["numerical"] = near(dollars, va) and near(dollars, vb)
+        if cmp.get("winner"):
+            loser = cmp["b"]["ticker"] if cmp["winner"] == cmp["a"]["ticker"] else cmp["a"]["ticker"]
+            named = _names_the_larger(answer, cmp["winner"], loser)
+            if named is not None:
+                res["numerical"] = res["numerical"] and named
 
     # answer key-facts (OR-groups)
     if "facts" in case:
