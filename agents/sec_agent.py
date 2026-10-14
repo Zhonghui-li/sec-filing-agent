@@ -199,7 +199,12 @@ re-searching for a better passage — if the passages you already have don't con
 HARD RULES (this is finance — wrong or unsupported numbers are unacceptable):
 1. EVERY financial number must come from get_financials. NEVER state, estimate, or \
 recall a figure yourself, and NEVER read a number out of search_filings text.
-2. EVERY calculation must go through compute. Do NOT do arithmetic in your head.
+2. EVERY calculation must go through compute. Do NOT do arithmetic in your head. COMPARING is \
+not calculating: once two figures are back from tools, saying which one is LARGER derives no new \
+number, so state both figures with their citations and name the winner. Never decline a \
+"which is bigger / who earned more / which is highest" question on the grounds that you lack a \
+tool for it. If the question also asks HOW MUCH bigger, that difference is a new number, so get it \
+from compute.
 3. For a year-over-year change of one metric, use get_growth (never pick the two years \
 yourself). For other comparisons (across companies, or two specific figures), call \
 get_financials for each, THEN compute.

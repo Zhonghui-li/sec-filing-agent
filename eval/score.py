@@ -99,9 +99,22 @@ def expected(case):
     return None, False, set()
 
 
+# Abbreviated magnitudes. The spelled-out words were handled from the start; the single letters
+# were not, so "$77.67B" parsed as 77.67 and a correct answer scored as a wrong number. Found
+# 2026-10-13 while measuring comparison questions: one run wrote "$77.67B" where the others wrote
+# "$77.67 billion", and only that run was marked wrong. The agent is free to choose either form,
+# so the scorer has to read both or it measures formatting instead of correctness.
+#
+# `bn`/`mm` are in because they are ordinary in filings and sell-side notes. A bare `k` is NOT:
+# it collides with ordinary prose ("10k shares" is a count, not thousands of dollars) and nothing
+# in this domain reports money that way.
+_SUFFIX = {"t": 1e12, "tn": 1e12, "b": 1e9, "bn": 1e9, "m": 1e6, "mm": 1e6}
+
+
 def extract_numbers(text):
     out = []  # (value, is_percent)
-    for m in re.finditer(r"\$?\s*([\d,]+(?:\.\d+)?)\s*(trillion|billion|million|thousand)?\s*(%)?",
+    for m in re.finditer(r"\$?\s*([\d,]+(?:\.\d+)?)\s*"
+                         r"(trillion|billion|million|thousand|tn|bn|mm|[tbm])?\b\s*(%)?",
                          text, re.I):
         raw = m.group(1).replace(",", "")
         if not raw or raw == ".":
@@ -110,8 +123,9 @@ def extract_numbers(text):
             v = float(raw)
         except ValueError:
             continue
-        if m.group(2):
-            v *= SCALE[m.group(2).lower()]
+        unit = (m.group(2) or "").lower()
+        if unit:
+            v *= SCALE[unit] if unit in SCALE else _SUFFIX[unit]
         out.append((v, bool(m.group(3))))
     return out
 
