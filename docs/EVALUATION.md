@@ -301,10 +301,12 @@ else can live with.
 Three monitor metrics went with it — `faithfulness`, `answer_relevancy`, `context_precision` — and
 `eval/score.py --quality` now raises `ModuleNotFoundError` by design.
 
-`eval/baseline.json` still carries `faithfulness: 0.936` and `answer_relevancy: 0.862`, merged
-forward from a run before the removal. **Nothing can reproduce them.** They should be either
-reimplemented — of the three, only `context_precision` was judged worth having — or deleted, since
-a number no measurement can produce is a claim rather than a result.
+`eval/baseline.json` carried `faithfulness: 0.936` and `answer_relevancy: 0.862` forward from a
+run before the removal, merged into every later baseline by a rule meant to stop a
+deterministic-only run from dropping the monitor metrics. Nothing could reproduce them, so they
+were deleted on 2026-10-14: a number no measurement can produce is a claim rather than a result,
+and carrying it forward is how it survives long enough to be quoted. Of the three, only
+`context_precision` was judged worth reimplementing.
 
 ---
 

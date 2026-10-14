@@ -6,7 +6,16 @@ set -euo pipefail
 
 PROJECT=proslm
 REGION=us-central1
-IMAGE=us-central1-docker.pkg.dev/proslm/proslm-repo/sec-filing-agent:v1
+REPO=us-central1-docker.pkg.dev/proslm/proslm-repo/sec-filing-agent
+
+# Tag by commit, not :v1. Every build used to overwrite the same tag, so the tag could not say
+# which build was running: Cloud Run pins the digest internally and rollback stayed exact, but
+# "what is live" could only be answered by reading a revision's digest. A dirty tree gets a
+# -dirty suffix so an uncommitted build can never be mistaken for the commit it was built near.
+GITSHA=$(git rev-parse --short HEAD)
+if ! git diff-index --quiet HEAD -- 2>/dev/null; then GITSHA="${GITSHA}-dirty"; fi
+IMAGE="${REPO}:${GITSHA}"
+echo "Building ${IMAGE}"
 
 # Langfuse (audit-trail observability) — dedicated sec-filing-agent project. Public key
 # + host are non-secret; the secret key lives in Secret Manager (create it once):
