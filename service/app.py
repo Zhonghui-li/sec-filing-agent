@@ -59,14 +59,30 @@ def _verify_google(token):
         return None
 
 
-def _user_id(token, session_id):
-    """The effective per-user id. With Google sign-in on: the verified email (raises 401 if the
-    token is missing/invalid). Off: the anonymous browser session_id."""
+_ANON_ID = re.compile(r"sess_[A-Za-z0-9]{8,64}")
+
+
+def _user_id(token, session_id, require=True):
+    """The effective per-user id.
+
+    `require=True` guards anything that reads or writes a user's OWN documents, so those stay keyed
+    to an email someone proved they control. `require=False` is for asking questions: a signed-in
+    visitor is still identified by their verified email, so their uploads stay in scope, and an
+    anonymous one gets the browser session_id.
+
+    An unverified caller's id is restricted to the `sess_` shape, which is the one thing making the
+    anonymous path safe. Document scope is keyed on this id, so without that check an anonymous
+    caller could simply pass a known email as `session_id` and ask questions against that account's
+    private documents. The id space is therefore partitioned: emails are reachable only by proving
+    the token, `sess_` ids only by presenting one."""
     if _GOOGLE_CLIENT_ID:
         email = _verify_google(token)
-        if not email:
+        if email:
+            return email
+        if require:
             raise HTTPException(401, "Sign-in required.")
-        return email
+        if not _ANON_ID.fullmatch(session_id or ""):
+            raise HTTPException(401, "Sign in, or send a session_id of the form sess_<id>.")
     return session_id
 
 
@@ -233,7 +249,7 @@ def ask(q: Query, request: Request):
         raise HTTPException(400, f"Question too long (max {MAX_INPUT_CHARS} characters).")
     if not check_rate_limit(_client_ip(request)):
         raise HTTPException(429, "Too many requests — please wait a minute and try again.")
-    user_id = _user_id(q.token, q.session_id)
+    user_id = _user_id(q.token, q.session_id, require=False)   # asking touches no private data
     agent = _agent_for(user_id, scope_doc=q.doc)
     key = _cache_key(q, agent)
     if key is not None:
@@ -321,7 +337,7 @@ def feedback(fb: Feedback):
     so community testing yields LABELED eval data, not just unlabeled traces. The question/answer
     are attached as the score's metadata so a reviewer can read what was rated without opening the
     trace (and to find the thumbs-down cases worth investigating)."""
-    _user_id(fb.token, fb.session_id)   # gate behind sign-in (raises 401 if required & absent)
+    _user_id(fb.token, fb.session_id, require=False)   # anonymous ratings are the point of open access
     if not (os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY")):
         return {"ok": False, "reason": "observability disabled"}
     try:
@@ -559,11 +575,18 @@ def docstatus(req: DocStatusReq):
 
 
 @app.get("/file/{doc_id}")
-def get_file(doc_id: str, session_id: str):
+def get_file(doc_id: str, session_id: str = None, token: str = None):
     """Serve a user's original uploaded file so a citation can deep-link to its source page
-    (#page=N). Access is checked: the doc must belong to this session (per-user isolation)."""
+    (#page=N). The doc must belong to the caller.
+
+    This used to take the identifier straight off the query string and query on it, while /mydocs
+    put the same data behind _user_id — one resource, two standards. The identity is now verified
+    here too. The token rides in the query string because this URL is opened as a link, so it
+    reaches request logs; that cost is accepted over what it replaces (a never-expiring identifier
+    that WAS the identity), and a per-document signed URL would be better still."""
     if not re.fullmatch(r"[a-f0-9]{12}", doc_id):
         raise HTTPException(400, "bad doc id")
+    session_id = _user_id(token, session_id)
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
         cur.execute("select 1 from user_chunks where user_id=%s and doc_id=%s limit 1",
                     (session_id, doc_id))

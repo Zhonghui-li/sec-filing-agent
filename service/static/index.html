@@ -237,7 +237,9 @@
       <span class="gg hold"><span class="gdot"></span>Abstains when unreported</span>
     </div>
     <div class="gbtn" id="gbtn"></div>
-    <div style="margin-top:20px;font-size:12px;color:var(--faint)">Your uploaded documents stay private to your account. Questions are logged so we can see what the tools miss, so please don't paste anything confidential.</div>
+    <div style="margin-top:14px;font-size:13px"><a id="anonin" href="#" style="color:var(--muted)">Continue without signing in</a>
+      <span style="color:var(--faint)">— ask anything; uploading your own documents needs an account.</span></div>
+    <div style="margin-top:18px;font-size:12px;color:var(--faint)">Uploaded documents are private to the account that uploaded them. Questions are logged so we can see what the tools miss, so please don't paste anything confidential.</div>
   </div>
 </div>
 
@@ -274,7 +276,8 @@
 
 <div class="composer" id="composer" style="display:none">
   <div class="bars">
-    <label class="ghost" for="file">📎 Upload a document</label>
+    <label class="ghost" for="file" id="filelabel">📎 Upload a document</label>
+    <span id="anonnote" style="display:none;font-size:12.5px;color:var(--faint)">Sign in to upload your own documents</span>
     <input id="file" type="file" accept=".pdf,.docx,.xlsx" style="display:none" />
     <select id="docscope" style="display:none">
       <option value="">Ask across all my documents</option>
@@ -306,12 +309,16 @@
 const chat = document.getElementById('chat'), form = document.getElementById('f'),
       input = document.getElementById('q'), send = document.getElementById('send');
 let history = [];  // [{role, content}] — sent each turn so the agent has multi-turn memory (Model B)
+// With sign-in optional, this id is what separates one anonymous visitor's conversation from
+// another's, so it is drawn from crypto rather than Math.random (whose generator is seeded per
+// page and not collision-safe at scale). Existing ids in localStorage are kept as they are.
 const sessionId = (() => { let s = localStorage.getItem('sid');
-  if (!s) { s = 'sess_' + Math.random().toString(36).slice(2,14); localStorage.setItem('sid', s); }
+  if (!s) { s = 'sess_' + (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '')
+                                             : Math.random().toString(36).slice(2,14));
+            localStorage.setItem('sid', s); }
   return s; })();
-let googleToken = null, userEmail = null;
+let googleToken = null, userEmail = null, authRequired = false;
 function idFields(){ return googleToken ? { token: googleToken } : { session_id: sessionId }; }
-function who(){ return userEmail || sessionId; }
 function add(role, html) {
   const m = document.createElement('div'); m.className = 'msg ' + role;
   m.innerHTML = '<div class="bubble">' + html + '</div>'; chat.appendChild(m);
@@ -391,7 +398,8 @@ form.addEventListener('submit', async (e) => {
       const items = d.doc_sources.map(s => {
         const label = esc(s.filename) + (s.cell ? ' · ' + esc(s.cell) : '');
         if (s.page!=null && s.doc_id) {
-          const url = '/file/' + s.doc_id + '?session_id=' + encodeURIComponent(who()) + '#page=' + s.page;
+          const q = googleToken ? 'token=' + encodeURIComponent(googleToken) : 'session_id=' + encodeURIComponent(sessionId);
+          const url = '/file/' + s.doc_id + '?' + q + '#page=' + s.page;
           return '<a class="src-chip" href="' + url + '" target="_blank" rel="noopener">' + label +
                  ' · p.' + s.page + EXT + '</a>';
         }
@@ -572,6 +580,17 @@ function tokenExpired(jwt){ try { const p = JSON.parse(atob(jwt.split('.')[1]));
 function showApp(){ document.getElementById('login').style.display='none';
                     document.getElementById('app').style.display='block';
                     document.getElementById('composer').style.display='block';
+                    // Private documents are keyed to a verified email, so the controls that reach
+                    // them are hidden without one. Questions need no account and stay available.
+                    const anon = authRequired && !googleToken;
+                    document.getElementById('filelabel').style.display = anon ? 'none' : '';
+                    document.getElementById('anonnote').style.display = anon ? 'inline' : 'none';
+                    if (anon) {
+                      document.getElementById('userchip').innerHTML =
+                        'not signed in <a id="signin">sign in</a>';
+                      document.getElementById('signin').onclick = () => location.reload();
+                      return;
+                    }
                     loadMyDocs(true); }
 async function loadMyDocs(showMsg){
   try {
@@ -632,8 +651,10 @@ function onGoogle(resp){
 }
 (async () => {
   let cfg; try { cfg = await (await fetch('/auth/config')).json(); } catch(e){ cfg = {auth_required:false}; }
-  if (!cfg.auth_required) { showApp(); return; }
+  authRequired = !!cfg.auth_required;
+  if (!authRequired) { showApp(); return; }
   document.getElementById('login').style.display = 'flex';
+  document.getElementById('anonin').onclick = (e) => { e.preventDefault(); showApp(); };
   const saved = localStorage.getItem('gtok');
   if (saved && !tokenExpired(saved)) { onGoogle({ credential: saved }); }
   else { localStorage.removeItem('gtok'); }
