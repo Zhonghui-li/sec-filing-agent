@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -19,7 +20,7 @@ from contextlib import asynccontextmanager
 from typing import List, Optional
 
 import psycopg
-from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form, Response
+from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -59,31 +60,109 @@ def _verify_google(token):
         return None
 
 
-_ANON_ID = re.compile(r"sess_[A-Za-z0-9]{8,64}")
+# Identity travels in one cookie. A bearer token in the request body could not: the citation chip
+# for an uploaded document is a link the BROWSER navigates to, and a navigation cannot carry a
+# custom header, so the credential had to ride in the query string and therefore into request logs
+# (where a Google ID token is a general-purpose credential for its whole lifetime, not a permit for
+# the one file being opened). Cookies are sent on navigation, so /file needs no credential in its
+# URL at all.
+#
+# What the move costs is CSRF. A cookie is attached automatically, so another origin can cause the
+# browser to issue a request that looks authenticated -- something a bearer token in localStorage
+# is immune to, because the other origin cannot read it. SameSite=Lax pays that back: the cookie
+# is NOT attached to a cross-site POST, and every endpoint that changes state here is a POST,
+# while it IS still attached on a top-level GET navigation, which is exactly what /file needs.
+_COOKIE = "vsid"
+_SESSION_DAYS = 7
+# Two shapes, which is what partitions the id space. Signed in: an opaque token with a row in
+# `sessions` mapping it to a verified email. Anonymous: this shape, with no server state behind it.
+_ANON_ID = re.compile(r"anon_[A-Za-z0-9_-]{22}")
 
 
-def _user_id(token, session_id, require=True):
-    """The effective per-user id.
+def _new_anon_id():
+    return "anon_" + secrets.token_urlsafe(16)
 
-    `require=True` guards anything that reads or writes a user's OWN documents, so those stay keyed
-    to an email someone proved they control. `require=False` is for asking questions: a signed-in
-    visitor is still identified by their verified email, so their uploads stay in scope, and an
-    anonymous one gets the browser session_id.
 
-    An unverified caller's id is restricted to the `sess_` shape, which is the one thing making the
-    anonymous path safe. Document scope is keyed on this id, so without that check an anonymous
-    caller could simply pass a known email as `session_id` and ask questions against that account's
-    private documents. The id space is therefore partitioned: emails are reachable only by proving
-    the token, `sess_` ids only by presenting one."""
-    if _GOOGLE_CLIENT_ID:
-        email = _verify_google(token)
-        if email:
-            return email
-        if require:
+def _session_create(email):
+    """Exchange a verified Google identity for our own session. Ours outlives Google's one-hour
+    token, and unlike it can be revoked."""
+    sid = secrets.token_urlsafe(32)
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+        cur.execute("delete from sessions where expires_at < now()")      # bounded, cheap, here
+        cur.execute("insert into sessions (sid, user_id, expires_at) "
+                    "values (%s, %s, now() + make_interval(days => %s))",
+                    (sid, email, _SESSION_DAYS))
+    return sid
+
+
+def _session_user(sid):
+    """The email this session stands for, or None.
+
+    A table lookup rather than a self-contained signed value, so signing out can actually REVOKE:
+    the row goes away and the cookie is dead on the very next request. The Google ID token it
+    replaces could not be withdrawn at all -- once it leaked it stayed valid until its own expiry,
+    and clearing it client-side did nothing to the copy that had already escaped.
+
+    A database failure returns None, which signs people out rather than letting anyone in. That is
+    the safe direction, but it is silent: a Neon blip looks to a user like being logged out."""
+    if not sid:
+        return None
+    try:
+        with psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=3) as conn, conn.cursor() as cur:
+            cur.execute("select user_id from sessions where sid=%s and expires_at > now()", (sid,))
+            row = cur.fetchone()
+            return row[0] if row else None
+    except Exception as e:
+        print(f"[auth] session lookup failed: {type(e).__name__}: {e}")
+        return None
+
+
+def _session_destroy(sid):
+    try:
+        with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+            cur.execute("delete from sessions where sid=%s", (sid,))
+    except Exception as e:
+        print(f"[auth] session destroy failed: {type(e).__name__}: {e}")
+
+
+def _set_identity_cookie(response, value, request):
+    # `secure` is derived from the scheme rather than hardcoded True: over plain http the browser
+    # would drop a Secure cookie silently and local dev could never sign in. Cloud Run is https.
+    response.set_cookie(key=_COOKIE, value=value, httponly=True,
+                        secure=request.url.scheme == "https",
+                        samesite="lax", max_age=_SESSION_DAYS * 86400, path="/")
+
+
+def _user_id(request, response=None, require=True):
+    """The effective per-user id, read from the identity cookie.
+
+    `require=True` guards anything that touches a user's OWN documents, so those stay keyed to an
+    email someone proved they control. `require=False` is for asking questions, which touch
+    nothing private: a signed-in visitor is still identified by their email so their uploads stay
+    in scope, and anyone else gets an anonymous id.
+
+    A cookie is client-modifiable, so the shape check still has to be here -- the server issuing
+    the id is not by itself a guarantee that the id coming back is the one it issued. Without it,
+    `vsid=someone@example.com` would scope a question to that account's private documents, since
+    document lookups are keyed on exactly this value. An unrecognised cookie is not an error; it
+    simply is not an identity, so the caller becomes a new anonymous visitor.
+
+    Anonymous ids need no server-side state because an anonymous visitor owns no documents:
+    uploading requires a session. The id picks the agent and keys the usage log, nothing more."""
+    sid = request.cookies.get(_COOKIE)
+    email = _session_user(sid)
+    if email:
+        return email
+    if _ANON_ID.fullmatch(sid or ""):
+        if require and _GOOGLE_CLIENT_ID:
             raise HTTPException(401, "Sign-in required.")
-        if not _ANON_ID.fullmatch(session_id or ""):
-            raise HTTPException(401, "Sign in, or send a session_id of the form sess_<id>.")
-    return session_id
+        return sid
+    if require and _GOOGLE_CLIENT_ID:
+        raise HTTPException(401, "Sign-in required.")
+    fresh = _new_anon_id()
+    if response is not None:
+        _set_identity_cookie(response, fresh, request)
+    return fresh
 
 
 _ACC = re.compile(r"\d{10}-\d{2}-\d{6}")
@@ -158,8 +237,6 @@ app = FastAPI(title="SEC Filing Agent", lifespan=lifespan)
 class Query(BaseModel):
     question: str
     history: Optional[List[dict]] = None   # prior turns [{role, content}] for multi-turn (Model B)
-    session_id: Optional[str] = None       # anonymous browser session (when sign-in is off)
-    token: Optional[str] = None            # Google ID token (when sign-in is on)
     doc: Optional[str] = None              # selected document to scope to (A); None = all docs
 
 
@@ -184,21 +261,46 @@ def _agent_for(user_id, scope_doc=None):
 
 
 @app.get("/auth/config")
-def auth_config():
-    """Tells the frontend whether to show a Google sign-in screen, and the client id to use."""
-    return {"auth_required": bool(_GOOGLE_CLIENT_ID), "client_id": _GOOGLE_CLIENT_ID}
+def auth_config(request: Request):
+    """Tells the frontend whether to show a Google sign-in screen, the client id to use, and who
+    it is already signed in as.
+
+    That last field is load-bearing now: the identity cookie is HttpOnly, so the page genuinely
+    cannot tell whether it has a session and has to ask. It replaces the old dance of reading the
+    stored token and decoding its `exp` client-side to guess whether it was still good."""
+    return {"auth_required": bool(_GOOGLE_CLIENT_ID), "client_id": _GOOGLE_CLIENT_ID,
+            "email": _session_user(request.cookies.get(_COOKIE))}
 
 
-class Ident(BaseModel):
-    session_id: Optional[str] = None
-    token: Optional[str] = None
+class LoginReq(BaseModel):
+    token: str                       # the Google ID token, presented ONCE and exchanged here
+
+
+@app.post("/auth/login")
+def auth_login(body: LoginReq, request: Request, response: Response):
+    """Verify Google's token once, then hand back our own session cookie. The token itself is
+    never stored and never travels again, so it cannot end up in a URL or in localStorage."""
+    email = _verify_google(body.token)
+    if not email:
+        raise HTTPException(401, "Could not verify that sign-in.")
+    _set_identity_cookie(response, _session_create(email), request)
+    return {"email": email}
+
+
+@app.post("/auth/logout")
+def auth_logout(request: Request, response: Response):
+    sid = request.cookies.get(_COOKIE)
+    if sid:
+        _session_destroy(sid)        # server-side, so the cookie is dead even if a copy escaped
+    response.delete_cookie(_COOKIE, path="/")
+    return {"ok": True}
 
 
 @app.post("/mydocs")
-def mydocs(ident: Ident):
+def mydocs(request: Request):
     """The current user's previously uploaded documents (persisted, keyed by account) — so a
     returning user sees their docs are still there after signing back in."""
-    user_id = _user_id(ident.token, ident.session_id)
+    user_id = _user_id(request)
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
         cur.execute("select distinct filename from user_chunks where user_id=%s order by filename",
                     (user_id,))
@@ -206,17 +308,15 @@ def mydocs(ident: Ident):
 
 
 class DocRef(BaseModel):
-    session_id: Optional[str] = None
-    token: Optional[str] = None
     filename: str
 
 
 @app.post("/mydocs/delete")
-def delete_doc(ref: DocRef):
+def delete_doc(ref: DocRef, request: Request):
     """Remove one of the user's uploaded documents (DB rows + stored original file), then drop
     their cached agents so the next request rebuilds without it. Deletes by filename, the same
     key the doc list and selector use (one filename = one document, since re-upload replaces)."""
-    user_id = _user_id(ref.token, ref.session_id)
+    user_id = _user_id(request)
     _remove_prior_uploads(user_id, ref.filename)   # same teardown re-upload uses (chunks+facts+file)
     for k in [k for k in _user_agents if k[0] == user_id]:
         del _user_agents[k]
@@ -244,12 +344,12 @@ def _cache_key(q: "Query", agent):
 
 
 @app.post("/ask")
-def ask(q: Query, request: Request):
+def ask(q: Query, request: Request, response: Response):
     if len(q.question) > MAX_INPUT_CHARS:
         raise HTTPException(400, f"Question too long (max {MAX_INPUT_CHARS} characters).")
     if not check_rate_limit(_client_ip(request)):
         raise HTTPException(429, "Too many requests — please wait a minute and try again.")
-    user_id = _user_id(q.token, q.session_id, require=False)   # asking touches no private data
+    user_id = _user_id(request, response, require=False)   # asking touches no private data
     agent = _agent_for(user_id, scope_doc=q.doc)
     key = _cache_key(q, agent)
     if key is not None:
@@ -322,8 +422,6 @@ def export_table(request: Request, ticker: str, metrics: str, start: int, end: i
 
 
 class Feedback(BaseModel):
-    session_id: Optional[str] = None
-    token: Optional[str] = None
     trace_id: str
     value: int                      # 1 = thumbs up, 0 = thumbs down
     comment: Optional[str] = None
@@ -332,12 +430,12 @@ class Feedback(BaseModel):
 
 
 @app.post("/feedback")
-def feedback(fb: Feedback):
+def feedback(fb: Feedback, request: Request):
     """Capture a user's thumbs up/down on an answer as a Langfuse score (name=user_feedback),
     so community testing yields LABELED eval data, not just unlabeled traces. The question/answer
     are attached as the score's metadata so a reviewer can read what was rated without opening the
     trace (and to find the thumbs-down cases worth investigating)."""
-    _user_id(fb.token, fb.session_id, require=False)   # anonymous ratings are the point of open access
+    _user_id(request, require=False)   # anonymous ratings are the point of open access
     if not (os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY")):
         return {"ok": False, "reason": "observability disabled"}
     try:
@@ -440,6 +538,10 @@ def _ensure_doc_schema():
         # the instance and Cloud Logging expires, so neither can answer "how many people have used
         # this" a month later, let alone what they asked. The question text is kept deliberately
         # and the UI says so; the reasoning is in _record_usage.
+        cur.execute("""create table if not exists sessions (
+                sid text primary key,            -- opaque; the cookie value, never an email
+                user_id text not null,           -- the verified email it stands for
+                expires_at timestamptz not null)""")
         cur.execute("""create table if not exists usage_log (
                 ts timestamptz not null default now(),
                 session_hash text,          -- sha256(user id)[:16]: a visitor, not a person
@@ -512,14 +614,13 @@ def _ingest_async(user_id, doc_id, filename, file_path):
 
 
 @app.post("/upload")
-async def upload(request: Request, file: UploadFile = File(...),
-                 session_id: str = Form(None), token: str = Form(None)):
+async def upload(request: Request, file: UploadFile = File(...)):
     """Bring-your-own-data: ingest a user's document into their private space, then return a
     preview of what docling parsed (markdown + extracted table facts) so the parse is visible.
     Ingestion runs in the isolated docling venv via subprocess — the service never imports it."""
     if not check_rate_limit(_client_ip(request)):
         raise HTTPException(429, "Too many requests — please wait a minute and try again.")
-    session_id = _user_id(token, session_id)   # verified email if sign-in is on
+    session_id = _user_id(request)   # the verified email when sign-in is on
     data = await file.read()
     if len(data) > _MAX_UPLOAD_BYTES:
         raise HTTPException(400, "File too large (max 10 MB for this demo).")
@@ -554,16 +655,14 @@ async def upload(request: Request, file: UploadFile = File(...),
 
 
 class DocStatusReq(BaseModel):
-    session_id: Optional[str] = None
-    token: Optional[str] = None
     doc_id: str
 
 
 @app.post("/docstatus")
-def docstatus(req: DocStatusReq):
+def docstatus(req: DocStatusReq, request: Request):
     """Poll an async upload: returns 'processing'/'failed', or the full parse preview once 'ready'
     (facts + markdown), so the UI renders the result when the background parse finishes."""
-    user_id = _user_id(req.token, req.session_id)
+    user_id = _user_id(request)
     row = _doc_get(user_id, req.doc_id)
     if not row:
         return {"status": "unknown"}
@@ -575,18 +674,18 @@ def docstatus(req: DocStatusReq):
 
 
 @app.get("/file/{doc_id}")
-def get_file(doc_id: str, session_id: str = None, token: str = None):
+def get_file(doc_id: str, request: Request):
     """Serve a user's original uploaded file so a citation can deep-link to its source page
     (#page=N). The doc must belong to the caller.
 
-    This used to take the identifier straight off the query string and query on it, while /mydocs
-    put the same data behind _user_id — one resource, two standards. The identity is now verified
-    here too. The token rides in the query string because this URL is opened as a link, so it
-    reaches request logs; that cost is accepted over what it replaces (a never-expiring identifier
-    that WAS the identity), and a per-document signed URL would be better still."""
+    This endpoint is why identity moved to a cookie. It once took the identifier straight off the
+    query string and queried on it: no verification at all, one resource with two standards next
+    to /mydocs, protected only by a doc id being hard to guess. Verifying it put a credential in
+    the URL instead, because a browser navigation cannot send a header. The cookie removes the
+    choice -- nothing in this URL identifies anyone, so there is nothing here for a log to keep."""
     if not re.fullmatch(r"[a-f0-9]{12}", doc_id):
         raise HTTPException(400, "bad doc id")
-    session_id = _user_id(token, session_id)
+    session_id = _user_id(request)
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
         cur.execute("select 1 from user_chunks where user_id=%s and doc_id=%s limit 1",
                     (session_id, doc_id))

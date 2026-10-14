@@ -1,86 +1,181 @@
-"""The identity contract, now that signing in is optional.
+"""The identity contract, now carried by a cookie instead of a bearer token in every request body.
 
-Opening the demo to real traffic split the endpoints in two: asking a question needs no account,
-while anything that reaches a user's own uploaded documents still needs a verified Google identity.
-That split is only safe because of one thing — the id an unverified caller may claim is restricted
-to the `sess_` shape. Document scope is keyed on the same id, so an unverified caller allowed to
-name an email would be asking questions inside that account. These pin both halves.
+Why the move: the citation chip for an uploaded document is an <a href> the browser NAVIGATES to,
+and a browser navigation cannot carry a custom header, so the credential had to travel in the
+query string and therefore into request logs. Cookies are sent on navigation, so the credential
+leaves the URL entirely. The cost of the move is CSRF: a cookie is attached automatically, so
+another origin can make the browser issue a request that looks authenticated. SameSite=Lax is
+what pays that back, and it is pinned here because nothing else in the system would notice if it
+silently stopped being set.
+
+One cookie, two shapes, which is what keeps the id space partitioned:
+
+    an opaque 43-char token   a row in `sessions` maps it to a verified email
+    anon_<22 chars>           no server state at all; anonymous visitors own no documents
+
+Anything else carries no identity. That is the check that stops `vsid=someone@example.com` from
+scoping a question to that account's private documents.
 """
 import pytest
 
 pytest.importorskip("fastapi")
-from fastapi import HTTPException                       # noqa: E402
+pytest.importorskip("httpx")
+from fastapi import HTTPException                              # noqa: E402
+from fastapi.testclient import TestClient                       # noqa: E402
 
-import service.app as app                               # noqa: E402
+import service.app as app                                       # noqa: E402
 
-ANON = "sess_" + "a1b2c3d4e5f6"
+ANON = "anon_" + "a" * 22
+SID = "s" * 43                 # the shape secrets.token_urlsafe(32) produces
+EMAIL = "owner@example.com"
+
+
+class Req:
+    """The two things _user_id reads off a request. A real Request needs an ASGI scope."""
+    def __init__(self, cookies=None, scheme="https"):
+        self.cookies = cookies or {}
+        self.url = type("U", (), {"scheme": scheme})()
 
 
 @pytest.fixture
 def signed_in_world(monkeypatch):
-    """Sign-in configured, and one token that verifies. Anything else is an unverified caller."""
+    """Sign-in configured, and exactly one live session. The DB is never touched."""
     monkeypatch.setattr(app, "_GOOGLE_CLIENT_ID", "client-id.apps.googleusercontent.com")
+    monkeypatch.setattr(app, "_session_user", lambda sid: EMAIL if sid == SID else None)
+    monkeypatch.setattr(app, "_session_create", lambda email: SID)
+    monkeypatch.setattr(app, "_session_destroy", lambda sid: None)
     monkeypatch.setattr(app, "_verify_google",
-                        lambda tok: "owner@example.com" if tok == "good-token" else None)
+                        lambda tok: EMAIL if tok == "good-token" else None)
 
 
-def test_asking_works_with_no_token_at_all(signed_in_world):
-    assert app._user_id(None, ANON, require=False) == ANON
+# --- what the id may be -----------------------------------------------------------------
+
+def test_a_live_session_cookie_resolves_to_the_verified_email(signed_in_world):
+    assert app._user_id(Req({"vsid": SID})) == EMAIL
 
 
-def test_a_verified_caller_keeps_their_email_even_where_it_is_optional(signed_in_world):
-    """Otherwise a signed-in visitor asking a question would be scoped to their browser id and
-    their own uploaded documents would drop out of scope."""
-    assert app._user_id("good-token", ANON, require=False) == "owner@example.com"
-
-
-def test_an_unverified_caller_cannot_claim_an_email(signed_in_world):
-    """The whole reason the anonymous path is safe. Without this, `session_id=owner@example.com`
-    reads that account's private documents through /ask."""
+def test_an_anonymous_cookie_can_ask_but_not_reach_private_data(signed_in_world):
+    assert app._user_id(Req({"vsid": ANON}), require=False) == ANON
     with pytest.raises(HTTPException) as e:
-        app._user_id(None, "owner@example.com", require=False)
+        app._user_id(Req({"vsid": ANON}))
     assert e.value.status_code == 401
 
 
 @pytest.mark.parametrize("claimed", [
-    "owner@example.com",
-    "sess_short",                 # under the length floor
-    "sess_has-a-dash",            # not in the character class
-    "xsess_" + "a1b2c3d4e5f6",    # fullmatch, not search
-    "sess_" + "a1b2c3d4e5f6" + " ",
+    EMAIL,                        # the bypass: name an account and inherit its documents
+    "anon_short",
+    "anon_" + "a" * 21,           # one char under
+    "anon_" + "a" * 23,           # one char over
+    "anon_" + "!" * 22,           # outside the character class
+    "xanon_" + "a" * 22,          # fullmatch, not search
+    ANON + " ",
     "",
-    None,
 ])
-def test_only_the_sess_shape_is_accepted_unverified(signed_in_world, claimed):
+def test_a_cookie_of_any_other_shape_carries_no_identity(signed_in_world, claimed):
+    """It is not an error -- an unrecognised cookie is simply not an identity, so the caller is
+    treated as a brand-new anonymous visitor and gets a fresh id the SERVER chose."""
+    got = app._user_id(Req({"vsid": claimed}), require=False)
+    assert got != claimed
+    assert app._ANON_ID.fullmatch(got)
+
+
+def test_a_missing_cookie_mints_a_new_anonymous_identity(signed_in_world):
+    got = app._user_id(Req(), require=False)
+    assert app._ANON_ID.fullmatch(got)
+    assert app._user_id(Req(), require=False) != got        # a fresh one each time
+
+
+def test_minting_sets_the_cookie_so_the_next_request_keeps_the_same_id(signed_in_world):
+    class Resp:
+        def __init__(self): self.kw = None
+        def set_cookie(self, **kw): self.kw = kw
+    r = Resp()
+    got = app._user_id(Req(), response=r, require=False)
+    assert r.kw["key"] == "vsid" and r.kw["value"] == got
+
+
+def test_private_endpoints_demand_a_session_by_default(signed_in_world):
+    """require=True is the default, so a newly added endpoint is private unless it opts out."""
+    with pytest.raises(HTTPException) as e:
+        app._user_id(Req())
+    assert e.value.status_code == 401
+
+
+def test_a_destroyed_session_stops_working(signed_in_world, monkeypatch):
+    """What the bearer token could not do: revoke. Signing out deletes the row, so the cookie is
+    dead on the next request instead of living until its own expiry."""
+    monkeypatch.setattr(app, "_session_user", lambda sid: None)
     with pytest.raises(HTTPException):
-        app._user_id(None, claimed, require=False)
+        app._user_id(Req({"vsid": SID}))
 
 
-def test_private_endpoints_still_demand_a_token(signed_in_world):
-    """require=True is the default, so a new endpoint is private unless it opts out."""
-    with pytest.raises(HTTPException) as e:
-        app._user_id(None, ANON)
-    assert e.value.status_code == 401
-    assert app._user_id("good-token", ANON) == "owner@example.com"
-
-
-def test_with_sign_in_unconfigured_the_session_id_is_the_identity(monkeypatch):
-    """Local dev and the test suite run without a client id; that path must not start demanding
-    tokens, and must not start enforcing the `sess_` shape on ids it never issued."""
+def test_with_sign_in_unconfigured_anonymous_is_a_full_identity(monkeypatch):
+    """Local dev and CI run with no client id. That path must not start demanding sessions."""
     monkeypatch.setattr(app, "_GOOGLE_CLIENT_ID", "")
-    assert app._user_id(None, "anything-at-all") == "anything-at-all"
-    assert app._user_id(None, "anything-at-all", require=False) == "anything-at-all"
+    monkeypatch.setattr(app, "_session_user", lambda sid: None)
+    assert app._user_id(Req({"vsid": ANON})) == ANON
 
 
-def test_serving_an_uploaded_file_verifies_rather_than_trusting_the_url(signed_in_world):
-    """/file used to take the identifier straight off the query string. The endpoint now routes it
-    through _user_id, so an unverified request for someone's file is rejected before any query."""
-    with pytest.raises(HTTPException) as e:
-        app.get_file("a1b2c3d4e5f6", session_id="owner@example.com")
-    assert e.value.status_code == 401
+# --- the cookie's own attributes, over real HTTP ----------------------------------------
+
+@pytest.fixture
+def client(signed_in_world):
+    return TestClient(app.app)                 # no `with`: lifespan (agent + DB) must not run
 
 
-def test_a_malformed_doc_id_is_rejected_before_identity_is_even_considered(signed_in_world):
-    with pytest.raises(HTTPException) as e:
-        app.get_file("../../etc/passwd", session_id="owner@example.com", token="good-token")
-    assert e.value.status_code == 400
+def test_login_sets_an_httponly_samesite_lax_cookie(client):
+    # https explicitly: TestClient's base_url is http://testserver, and `secure` is derived from
+    # the scheme, so asking for these three attributes over http would assert the wrong thing.
+    r = client.post("https://testserver/auth/login", json={"token": "good-token"})
+    assert r.status_code == 200 and r.json()["email"] == EMAIL
+    sc = r.headers["set-cookie"].lower()
+    # HttpOnly: JS cannot read it, so an XSS cannot exfiltrate the session the way it could read
+    # localStorage. SameSite=Lax: not attached to a cross-site POST, which is the CSRF that
+    # cookies introduce and bearer tokens did not have -- but still attached on a top-level GET
+    # navigation, which is exactly what makes the /file citation link work without a credential
+    # in the URL. Secure: HTTPS only.
+    assert "httponly" in sc
+    assert "samesite=lax" in sc
+    assert "secure" in sc
+
+
+def test_login_rejects_an_unverifiable_token(client):
+    assert client.post("/auth/login", json={"token": "forged"}).status_code == 401
+
+
+def test_logout_clears_the_cookie(client):
+    r = client.post("/auth/logout", cookies={"vsid": SID})
+    assert r.status_code == 200
+    assert "vsid=" in r.headers.get("set-cookie", "")
+
+
+def test_over_plain_http_the_cookie_is_not_marked_secure(client):
+    """Secure is derived from the request scheme, not hardcoded -- otherwise the cookie is
+    silently dropped at http://localhost and local dev cannot sign in at all."""
+    r = client.post("http://testserver/auth/login", json={"token": "good-token"})
+    assert "secure" not in r.headers["set-cookie"].lower()
+
+
+def test_mydocs_without_a_cookie_is_401_and_never_reaches_the_database(client):
+    """_user_id runs before any query, so this is a safe test to run with no DB present."""
+    assert client.post("/mydocs", json={}).status_code == 401
+
+
+def test_serving_a_file_needs_a_session_not_a_url_parameter(client):
+    """The whole point of the move: /file takes no identity in the URL any more. A query string
+    naming the owner -- which used to return the file -- is now just an ignored parameter."""
+    r = client.get("/file/a1b2c3d4e5f6", params={"session_id": EMAIL, "token": "good-token"})
+    assert r.status_code == 401
+
+
+def test_a_malformed_doc_id_is_rejected_before_identity_is_considered(client):
+    r = client.get("/file/..%2F..%2Fetc%2Fpasswd", cookies={"vsid": SID})
+    assert r.status_code in (400, 404)
+
+def test_auth_config_reports_an_existing_session(client):
+    """The page cannot read an HttpOnly cookie, so this is the only way it learns it is signed in.
+    If this silently returned nothing, a returning user would land on the login screen holding a
+    perfectly good session."""
+    assert client.get("/auth/config", cookies={"vsid": SID}).json()["email"] == EMAIL
+    assert client.get("/auth/config").json()["email"] is None
+    assert client.get("/auth/config", cookies={"vsid": ANON}).json()["email"] is None

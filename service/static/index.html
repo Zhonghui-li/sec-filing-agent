@@ -309,16 +309,10 @@
 const chat = document.getElementById('chat'), form = document.getElementById('f'),
       input = document.getElementById('q'), send = document.getElementById('send');
 let history = [];  // [{role, content}] — sent each turn so the agent has multi-turn memory (Model B)
-// With sign-in optional, this id is what separates one anonymous visitor's conversation from
-// another's, so it is drawn from crypto rather than Math.random (whose generator is seeded per
-// page and not collision-safe at scale). Existing ids in localStorage are kept as they are.
-const sessionId = (() => { let s = localStorage.getItem('sid');
-  if (!s) { s = 'sess_' + (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '')
-                                             : Math.random().toString(36).slice(2,14));
-            localStorage.setItem('sid', s); }
-  return s; })();
-let googleToken = null, userEmail = null, authRequired = false;
-function idFields(){ return googleToken ? { token: googleToken } : { session_id: sessionId }; }
+// No identity is assembled here any more. It lives in one HttpOnly cookie the server sets, so
+// this page cannot read it, cannot put it in a URL, and does not have to attach it to anything:
+// the browser sends it automatically, including on the /file link a citation chip opens.
+let userEmail = null, authRequired = false;
 function add(role, html) {
   const m = document.createElement('div'); m.className = 'msg ' + role;
   m.innerHTML = '<div class="bubble">' + html + '</div>'; chat.appendChild(m);
@@ -373,7 +367,7 @@ form.addEventListener('submit', async (e) => {
   try {
     const r = await fetch('/ask', { method:'POST', headers:{'Content-Type':'application/json'},
                                     body: JSON.stringify({ question: q, history,
-                                      doc: document.getElementById('docscope').value || null, ...idFields() }) });
+                                      doc: document.getElementById('docscope').value || null }) });
     if (!r.ok) { wait.querySelector('.bubble').innerHTML = '<span class="hint">' +
                  (r.status===429 ? 'Demo limit reached — please try again later.' : 'Something went wrong.') +
                  '</span>'; send.disabled=false; return; }
@@ -398,8 +392,7 @@ form.addEventListener('submit', async (e) => {
       const items = d.doc_sources.map(s => {
         const label = esc(s.filename) + (s.cell ? ' · ' + esc(s.cell) : '');
         if (s.page!=null && s.doc_id) {
-          const q = googleToken ? 'token=' + encodeURIComponent(googleToken) : 'session_id=' + encodeURIComponent(sessionId);
-          const url = '/file/' + s.doc_id + '?' + q + '#page=' + s.page;
+          const url = '/file/' + s.doc_id + '#page=' + s.page;
           return '<a class="src-chip" href="' + url + '" target="_blank" rel="noopener">' + label +
                  ' · p.' + s.page + EXT + '</a>';
         }
@@ -452,7 +445,7 @@ form.addEventListener('submit', async (e) => {
       try { await fetch('/feedback', { method:'POST', headers:{'Content-Type':'application/json'},
               body: JSON.stringify({ trace_id: fb.dataset.tid,
                 value: b.classList.contains('fbup') ? 1 : 0,
-                question: q, answer: d.answer, ...idFields() }) }); } catch(e){}
+                question: q, answer: d.answer }) }); } catch(e){}
       fb.querySelector('.fbmsg').textContent = ' Thanks — feedback recorded.';
     }));
     const rv = wait.querySelector('.reverify');
@@ -531,7 +524,7 @@ async function pollStatus(docId, filename) {
     if (wait < 10000) wait += 1000;
     try {
       const r = await fetch('/docstatus', { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ doc_id: docId, ...idFields() }) });
+        body: JSON.stringify({ doc_id: docId }) });
       const d = await r.json();
       if (d.status === 'ready') {
         upstatus.textContent = '✓ ' + filename + ' — ' + d.n_facts + ' figures extracted';
@@ -553,7 +546,6 @@ fileInput.addEventListener('change', async () => {
   const f = fileInput.files[0]; if (!f) return;
   upstatus.textContent = 'Uploading ' + f.name + '…';
   const fd = new FormData(); fd.append('file', f);
-  if (googleToken) fd.append('token', googleToken); else fd.append('session_id', sessionId);
   try {
     const r = await fetch('/upload', { method:'POST', body: fd });
     if (!r.ok) { upstatus.textContent = (r.status===429 ? 'Demo limit reached.' : 'Upload failed.'); return; }
@@ -573,16 +565,36 @@ fileInput.addEventListener('change', async () => {
 });
 
 // --- Google sign-in (only when the server has GOOGLE_CLIENT_ID configured) ---
-function decodeEmail(jwt){ try { return JSON.parse(atob(jwt.split('.')[1])).email; } catch(e){ return null; } }
-function tokenExpired(jwt){ try { const p = JSON.parse(atob(jwt.split('.')[1]));
-  return !p.exp || p.exp * 1000 < Date.now() + 30000;
-} catch(e){ return true; } }
+async function onGoogle(resp){
+  // Google's token is handed over exactly once and never kept: the server verifies it and
+  // replies with a session cookie. Nothing about the identity is readable from this page after
+  // this call, which is the point -- an XSS here has nothing to steal.
+  let r; try { r = await fetch('/auth/login', { method:'POST', headers:{'Content-Type':'application/json'},
+                                                body: JSON.stringify({ token: resp.credential }) }); }
+  catch(e){ return; }
+  if (!r.ok) return;
+  userEmail = (await r.json()).email;
+  signedIn();
+}
+function signedIn(){
+  document.getElementById('userchip').innerHTML =
+    esc(userEmail || '') + '<a id="logout">sign out</a>';
+  document.getElementById('logout').onclick = async () => {
+    // Tell Google Identity Services the user signed out, so it stops auto-selecting / showing the
+    // personalized "Sign in as <email>" button (our sign-out ends OUR session, not the Google
+    // one — without this, GIS re-offers the remembered account and looks like a stale login).
+    try { google.accounts.id.disableAutoSelect(); } catch (e) {}
+    try { await fetch('/auth/logout', { method:'POST' }); } catch(e){}   // deletes it server-side
+    location.reload();
+  };
+  showApp();
+}
 function showApp(){ document.getElementById('login').style.display='none';
                     document.getElementById('app').style.display='block';
                     document.getElementById('composer').style.display='block';
                     // Private documents are keyed to a verified email, so the controls that reach
                     // them are hidden without one. Questions need no account and stay available.
-                    const anon = authRequired && !googleToken;
+                    const anon = authRequired && !userEmail;
                     document.getElementById('filelabel').style.display = anon ? 'none' : '';
                     document.getElementById('anonnote').style.display = anon ? 'inline' : 'none';
                     if (anon) {
@@ -594,8 +606,7 @@ function showApp(){ document.getElementById('login').style.display='none';
                     loadMyDocs(true); }
 async function loadMyDocs(showMsg){
   try {
-    const r = await fetch('/mydocs', { method:'POST', headers:{'Content-Type':'application/json'},
-                                       body: JSON.stringify(idFields()) });
+    const r = await fetch('/mydocs', { method:'POST' });
     const d = await r.json();
     populateDocScope(d.documents || []);
     const note = document.getElementById('docsnote');
@@ -631,33 +642,18 @@ document.getElementById('deldoc').addEventListener('click', async () => {
   const name = sel.value || (myDocs.length === 1 ? myDocs[0] : '');
   if (!name || !confirm('Delete "' + name + '"? This removes it from your documents.')) return;
   await fetch('/mydocs/delete', { method:'POST', headers:{'Content-Type':'application/json'},
-                                  body: JSON.stringify({ filename: name, ...idFields() }) });
+                                  body: JSON.stringify({ filename: name }) });
   sel.value = '';
   add('bot', '🗑 Deleted <b>' + esc(name) + '</b> from your documents.');
   loadMyDocs(false);
 });
-function onGoogle(resp){
-  googleToken = resp.credential; userEmail = decodeEmail(googleToken);
-  localStorage.setItem('gtok', googleToken);
-  document.getElementById('userchip').innerHTML =
-    esc(userEmail || '') + '<a id="logout">sign out</a>';
-  document.getElementById('logout').onclick = () => {
-    // tell Google Identity Services the user signed out, so it stops auto-selecting / showing the
-    // personalized "Sign in as <email>" button (our sign-out only clears OUR token, not the Google
-    // session — without this, GIS re-offers the remembered account and looks like a stale login).
-    try { google.accounts.id.disableAutoSelect(); } catch (e) {}
-    localStorage.removeItem('gtok'); location.reload(); };
-  showApp();
-}
 (async () => {
   let cfg; try { cfg = await (await fetch('/auth/config')).json(); } catch(e){ cfg = {auth_required:false}; }
   authRequired = !!cfg.auth_required;
   if (!authRequired) { showApp(); return; }
   document.getElementById('login').style.display = 'flex';
   document.getElementById('anonin').onclick = (e) => { e.preventDefault(); showApp(); };
-  const saved = localStorage.getItem('gtok');
-  if (saved && !tokenExpired(saved)) { onGoogle({ credential: saved }); }
-  else { localStorage.removeItem('gtok'); }
+  if (cfg.email) { userEmail = cfg.email; signedIn(); }   // an existing session, per the server
   const init = () => {
     if (!window.google || !google.accounts) { return setTimeout(init, 200); }
     google.accounts.id.initialize({ client_id: cfg.client_id, callback: onGoogle });
