@@ -9,10 +9,24 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 
 # CPU-only torch, as in the agent image: the GPU wheels are several GB and nothing here uses one.
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+# torchvision comes from the SAME index and in the same command, which is the whole point. Asking
+# for torch alone here left requirements.txt to pull torchvision from PyPI, and a PyPI torchvision
+# against a +cpu torch is a mismatched pair: it imports fine and then dies at first use with
+# "operator torchvision::nms does not exist". That surfaced two layers away as a
+# ModuleNotFoundError for AutoProcessor inside a transformers import, which looks like anything
+# except a wheel-pairing problem.
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 COPY ingest/requirements.txt ./ingest/requirements.txt
 RUN pip install --no-cache-dir -r ingest/requirements.txt \
     && pip install --no-cache-dir fastapi==0.115.14 uvicorn==0.35.0 google-cloud-storage==3.4.1
+
+# Image contract: the pair must still be the matched cpu build after requirements had their say.
+# This CALLS the operator that was missing rather than just importing the module, because the
+# import is what succeeded last time. A broken pair now fails the build instead of failing on
+# someone's first upload.
+RUN python -c "import torch, torchvision; from torchvision.ops import nms; \
+    nms(torch.tensor([[0.,0.,1.,1.]]), torch.tensor([0.5]), 0.5); \
+    print('torch', torch.__version__, '+ torchvision', torchvision.__version__, 'ops OK')"
 
 # Pre-bake docling's layout and table models, the same reason the agent pre-bakes its reranker:
 # otherwise the FIRST upload pays a model download on top of a cold start, over a connection we
@@ -23,6 +37,10 @@ RUN python -c "from docling.utils.model_downloader import download_models; \
     download_models(with_code_formula=False, with_picture_classifier=False)"
 
 COPY ingest/ ./ingest/
+
+# The service must import before it is deployed, not on its first request. The agent image learned
+# this the expensive way (service/smoke.py).
+RUN python -c "import ingest.server; print('ingest.server imports OK')"
 
 ENV PORT=8080
 CMD uvicorn ingest.server:app --host 0.0.0.0 --port ${PORT}

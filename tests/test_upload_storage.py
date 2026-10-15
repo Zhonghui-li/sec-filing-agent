@@ -112,3 +112,23 @@ def test_the_stored_content_type_is_the_real_one(gcs):
 ])
 def test_media_type_follows_the_suffix(suffix, expected):
     assert app._MEDIA.get(suffix, "application/octet-stream") == expected
+
+
+# --- retention -------------------------------------------------------------------------
+
+def test_retention_can_be_turned_off_without_touching_the_database(monkeypatch):
+    """A dev machine and the test suite must not need a reachable database just to boot."""
+    monkeypatch.setattr(app, "_RETENTION_DAYS", 0)
+    monkeypatch.setattr(app.psycopg, "connect",
+                        lambda *a, **k: pytest.fail("retention queried with the window disabled"))
+    app._expire_old_documents()
+
+
+def test_a_failing_retention_sweep_does_not_stop_the_service_booting(monkeypatch, capsys):
+    """It runs inside the lifespan. Housekeeping that can refuse to start the service is worse
+    than housekeeping that silently skips a night."""
+    monkeypatch.setattr(app, "_RETENTION_DAYS", 30)
+    def boom(*a, **k): raise OSError("no route to host")
+    monkeypatch.setattr(app.psycopg, "connect", boom)
+    app._expire_old_documents()
+    assert "retention" in capsys.readouterr().out

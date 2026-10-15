@@ -57,6 +57,16 @@ _MAX_PAGES = int(os.environ.get("UPLOAD_MAX_PAGES", "15"))
 # is what every test and a local dev run want.
 _UPLOAD_DIR = os.environ.get("UPLOAD_DIR", os.path.join(_ROOT, "ingest", "uploads"))
 _GCS_BUCKET = os.environ.get("GCS_BUCKET")
+# How long an uploaded document is kept. These are strangers' own files once the demo is open, so
+# the reason to bound this is not the ~$0.02/GB/month -- it is that keeping other people's
+# financial documents indefinitely is a liability nobody asked us to take on.
+#
+# The SAME number is set as a lifecycle rule on the bucket, which is what actually deletes the
+# files. This expires the rows. Both halves are needed: deleting only the blobs would leave a
+# document that still answers questions, from chunks in Postgres, while the citation behind every
+# answer 404s -- which is precisely the split this release exists to fix, re-created from the
+# other end.
+_RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "30"))
 _MEDIA = {".pdf": "application/pdf",
           ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
           ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
@@ -332,6 +342,7 @@ def _client_ip(request: Request) -> str:
 async def lifespan(app: FastAPI):
     global _agent
     _ensure_doc_schema()    # the async-ingestion status table
+    _expire_old_documents()  # paired with the bucket's lifecycle rule; see _RETENTION_DAYS
     _agent = build_agent()  # loads the reranker once, on startup
     yield
 
@@ -614,6 +625,33 @@ def _doc_payload(user_id, doc_id, filename):
             "parsed_markdown": full[:PREVIEW_CHARS], "truncated": len(full) > PREVIEW_CHARS,
             "n_chars": len(full), "n_pages": n_pages, "facts": facts, "n_facts": len(facts),
             "page_cap": _MAX_PAGES}
+
+
+def _expire_old_documents():
+    """Drop documents past the retention window. Runs at startup rather than on a schedule: this
+    service scales to zero and cold-starts often, so startup IS the schedule, and three indexed
+    deletes cost nothing against a cold start already measured in tens of seconds.
+
+    Only the rows. The files are the bucket lifecycle rule's job, so this does not make a cold
+    start wait on a round trip to object storage per expired document."""
+    if _RETENTION_DAYS <= 0:
+        return
+    try:
+        with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
+            old = ("select user_id, doc_id from user_documents "
+                   "where created_at < now() - make_interval(days => %s)")
+            cur.execute(f"delete from user_chunks c using ({old}) d "
+                        "where c.user_id = d.user_id and c.doc_id = d.doc_id", (_RETENTION_DAYS,))
+            cur.execute(f"delete from user_facts f using ({old}) d "
+                        "where f.user_id = d.user_id and f.doc_id = d.doc_id", (_RETENTION_DAYS,))
+            cur.execute("delete from user_documents "
+                        "where created_at < now() - make_interval(days => %s)", (_RETENTION_DAYS,))
+            n = cur.rowcount
+            conn.commit()
+        if n:
+            print(f"[retention] expired {n} document(s) older than {_RETENTION_DAYS} days")
+    except Exception as e:                      # never let housekeeping stop the service booting
+        print(f"[retention] skipped: {type(e).__name__}: {e}")
 
 
 def _ensure_doc_schema():
