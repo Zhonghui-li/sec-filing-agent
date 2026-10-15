@@ -28,13 +28,23 @@ RUN python -c "import torch, torchvision; from torchvision.ops import nms; \
     nms(torch.tensor([[0.,0.,1.,1.]]), torch.tensor([0.5]), 0.5); \
     print('torch', torch.__version__, '+ torchvision', torchvision.__version__, 'ops OK')"
 
-# Pre-bake docling's layout and table models, the same reason the agent pre-bakes its reranker:
-# otherwise the FIRST upload pays a model download on top of a cold start, over a connection we
-# do not control, and a demo's first upload is the one someone is watching.
-# layout + tableformer are what a filing needs; rapidocr covers a scanned upload. code_formula
-# and picture_classifier are defaults this corpus has no use for, and they are not free in size.
-RUN python -c "from docling.utils.model_downloader import download_models; \
-    download_models(with_code_formula=False, with_picture_classifier=False)"
+# Pre-bake the models by PARSING SOMETHING, not by naming what to download. The reason the
+# agent pre-bakes its reranker applies here -- otherwise the first upload pays a model fetch on
+# top of a cold start, over a connection we do not control -- but naming the models got it wrong:
+# download_models() fetches the set IT knows about, while the default pipeline resolves its own
+# (do_ocr is on and the OCR engine is "auto", chosen at runtime). The deployed image passed that
+# step and then failed on a real document with "cannot find the appropriate snapshot folder ...
+# pass a HF_TOKEN", because the two sets were not the same set.
+#
+# Converting a document runs the exact code an upload runs, so whatever it reaches for is what
+# gets cached, and anything it cannot reach fails the BUILD rather than someone's first upload.
+RUN python -c "\
+from reportlab.pdfgen import canvas; \
+c = canvas.Canvas('/tmp/smoke.pdf'); c.drawString(72, 720, 'Total revenues 101,808'); c.save(); \
+from docling.document_converter import DocumentConverter; \
+md = DocumentConverter().convert('/tmp/smoke.pdf').document.export_to_markdown(); \
+assert '101,808' in md, 'docling parsed the page but lost its text: ' + repr(md[:200]); \
+print('docling parse OK:', md.strip()[:60])"
 
 COPY ingest/ ./ingest/
 
