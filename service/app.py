@@ -32,19 +32,97 @@ _ROOT = os.path.join(os.path.dirname(__file__), "..")
 _STATIC = os.path.join(os.path.dirname(__file__), "static")
 _INGEST_PY = os.path.join(_ROOT, "ingest", ".venv", "bin", "python")
 _INGEST_SCRIPT = os.path.join(_ROOT, "ingest", "ingest.py")
+# Where the docling parser lives. Set: a private Cloud Run service (see ingest/server.py), which
+# is how the deployed demo parses. Unset: the local isolated venv above, via subprocess, which is
+# how a dev machine parses and is the path every test exercises.
+#
+# Those two were not equivalent before this existed -- they were one path that only worked on a
+# dev machine. The image never contained ingest/, and ingest/.venv is gitignored and so could not
+# have been copied in anyway, so EVERY upload to the deployed service failed with FileNotFoundError
+# on this interpreter. It went unnoticed for months because the local and deployed services share
+# one database: documents parsed locally showed up in the hosted demo's list and answered
+# questions there, which looks exactly like uploading having worked.
+_INGEST_URL = os.environ.get("INGEST_URL")
 _MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB demo cap
 # docling's precise parse is ~2s/page on CPU; cap pages so a sync upload stays responsive.
 # Production would parse the whole document asynchronously instead (roadmap §16).
 _MAX_PAGES = int(os.environ.get("UPLOAD_MAX_PAGES", "15"))
-# original uploads are kept so the citation can link back to the source page (auditability).
-# local demo: a folder on disk; production would use object storage (GCS/S3) + encryption.
+# Original uploads are kept so a citation can link back to its source page (auditability).
+#
+# On Cloud Run a folder on disk is not storage: the container filesystem dies with the instance,
+# and this service scales to zero after ~13 idle minutes. Every upload therefore survived only
+# until the next recycle, after which the document still answered questions (its chunks live in
+# Postgres) but its citation link 404'd, because the PDF behind it was gone. GCS_BUCKET switches
+# to object storage, which outlives the container; unset, the local folder is still used, which
+# is what every test and a local dev run want.
 _UPLOAD_DIR = os.environ.get("UPLOAD_DIR", os.path.join(_ROOT, "ingest", "uploads"))
+_GCS_BUCKET = os.environ.get("GCS_BUCKET")
+_MEDIA = {".pdf": "application/pdf",
+          ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
 # Optional Google sign-in: set GOOGLE_CLIENT_ID to require login (the user_id then becomes the
 # verified email, so data is isolated per account and persists across sessions). Unset = the
 # demo stays open with an anonymous per-browser session_id (current behavior, fully testable).
 _GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
 _agent = None
 _user_agents = {}   # user_id -> agent (built lazily once a user has uploaded docs)
+_gcs_bucket = None
+
+
+def _bucket():
+    # Imported lazily so that neither the test suite nor a local run needs the GCS client, which
+    # only the deployed service installs.
+    from google.cloud import storage
+    global _gcs_bucket
+    if _gcs_bucket is None:
+        _gcs_bucket = storage.Client().bucket(_GCS_BUCKET)
+    return _gcs_bucket
+
+
+def _store_original(user_id, doc_id, suffix, data):
+    """Save an uploaded file and return a locator the PARSER and /file can both resolve. A
+    `gs://` URI when object storage is configured, otherwise a path on disk."""
+    key = f"{user_id}/{doc_id}{suffix}"
+    if _GCS_BUCKET:
+        _bucket().blob(key).upload_from_string(
+            data, content_type=_MEDIA.get(suffix.lower(), "application/octet-stream"))
+        return f"gs://{_GCS_BUCKET}/{key}"
+    path = os.path.join(_UPLOAD_DIR, user_id, doc_id + suffix)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
+    return path
+
+
+def _read_original(user_id, doc_id):
+    """(bytes, suffix) for one of this user's stored originals, or None if it is not there."""
+    if _GCS_BUCKET:
+        for blob in _bucket().list_blobs(prefix=f"{user_id}/{doc_id}"):
+            return blob.download_as_bytes(), os.path.splitext(blob.name)[1]
+        return None
+    user_dir = os.path.join(_UPLOAD_DIR, user_id)
+    for fn in sorted(os.listdir(user_dir)) if os.path.isdir(user_dir) else []:
+        if fn.startswith(doc_id + "."):
+            with open(os.path.join(user_dir, fn), "rb") as f:
+                return f.read(), os.path.splitext(fn)[1]
+    return None
+
+
+def _delete_original(user_id, doc_id):
+    if _GCS_BUCKET:
+        for blob in _bucket().list_blobs(prefix=f"{user_id}/{doc_id}"):
+            try:
+                blob.delete()
+            except Exception as e:
+                print(f"[storage] delete failed for {blob.name}: {type(e).__name__}: {e}")
+        return
+    user_dir = os.path.join(_UPLOAD_DIR, user_id)
+    for fn in (os.listdir(user_dir) if os.path.isdir(user_dir) else []):
+        if fn.startswith(doc_id + "."):
+            try:
+                os.unlink(os.path.join(user_dir, fn))
+            except OSError:
+                pass
 
 
 def _verify_google(token):
@@ -493,40 +571,28 @@ def _remove_prior_uploads(session_id, filename):
             cur.execute("delete from user_facts where user_id=%s and doc_id=%s", (session_id, did))
             cur.execute("delete from user_documents where user_id=%s and doc_id=%s", (session_id, did))
         conn.commit()
-    user_dir = os.path.join(_UPLOAD_DIR, session_id)
     for did in old_ids:
-        for fn in (os.listdir(user_dir) if os.path.isdir(user_dir) else []):
-            if fn.startswith(did + "."):
-                try:
-                    os.unlink(os.path.join(user_dir, fn))
-                except OSError:
-                    pass
+        _delete_original(session_id, did)
 
 
 def _find_duplicate(user_id, sha):
-    """Return (doc_id, filename) of an already-uploaded file with byte-identical content, or None.
-    Compares the SHA-256 of the new upload against this user's stored original files — so an exact
-    re-upload is detected and reused instead of re-parsed (parsing is slow + costs embeddings)."""
-    user_dir = os.path.join(_UPLOAD_DIR, user_id)
-    if not os.path.isdir(user_dir):
-        return None
+    """Return (doc_id, filename) of an already-uploaded file with byte-identical content, or None,
+    so an exact re-upload is reused instead of re-parsed (parsing is slow and costs embeddings).
+
+    The hash is read from the row rather than recomputed from the stored file. Re-hashing worked
+    while originals sat on local disk; against object storage it would download every one of this
+    user's documents on every upload, just to answer a question one indexed column already
+    answers. Rows written before this column exists simply do not match, so their first re-upload
+    re-parses once and records a hash."""
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
-        cur.execute("select distinct doc_id, filename from user_chunks where user_id=%s", (user_id,))
-        names = {d: f for d, f in cur.fetchall()}
-    for fn in os.listdir(user_dir):
-        path = os.path.join(user_dir, fn)
-        if not os.path.isfile(path):
-            continue
-        did = os.path.splitext(fn)[0]
-        if did not in names:  # only reuse a fully-parsed doc; skip files still processing / failed / orphaned
-            continue
-        try:
-            with open(path, "rb") as fh:
-                if hashlib.sha256(fh.read()).hexdigest() == sha:
-                    return did, names[did]
-        except OSError:
-            continue
-    return None
+        cur.execute("select d.doc_id, d.filename from user_documents d "
+                    "where d.user_id=%s and d.sha256=%s and d.status='ready' "
+                    # a 'ready' row with no chunks would hand back an empty preview
+                    "  and exists (select 1 from user_chunks c "
+                    "              where c.user_id=d.user_id and c.doc_id=d.doc_id) "
+                    "order by d.created_at desc limit 1", (user_id, sha))
+        row = cur.fetchone()
+    return (row[0], row[1]) if row else None
 
 
 def _doc_payload(user_id, doc_id, filename):
@@ -561,6 +627,9 @@ def _ensure_doc_schema():
                 error text, n_pages int, parse_quality text,
                 created_at timestamptz default now(),
                 primary key (user_id, doc_id))""")
+        # content hash of the original, so an exact re-upload is detected with one indexed lookup
+        # instead of downloading every stored file to re-hash it (see _find_duplicate).
+        cur.execute("alter table user_documents add column if not exists sha256 text")
         # How much the service is actually used, and what for. Cloud Run's filesystem dies with
         # the instance and Cloud Logging expires, so neither can answer "how many people have used
         # this" a month later, let alone what they asked. The question text is kept deliberately
@@ -618,14 +687,43 @@ def _doc_get(user_id, doc_id):
         return cur.fetchone()
 
 
-def _ingest_async(user_id, doc_id, filename, file_path):
+def _call_parser(user_id, doc_id, filename, locator):
+    """Hand the document to the parser service. It writes the final status itself, because this
+    instance cannot be relied on to still exist when the parse ends: /upload has already returned,
+    so nothing holds the instance open and a recycle mid-parse would strand the row in
+    'processing' forever."""
+    import requests
+    from google.auth.transport.requests import Request as GRequest
+    from google.oauth2 import id_token
+    headers = {}
+    try:
+        # Service-to-service auth: the parser is deployed --no-allow-unauthenticated, so it is not
+        # reachable from the internet at all. Without this nobody could run docling on our CPU by
+        # finding the URL. Locally there is no metadata server and no token, which is fine because
+        # locally INGEST_URL is unset and this function is never called.
+        headers["Authorization"] = "Bearer " + id_token.fetch_id_token(GRequest(), _INGEST_URL)
+    except Exception as e:
+        print(f"[ingest] no identity token, calling unauthenticated: {type(e).__name__}: {e}")
+    r = requests.post(_INGEST_URL.rstrip("/") + "/parse", timeout=1800, headers=headers,
+                      json={"user_id": user_id, "doc_id": doc_id,
+                            "filename": filename, "locator": locator})
+    r.raise_for_status()
+
+
+def _ingest_async(user_id, doc_id, filename, locator):
     """Background worker: parse the FULL document (no 15-page cap) and mark it ready/failed.
     Runs in a thread so /upload returns immediately — the slow docling parse never blocks the
     request, which is what lets us drop the page cap and accept real (100+ page) filings."""
     try:
+        if _INGEST_URL:
+            _call_parser(user_id, doc_id, filename, locator)
+            # The status row is the parser's to write; what is ours is this instance's cache.
+            for k in [k for k in _user_agents if k[0] == user_id]:
+                del _user_agents[k]
+            return
         proc = subprocess.run(
             [_INGEST_PY, _INGEST_SCRIPT, "--user", user_id, "--doc-id", doc_id,
-             "--file", file_path, "--name", filename],   # no --max-pages -> parse the whole doc
+             "--file", locator, "--name", filename],   # no --max-pages -> parse the whole doc
             cwd=_ROOT, env={**os.environ}, capture_output=True, text=True, timeout=1200)
         if proc.returncode != 0:
             _doc_set_status(user_id, doc_id, "failed", error=(proc.stderr[-400:] or "ingestion failed"))
@@ -654,7 +752,8 @@ async def upload(request: Request, file: UploadFile = File(...)):
     # content dedup: an exact re-upload (byte-identical) reuses the existing parse instead of
     # re-running docling. A same-NAME but changed file has a different hash, so it falls through
     # to the replace path below and re-parses (treated as an updated version).
-    dup = _find_duplicate(session_id, hashlib.sha256(data).hexdigest())
+    sha = hashlib.sha256(data).hexdigest()
+    dup = _find_duplicate(session_id, sha)
     if dup:
         return {**_doc_payload(session_id, dup[0], dup[1]),
                 "already_uploaded": True, "parse_quality": None, "status": "ready"}
@@ -666,17 +765,14 @@ async def upload(request: Request, file: UploadFile = File(...)):
     # save the original now (so /file works + the worker reads it), record a 'processing' row,
     # kick off the docling parse in a thread, and return immediately — the UI polls /docstatus.
     # No page cap on this path: parsing the full document is exactly what async buys us.
-    user_dir = os.path.join(_UPLOAD_DIR, session_id)
-    os.makedirs(user_dir, exist_ok=True)
-    file_path = os.path.join(user_dir, doc_id + suffix)
-    with open(file_path, "wb") as f:
-        f.write(data)
+    locator = _store_original(session_id, doc_id, suffix, data)
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn, conn.cursor() as cur:
-        cur.execute("insert into user_documents (user_id, doc_id, filename, status) "
-                    "values (%s, %s, %s, 'processing')", (session_id, doc_id, file.filename))
+        cur.execute("insert into user_documents (user_id, doc_id, filename, status, sha256) "
+                    "values (%s, %s, %s, 'processing', %s)",
+                    (session_id, doc_id, file.filename, sha))
         conn.commit()
     threading.Thread(target=_ingest_async,
-                     args=(session_id, doc_id, file.filename or "upload.pdf", file_path),
+                     args=(session_id, doc_id, file.filename or "upload.pdf", locator),
                      daemon=True).start()
     return {"doc_id": doc_id, "filename": file.filename, "status": "processing"}
 
@@ -718,11 +814,13 @@ def get_file(doc_id: str, request: Request):
                     (session_id, doc_id))
         if not cur.fetchone():
             raise HTTPException(404, "not found")   # not this user's doc (or doesn't exist)
-    user_dir = os.path.join(_UPLOAD_DIR, session_id)
-    for fn in os.listdir(user_dir) if os.path.isdir(user_dir) else []:
-        if fn.startswith(doc_id + "."):
-            return FileResponse(os.path.join(user_dir, fn), media_type="application/pdf")
-    raise HTTPException(404, "file not found")
+    got = _read_original(session_id, doc_id)
+    if not got:
+        raise HTTPException(404, "file not found")
+    data, suffix = got
+    # The media type comes from the suffix rather than being fixed to PDF: a .xlsx served as
+    # application/pdf is what the browser is told to render, and it cannot.
+    return Response(content=data, media_type=_MEDIA.get(suffix.lower(), "application/octet-stream"))
 
 
 def _answer_with_sources(out) -> str:

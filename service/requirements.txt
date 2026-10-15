@@ -15,6 +15,11 @@ fastapi==0.115.14
 uvicorn==0.35.0
 python-multipart==0.0.30   # required by FastAPI for the /upload form/file endpoint
 google-auth>=2.35,<3       # verify Google ID tokens for optional sign-in (per-account isolation)
+# Uploaded originals go to object storage, because the container filesystem dies with the instance
+# and this service scales to zero: a file on local disk outlived its upload by about 13 minutes,
+# after which the document still answered questions while its citation link 404'd. Not in the root
+# requirements: no test needs a real client, and that venv produced every eval number.
+google-cloud-storage==3.4.1
 requests>=2.31             # used by google.auth.transport.requests to verify the ID token
 # Must track the ranges in the ROOT requirements.txt. They did not, between 3a205de (2026-10-08,
 # "on langchain 1.x") and 2026-10-11: that commit upgraded the root file and the local venv and

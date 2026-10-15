@@ -3,6 +3,12 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+# Real uploaded documents and local fixtures. .gcloudignore REPLACES .gitignore rather than
+# adding to it, so these were in the build context despite being gitignored. The agent image
+# never COPYied ingest/ so nothing reached a layer; the parser image does, which would have
+# baked users' own PDFs into a published container image.
+ingest/uploads/
+ingest/sample/
 tests/
 eval/
 scripts/

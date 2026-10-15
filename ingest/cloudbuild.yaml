@@ -1,0 +1,13 @@
+# Builds the parser image natively on GCP (amd64). Run from repo root:
+#   gcloud builds submit --config ingest/cloudbuild.yaml --substitutions=_IMAGE=<image> .
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-f', 'ingest/Dockerfile', '-t', '${_IMAGE}', '.']
+    # docling's model download makes this far slower than the agent image; the default 10m
+    # timeout is not enough and a timeout here looks like an unexplained build failure.
+    timeout: 2400s
+timeout: 2700s
+options:
+  machineType: 'E2_HIGHCPU_8'
+images:
+  - '${_IMAGE}'
