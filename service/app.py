@@ -633,7 +633,14 @@ def _expire_old_documents():
     deletes cost nothing against a cold start already measured in tens of seconds.
 
     Only the rows. The files are the bucket lifecycle rule's job, so this does not make a cold
-    start wait on a round trip to object storage per expired document."""
+    start wait on a round trip to object storage per expired document.
+
+    KNOWN GAP: this keys off user_documents, so chunks with no row there are invisible to it and
+    never expire. /upload always writes that row before anything is parsed, so nothing the service
+    does can produce one -- but `ingest.py --user X` run straight against this database does, and
+    293 such rows from early CLI testing are what first showed this. They are unreachable through
+    the UI, since /mydocs also reads user_documents. Sweeping them automatically would break the
+    documented CLI workflow, so they are a manual cleanup rather than a silent one."""
     if _RETENTION_DAYS <= 0:
         return
     try:
@@ -733,6 +740,7 @@ def _call_parser(user_id, doc_id, filename, locator):
     import requests
     from google.auth.transport.requests import Request as GRequest
     from google.oauth2 import id_token
+    print(f"[ingest] {doc_id}: calling parser at {_INGEST_URL}", flush=True)
     headers = {}
     try:
         # Service-to-service auth: the parser is deployed --no-allow-unauthenticated, so it is not
@@ -740,11 +748,14 @@ def _call_parser(user_id, doc_id, filename, locator):
         # finding the URL. Locally there is no metadata server and no token, which is fine because
         # locally INGEST_URL is unset and this function is never called.
         headers["Authorization"] = "Bearer " + id_token.fetch_id_token(GRequest(), _INGEST_URL)
+        print(f"[ingest] {doc_id}: got identity token", flush=True)
     except Exception as e:
-        print(f"[ingest] no identity token, calling unauthenticated: {type(e).__name__}: {e}")
+        print(f"[ingest] no identity token, calling unauthenticated: {type(e).__name__}: {e}",
+              flush=True)
     r = requests.post(_INGEST_URL.rstrip("/") + "/parse", timeout=1800, headers=headers,
                       json={"user_id": user_id, "doc_id": doc_id,
                             "filename": filename, "locator": locator})
+    print(f"[ingest] {doc_id}: parser returned {r.status_code}", flush=True)
     r.raise_for_status()
 
 
@@ -752,6 +763,7 @@ def _ingest_async(user_id, doc_id, filename, locator):
     """Background worker: parse the FULL document (no 15-page cap) and mark it ready/failed.
     Runs in a thread so /upload returns immediately — the slow docling parse never blocks the
     request, which is what lets us drop the page cap and accept real (100+ page) filings."""
+    print(f"[ingest] {doc_id}: worker thread started (remote={bool(_INGEST_URL)})", flush=True)
     try:
         if _INGEST_URL:
             _call_parser(user_id, doc_id, filename, locator)
