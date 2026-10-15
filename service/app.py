@@ -103,9 +103,15 @@ def _session_user(sid):
     replaces could not be withdrawn at all -- once it leaked it stayed valid until its own expiry,
     and clearing it client-side did nothing to the copy that had already escaped.
 
+    An anonymous id returns None WITHOUT a query. It is self-describing, so no row could ever
+    exist for it, and on open traffic it is the common case: a guaranteed-miss lookup here was
+    measured at ~700ms of Neon round trip on every anonymous request, which the identity check
+    did not cost at all before sessions existed. The two id shapes cannot collide -- an anonymous
+    id is exactly 27 characters and a session id is 43 -- so skipping the query loses nothing.
+
     A database failure returns None, which signs people out rather than letting anyone in. That is
     the safe direction, but it is silent: a Neon blip looks to a user like being logged out."""
-    if not sid:
+    if not sid or _ANON_ID.fullmatch(sid):
         return None
     try:
         with psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=3) as conn, conn.cursor() as cur:

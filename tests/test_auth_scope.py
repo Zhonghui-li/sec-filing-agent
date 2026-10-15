@@ -209,3 +209,19 @@ def test_auth_config_reports_an_existing_session(client):
     assert client.get("/auth/config", cookies={"vsid": SID}).json()["email"] == EMAIL
     assert client.get("/auth/config").json()["email"] is None
     assert client.get("/auth/config", cookies={"vsid": ANON}).json()["email"] is None
+
+
+def test_the_common_path_never_touches_the_database(monkeypatch):
+    """An anonymous visitor and a first-time one are the usual traffic once sign-in is optional,
+    and neither can have a session row. Querying for one anyway cost ~700ms of Neon round trip
+    per request -- a cost the identity check did not have before sessions existed. Any connection
+    attempt here fails the test rather than being merely slow."""
+    monkeypatch.setattr(app, "_GOOGLE_CLIENT_ID", "client-id.apps.googleusercontent.com")
+    def forbidden(*a, **k):
+        raise AssertionError("the identity check reached the database on the anonymous path")
+    monkeypatch.setattr(app.psycopg, "connect", forbidden)
+
+    assert app._user_id(Req({"vsid": ANON}), require=False) == ANON
+    assert app._ANON_ID.fullmatch(app._user_id(Req(), require=False))     # no cookie at all
+    assert app.auth_config(Req({"vsid": ANON}))["email"] is None          # and on page load
+    assert app.auth_config(Req())["email"] is None
