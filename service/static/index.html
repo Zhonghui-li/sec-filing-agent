@@ -225,21 +225,12 @@
       <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><rect x="1.5" y="1.5" width="37" height="37" rx="9.5" fill="#131e29" stroke="#2c3f4f"/><text x="20" y="28" text-anchor="middle" font-family="Georgia,serif" font-size="23" font-weight="600" fill="#35d6a0">V</text></svg>
       <span class="mono">Vouch</span>
     </div>
-    <h1>Financial answers you can audit.</h1>
-    <p>An analyst-grade agent for SEC filings and the documents you upload. Ask about any U.S. public
-       company and get precise figures from XBRL, narrative grounded in the filings, every claim cited to
-       its source. When a figure isn't reported, <b>Vouch</b> tells you plainly instead of estimating it.</p>
-    <div class="guarantees">
-      <span class="gg"><span class="gdot"></span>Figures from XBRL, not memory</span>
-      <span class="gg"><span class="gdot"></span>Every claim cited</span>
-      <span class="gg"><span class="gdot"></span>10-K · 10-Q · 8-K</span>
-      <span class="gg"><span class="gdot"></span>Bring your own documents</span>
-      <span class="gg hold"><span class="gdot"></span>Abstains when unreported</span>
-    </div>
+    <h1 style="font-size:22px">Sign in to use your own documents</h1>
+    <p>Asking about public companies needs no account. Signing in gives you a private space to
+       upload a filing of your own and ask about it, and keeps those documents between visits.</p>
     <div class="gbtn" id="gbtn"></div>
-    <div style="margin-top:14px;font-size:13px"><a id="anonin" href="#" style="color:var(--muted)">Continue without signing in</a>
-      <span style="color:var(--faint)">— ask anything; uploading your own documents needs an account.</span></div>
-    <div style="margin-top:18px;font-size:12px;color:var(--faint)">Uploaded documents are private to the account that uploaded them. Questions are logged so we can see what the tools miss, so please don't paste anything confidential.</div>
+    <div style="margin-top:14px;font-size:13px"><a id="anonin" href="#" style="color:var(--muted)">Not now, keep asking</a></div>
+    <div style="margin-top:18px;font-size:12px;color:var(--faint)">Uploaded documents are private to the account that uploaded them.</div>
   </div>
 </div>
 
@@ -268,6 +259,9 @@
         <span class="gg"><span class="gdot"></span>Bring your own documents</span>
         <span class="gg hold"><span class="gdot"></span>Abstains when unreported</span>
       </div>
+      <p style="margin:16px 0 0;font-size:12px;color:var(--faint)">Questions are logged so we can
+         see what the tools miss, so please don't paste anything confidential. Uploaded documents
+         stay private to the account that uploaded them.</p>
     </div>
   </div>
   <div id="docsnote" class="msg bot" style="display:none"><div class="bubble"></div></div>
@@ -277,7 +271,7 @@
 <div class="composer" id="composer" style="display:none">
   <div class="bars">
     <label class="ghost" for="file" id="filelabel">📎 Upload a document</label>
-    <span id="anonnote" style="display:none;font-size:12.5px;color:var(--faint)">Sign in to upload your own documents</span>
+    <button class="ghost" id="anonupload" type="button" style="display:none">📎 Sign in to upload a document</button>
     <input id="file" type="file" accept=".pdf,.docx,.xlsx" style="display:none" />
     <select id="docscope" style="display:none">
       <option value="">Ask across all my documents</option>
@@ -574,9 +568,26 @@ async function onGoogle(resp){
   catch(e){ return; }
   if (!r.ok) return;
   userEmail = (await r.json()).email;
-  signedIn();
+  showApp();                       // dismiss the sign-in card
+  applyAuthState();
 }
-function signedIn(){
+function showApp(){ document.getElementById('login').style.display='none';
+                    document.getElementById('app').style.display='block';
+                    document.getElementById('composer').style.display='block'; }
+function showLogin(){ document.getElementById('login').style.display='flex'; }
+// Which identity-dependent controls are usable. Separate from showApp because the app goes up
+// before the identity is known: both panels start display:none, so anything that waits on the
+// network to become VISIBLE shows an empty screen with nothing to say it is loading.
+function applyAuthState(){
+  if (!authRequired) { loadMyDocs(true); return; }   // local dev: no sign-in, nothing to show
+  const anon = !userEmail;
+  document.getElementById('filelabel').style.display = anon ? 'none' : '';
+  document.getElementById('anonupload').style.display = anon ? '' : 'none';
+  if (anon) {
+    document.getElementById('userchip').innerHTML = '<a id="signin">sign in</a>';
+    document.getElementById('signin').onclick = showLogin;
+    return;
+  }
   document.getElementById('userchip').innerHTML =
     esc(userEmail || '') + '<a id="logout">sign out</a>';
   document.getElementById('logout').onclick = async () => {
@@ -587,23 +598,8 @@ function signedIn(){
     try { await fetch('/auth/logout', { method:'POST' }); } catch(e){}   // deletes it server-side
     location.reload();
   };
-  showApp();
+  loadMyDocs(true);
 }
-function showApp(){ document.getElementById('login').style.display='none';
-                    document.getElementById('app').style.display='block';
-                    document.getElementById('composer').style.display='block';
-                    // Private documents are keyed to a verified email, so the controls that reach
-                    // them are hidden without one. Questions need no account and stay available.
-                    const anon = authRequired && !userEmail;
-                    document.getElementById('filelabel').style.display = anon ? 'none' : '';
-                    document.getElementById('anonnote').style.display = anon ? 'inline' : 'none';
-                    if (anon) {
-                      document.getElementById('userchip').innerHTML =
-                        'not signed in <a id="signin">sign in</a>';
-                      document.getElementById('signin').onclick = () => location.reload();
-                      return;
-                    }
-                    loadMyDocs(true); }
 async function loadMyDocs(showMsg){
   try {
     const r = await fetch('/mydocs', { method:'POST' });
@@ -648,12 +644,18 @@ document.getElementById('deldoc').addEventListener('click', async () => {
   loadMyDocs(false);
 });
 (async () => {
+  // The app goes up BEFORE anything is known about the identity. A stranger should be able to
+  // start typing immediately: asking needs no account, and the only thing a session decides is
+  // whether the upload control works.
+  showApp();
+  document.getElementById('anonin').onclick = (e) => { e.preventDefault(); showApp(); };
+  document.getElementById('anonupload').onclick = showLogin;
+
   let cfg; try { cfg = await (await fetch('/auth/config')).json(); } catch(e){ cfg = {auth_required:false}; }
   authRequired = !!cfg.auth_required;
-  if (!authRequired) { showApp(); return; }
-  document.getElementById('login').style.display = 'flex';
-  document.getElementById('anonin').onclick = (e) => { e.preventDefault(); showApp(); };
-  if (cfg.email) { userEmail = cfg.email; signedIn(); }   // an existing session, per the server
+  userEmail = cfg.email || null;   // only the server knows: the identity cookie is HttpOnly
+  applyAuthState();
+  if (!authRequired) return;                 // no client id configured: no Google button to render
   const init = () => {
     if (!window.google || !google.accounts) { return setTimeout(init, 200); }
     google.accounts.id.initialize({ client_id: cfg.client_id, callback: onGoogle });
