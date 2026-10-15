@@ -25,12 +25,19 @@ gcloud builds submit --project "$PROJECT" \
   --substitutions=_IMAGE="$IMAGE" .
 
 # memory: docling holds the layout + table models while parsing a full filing, which does not fit
-# in the agent's 2Gi. timeout/900: a 100-page filing at ~2s/page, with headroom.
+# in the agent's 2Gi. timeout 1800: a full 10-Q measured at ~17 minutes on 2 vCPU.
+#
+# concurrency=1 is the setting that matters here, and leaving it at the default 160 is what made
+# a working service look broken. Cloud Run routes by concurrency: at 160 it believes ONE instance
+# can take 160 simultaneous parses, so it keeps queueing onto a box already saturated by a single
+# 17-minute CPU-bound job instead of starting another, and once the queue fills it answers 429.
+# A parse uses a whole instance, so an instance should advertise exactly one.
 gcloud run deploy sec-filing-parser \
   --image "$IMAGE" \
   --project "$PROJECT" --region "$REGION" \
   --no-allow-unauthenticated \
-  --max-instances=2 \
+  --concurrency=1 \
+  --max-instances=4 \
   --memory 4Gi --cpu 2 \
   --timeout 1800 --port 8080 \
   --set-env-vars EMB_MODEL=text-embedding-3-small \

@@ -551,7 +551,10 @@ fileInput.addEventListener('change', async () => {
       renderUploaded(d);
     } else {
       upstatus.textContent = '⏳ Parsing ' + d.filename + '…';
-      add('bot', '⏳ Parsing <b>' + esc(d.filename) + '</b> in the background — whole filings can take several minutes. You don\'t have to wait here: I\'ll show the result when it\'s ready, and it will also appear under "Your documents". You can ask about your other documents meanwhile.');
+      // "several minutes" was a guess written before this path had ever run in production. A
+      // 100-page 10-Q measured 17 minutes end to end, and someone told "several" will give up
+      // at five and conclude it is broken.
+      add('bot', '⏳ Parsing <b>' + esc(d.filename) + '</b> in the background. A short document takes a minute or two; a full 100-page filing took about 17 minutes in our own test, because every page is parsed rather than skimmed. You don\'t have to wait here: I\'ll show the result when it\'s ready, and it will also appear under "Your documents". You can ask about your other documents meanwhile.');
       pollStatus(d.doc_id, d.filename);
     }
   } catch (err) { upstatus.textContent = 'Network error.'; }

@@ -756,6 +756,12 @@ def _call_parser(user_id, doc_id, filename, locator):
                       json={"user_id": user_id, "doc_id": doc_id,
                             "filename": filename, "locator": locator})
     print(f"[ingest] {doc_id}: parser returned {r.status_code}", flush=True)
+    if r.status_code == 429:
+        # Every parser instance is busy. Raw, this reached the user as "HTTPError: 429 Client
+        # Error: Too Many Requests for url: https://sec-filing-parser-..." -- an internal URL and
+        # no idea what to do about it.
+        raise RuntimeError("Every parser is busy right now. Your document was not lost: "
+                           "upload it again in a few minutes.")
     r.raise_for_status()
 
 
@@ -784,6 +790,8 @@ def _ingest_async(user_id, doc_id, filename, locator):
         # doc list changed -> drop cached agents so they rebuild with the new document
         for k in [k for k in _user_agents if k[0] == user_id]:
             del _user_agents[k]
+    except RuntimeError as e:          # already phrased for whoever is reading the page
+        _doc_set_status(user_id, doc_id, "failed", error=str(e))
     except Exception as e:
         _doc_set_status(user_id, doc_id, "failed", error=f"{type(e).__name__}: {e}")
 
