@@ -95,7 +95,7 @@ def get_my_financials(metric: str, user_id: str, period: str = None, doc_filter:
     Returns the available metrics if no match, so the caller can retry."""
     like = f"%{metric.strip().lower()}%"
     clause, dparams = _doc_clause(doc_filter)
-    sql = ("select filename,page,metric,period,value,raw,cell from user_facts "
+    sql = ("select filename,page,metric,period,value,raw,cell,unit from user_facts "
            "where user_id=%s and lower(metric) like %s" + clause)
     params = [user_id, like, *dparams]
     if period:
@@ -116,9 +116,17 @@ def get_my_financials(metric: str, user_id: str, period: str = None, doc_filter:
                     f"{' for ' + period if period else ''} in your documents. "
                     f"Available metrics: {', '.join(avail)}.")
     out = []
-    for fn, page, m, per, val, raw, cell in rows:
+    for fn, page, m, per, val, raw, cell, unit in rows:
         loc = f"{fn}" + (f" · p.{page}" if page is not None else "") + f" · {cell}"
-        out.append(f"{m} ({per}): {raw} (exact value {val:g}). [source: {loc}]")
+        if unit:
+            # The scale is stated once in a caption above the table and never inside a cell, so a
+            # cell reading 101,808 is $101.8 billion. Reporting the cell alone is accurate about
+            # the number and wrong by a factor of a million about the amount — which on a page of
+            # financial statements is the whole point of the figure.
+            out.append(f"{m} ({per}): {raw} {unit} "
+                       f"(cell value {val:g}, stated in {unit}). [source: {loc}]")
+        else:
+            out.append(f"{m} ({per}): {raw} (exact value {val:g}). [source: {loc}]")
     return "\n".join(out)
 
 

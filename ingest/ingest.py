@@ -50,8 +50,11 @@ create table if not exists user_facts (
     period text,        -- column label, e.g. "FY2025"
     value numeric,      -- parsed exact value
     raw text,           -- original cell string, e.g. "4,980"
-    cell text           -- provenance, e.g. "row 'Net Income' / col 'FY2025'"
+    cell text,          -- provenance, e.g. "row 'Net Income' / col 'FY2025'"
+    unit text           -- scale the page states its figures in, e.g. "millions"; NULL if unstated
 );
+-- documents ingested before this column existed keep NULL, which reads as "scale not captured"
+alter table user_facts add column if not exists unit text;
 create index if not exists user_facts_user_idx on user_facts (user_id);
 """
 
@@ -83,7 +86,28 @@ def _clean_label(s):
     return s.strip(" .…")
 
 
-def extract_table_facts(doc):
+_SCALE = re.compile(r"\bin\s+(?:\$\s*)?(thousand|million|billion)s?\b", re.I)
+
+
+def page_scale(text):
+    """The scale a page's figures are stated in ("millions"), or None.
+
+    A financial statement prints this once, as a caption above the table -- "(dollars in millions
+    except per share amounts)" -- and never repeats it in the cells. So a cell reading 101,808 is
+    $101.8 billion, and reporting the cell value alone is accurate about the number while being
+    wrong by a factor of a million about the amount.
+
+    Only PARENTHESISED captions count. Prose says "in millions of transactions" and means nothing
+    about the table; a caption is the convention publishers actually use, so matching the
+    convention is narrower and safer than matching the words anywhere on the page."""
+    for m in re.finditer(r"\(([^)\n]{0,80})\)", text or ""):
+        hit = _SCALE.search(m.group(1))
+        if hit:
+            return hit.group(1).lower() + "s"
+    return None
+
+
+def extract_table_facts(doc, scale_by_page=None):
     """docling tables -> [(page, metric, period, value, raw, cell)]. First column is the metric
     (row label); each remaining numeric column is a period. Values stay exact; non-numeric cells
     are skipped. Labels are cleaned of parsing noise. This is the structured source the agent
@@ -110,7 +134,8 @@ def extract_table_facts(doc):
                     continue
                 period = _clean_label(str(pcol))
                 facts.append((page, metric, period, v, raw,
-                              f"row '{metric}' / col '{period}'"))
+                              f"row '{metric}' / col '{period}'",
+                              (scale_by_page or {}).get(page)))
     return facts
 
 
@@ -131,7 +156,7 @@ def parse_quality(markdown, facts, n_pages):
                         "document may be scanned, image-only, or failed to parse")
     # (2) extraction hallucination: each fact's digits must be in the text
     text_digits = re.sub(r"[^\d]", "", markdown)
-    unfound = [raw for (_, _, _, _, raw, _) in facts
+    unfound = [raw for (_, _, _, _, raw, _, _) in facts
                if re.sub(r"[^\d]", "", raw) and re.sub(r"[^\d]", "", raw) not in text_digits]
     if unfound:
         warnings.append(f"{len(unfound)} extracted figure(s) not found in the parsed text "
@@ -168,7 +193,10 @@ def parse_document(path: str, max_pages: int = None):
     md_pages = [(n, t) for n, t in per_page if t.strip()]    # blank pages carry nothing to chunk
     if not md_pages:                                          # no page info (e.g. XLSX) -> whole doc
         md_pages = [(None, doc.export_to_markdown())]
-    return md_pages, extract_table_facts(doc), n_pages
+    # Built from the page TEXT, because the caption lives above the table rather than inside it:
+    # the column header for this filing is a clean "Second Quarter.2026" with no unit in it.
+    scale_by_page = {n: page_scale(t) for n, t in per_page}
+    return md_pages, extract_table_facts(doc, scale_by_page), n_pages
 
 
 def main():
@@ -212,11 +240,12 @@ def main():
                 "insert into user_chunks (user_id,doc_id,filename,page,chunk_text,embedding) "
                 "values (%s,%s,%s,%s,%s,%s::vector)",
                 (args.user, doc_id, filename, page, text, _vec(v)))
-        for (page, metric, period, value, raw, cell) in facts:
+        for (page, metric, period, value, raw, cell, unit) in facts:
             cur.execute(
-                "insert into user_facts (user_id,doc_id,filename,page,metric,period,value,raw,cell) "
-                "values (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (args.user, doc_id, filename, page, metric, period, value, raw, cell))
+                "insert into user_facts "
+                "(user_id,doc_id,filename,page,metric,period,value,raw,cell,unit) "
+                "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (args.user, doc_id, filename, page, metric, period, value, raw, cell, unit))
         conn.commit()
         cur.execute("select count(*) from user_chunks where user_id=%s", (args.user,))
         nchunks = cur.fetchone()[0]
