@@ -135,7 +135,13 @@
   .doc-prov .src-chip { color:#7fb2e6; background:rgba(91,157,217,.12); border-color:rgba(91,157,217,.32); }
   .brand { display:inline-flex; align-items:center; gap:11px; }
   .brand .mono { font-family:var(--serif); font-weight:600; letter-spacing:.3px; color:var(--ink); font-size:21px; }
-  .login-card { max-width:470px; text-align:center; }
+  /* A bounded card, not centred text on an empty overlay. This began as a full-page landing
+     screen, where filling the viewport was the point. Once it became a dialog that only opens on
+     demand, the same markup read as a small island of text adrift in a 2000px-wide dark field,
+     with nothing saying where the dialog begins or ends. */
+  .login-card { max-width:460px; text-align:center; background:var(--panel);
+                border:1px solid var(--line); border-radius:18px; padding:44px 44px 38px;
+                box-shadow:0 24px 60px rgba(0,0,0,.45); }
   .login-card .brand { margin-bottom:26px; justify-content:center; }
   .login-card .brand .mono { font-size:23px; }
   .login-card h1 { font-family:var(--serif); font-size:33px; line-height:1.15; font-weight:600;
@@ -237,9 +243,10 @@
       <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><rect x="1.5" y="1.5" width="37" height="37" rx="9.5" fill="#131e29" stroke="#2c3f4f"/><text x="20" y="28" text-anchor="middle" font-family="Georgia,serif" font-size="23" font-weight="600" fill="#35d6a0">V</text></svg>
       <span class="mono">Vouch</span>
     </div>
-    <h1 style="font-size:22px">Sign in to use your own documents</h1>
-    <p>Asking about public companies needs no account. Signing in gives you a private space to
-       upload a filing of your own and ask about it, and keeps those documents between visits.</p>
+    <h1 style="font-size:26px;margin:18px 0 12px">Sign in to use your own documents</h1>
+    <p style="font-size:15.5px">Asking about public companies needs no account. Signing in gives
+       you a private space to upload a filing of your own and ask about it, and keeps those
+       documents between visits.</p>
     <div class="gbtn" id="gbtn"></div>
     <div style="margin-top:14px;font-size:13px"><a id="anonin" href="#" style="color:var(--muted)">Not now, keep asking</a></div>
     <div style="margin-top:18px;font-size:12px;color:var(--faint)">Uploaded documents are private to the account that uploaded them.</div>
