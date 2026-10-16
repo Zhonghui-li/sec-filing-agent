@@ -942,6 +942,14 @@ def health():
     return {"status": "ok", "agent_loaded": _agent is not None}
 
 
+@app.get("/og.png")
+def og_image():
+    """The link-preview image. Served from its own route because only index.html was ever exposed;
+    an og:image that 404s is the same as having none, and the card loses its picture silently."""
+    return FileResponse(os.path.join(_STATIC, "og.png"), media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+
 @app.get("/")
 def index():
     # FileResponse already sends an ETag, but with no Cache-Control a browser revalidates on every
