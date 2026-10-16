@@ -650,11 +650,46 @@ _COMPARE_RE = re.compile(
     re.I | re.S)
 _FIGURE_TOOLS = {"get_financials", "get_ratio", "get_growth", "compute", "compute_formula",
                  "get_statement", "largest_line_item", "get_segment_breakdown", "get_segment_growth"}
+# The guardrail's verdict when a $ amount in the answer traces to no tool output. Matching its
+# text rather than re-deriving the condition keeps one definition of "untraced", and the guardrail
+# is the thing that actually decides.
+_DERIVED_FIGURE_RE = re.compile(r"traces to no tool output", re.I)
+_DERIVED_RETRY = (
+    "One dollar amount in that answer came from your own arithmetic rather than from a tool, so "
+    "the whole answer is about to be discarded — including the figures you DID source correctly. "
+    "Answer again using only amounts a tool returned. If the question needs a difference, a sum or "
+    "a ratio, get it from `compute`; if it does not, simply leave the derived number out and report "
+    "the sourced figures with their citations.")
 _COMPARE_RETRY = (
     "You fetched the figures and then declined to use them. Naming which of two numbers a tool has "
     "ALREADY RETURNED is larger derives no new number, so the rule about routing calculations "
     "through compute does not apply to it. Report both figures with their citations and say which "
     "is larger. If the question also asks BY HOW MUCH, get that difference from compute.")
+
+
+def _fetched_one_metric_for_two_companies(trace):
+    """Did the agent itself treat this as a comparison?
+
+    The question regex above matches WORDING, and wording is unbounded: it wants
+    which/who/whose next to a comparative, so "Compare that with Apple." -- which contains the
+    word compare -- is invisible to it, and that phrasing refused on roughly 15% of draws with
+    nothing to catch it. Note 40's own lesson, written about this very backstop, was to detect the
+    SHAPE of a failure rather than its phrasing, and then the trigger was left as phrasing.
+
+    The shape is in the trace. Fetching one metric for two different tickers IS the comparison,
+    whatever words produced it, because the agent's own calls say how it read the question. Same
+    metric rather than merely two tickers, so that a single-company ratio between two firms, or
+    two unrelated lookups, does not get dragged in."""
+    by_metric = {}
+    for step in trace or []:
+        if step.get("tool") not in _FIGURE_TOOLS:
+            continue
+        args = step.get("args") or {}
+        ticker = args.get("ticker")
+        metric = args.get("metric") or args.get("ratio") or args.get("formula")
+        if ticker and metric:
+            by_metric.setdefault(str(metric).lower(), set()).add(str(ticker).upper())
+    return any(len(tickers) >= 2 for tickers in by_metric.values())
 
 
 def _declined_with_figures_in_hand(question, trace, answer):
@@ -671,7 +706,8 @@ def _declined_with_figures_in_hand(question, trace, answer):
     in this file that a rule the model must remember needed something that fires when it forgets,
     after the search budget and _anchored_year.
     """
-    if not _COMPARE_RE.search(question or ""):
+    if not (_COMPARE_RE.search(question or "")
+            or _fetched_one_metric_for_two_companies(trace)):
         return False
     with_figures = [s for s in trace or []
                     if s.get("tool") in _FIGURE_TOOLS and re.search(r"[\d]", str(s.get("output") or ""))]
@@ -685,8 +721,8 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
     """Run the agent on a question. `history` (optional) is prior turns [{role, content}, ...]
     for multi-turn (Model B). Returns {answer, trace, tools_used, tool_outputs}."""
     agent = agent or build_agent()
-    usage, tool_outputs, salvaged, routing_retry, anchor_retry, compare_retry = (
-        None, [], False, False, False, False)
+    usage, tool_outputs, salvaged, routing_retry, anchor_retry, compare_retry, derived_retry = (
+        None, [], False, False, False, False, False)
     _search_state["n"] = 0                    # reset the per-turn search budget for this run
     _numeric_state["n"] = 0                   # reset the per-turn numeric-tool budget for this run
     # Timed on the same boundary as the Langfuse span below, deliberately: the two numbers then
@@ -742,6 +778,37 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
                     pass
                 messages = last_state["messages"]
                 answer = messages[-1].text
+            # LAST of the four, deliberately. The first placement put this beside the others, and
+            # the anchor retry above then replaced the answer afterwards -- so the text the
+            # guardrail actually judged had never been through this check. M05 kept being
+            # discarded for exactly that reason: its question says "latest fiscal year", so it
+            # goes through the anchor retry every time. This check is not about a stage of the
+            # turn, it is about the answer that is about to be judged, so it belongs after
+            # everything that can still rewrite one.
+            # A FOURTH, and the only one whose detection is already exact: the guardrail has
+            # decided to throw this answer away. Catching a $ figure that traces to no tool is
+            # right, but replacing the ENTIRE answer with a refusal is not proportionate to it --
+            # on 3 of 149 cases, all comparisons, two correctly cited figures were discarded
+            # because a third number beside them had been worked out by hand. The user was left
+            # with "I can't give a reliable figure for this", which also misdescribes what
+            # happened: the figures existed and were sourced.
+            #
+            # So: one retry that names the problem, then the guardrail runs as before on whatever
+            # comes back. The honesty guarantee is unchanged -- a derived number still never
+            # reaches the user -- only the remedy is, from discarding everything to asking once.
+            if not derived_retry:
+                _tools_now = [getattr(m, "name", "") or ""
+                              for m in messages if isinstance(m, ToolMessage)]
+                if _DERIVED_FIGURE_RE.search(
+                        guardrail_check(answer, _tools_now,
+                                        _extract_trace(messages, max_chars=None)) or ""):
+                    derived_retry = True
+                    for last_state in agent.stream(
+                            {"messages": messages + [HumanMessage(_DERIVED_RETRY)]},
+                            {"recursion_limit": recursion_limit}, stream_mode="values"):
+                        pass
+                    messages = last_state["messages"]
+                    answer = messages[-1].text
         except GraphRecursionError:
             # The agent looped without converging (over-searching, or retrying an absent metric),
             # ignoring the soft tool budgets. Salvage: force ONE final answer from the passages it
@@ -810,6 +877,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
                  "routing_retry": routing_retry,
                  "anchor_retry": anchor_retry,
                  "compare_retry": compare_retry,
+                 "derived_retry": derived_retry,
                  "cold_starts": cold_starts,
                  "abstain_reason": next((t["args"].get("reason")
                                          for t in trace if t["tool"] == "abstain"), None),
@@ -829,7 +897,7 @@ def run_agent(question: str, agent=None, history=None, verbose: bool = False,
     return {"answer": answer, "trace": trace, "tool_outputs": tool_outputs,
             "tools_used": tools_used, "trace_id": trace_id, "salvaged": salvaged,
             "cold_starts": cold_starts, "anchor_retry": anchor_retry,
-            "compare_retry": compare_retry,
+            "compare_retry": compare_retry, "derived_retry": derived_retry,
             "guardrail_reason": guardrail_reason, "usage": usage,
             "agent_latency_ms": (time.perf_counter() - agent_start) * 1000}
 
