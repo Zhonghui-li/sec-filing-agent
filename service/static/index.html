@@ -551,10 +551,12 @@ fileInput.addEventListener('change', async () => {
       renderUploaded(d);
     } else {
       upstatus.textContent = '⏳ Parsing ' + d.filename + '…';
-      // "several minutes" was a guess written before this path had ever run in production. A
-      // 100-page 10-Q measured 17 minutes end to end, and someone told "several" will give up
-      // at five and conclude it is broken.
-      add('bot', '⏳ Parsing <b>' + esc(d.filename) + '</b> in the background. A short document takes a minute or two; a full 100-page filing took about 17 minutes in our own test, because every page is parsed rather than skimmed. You don\'t have to wait here: I\'ll show the result when it\'s ready, and it will also appear under "Your documents". You can ask about your other documents meanwhile.');
+      // A RATE, not a total, because the total depends on a document whose length we do not know
+      // here. "Several minutes" was a guess written before this path had ever run; replacing it
+      // with "a 100-page filing took 17 minutes" was worse -- specific, and describing a
+      // measurement that never happened. The one run was 58 pages in 966s, so ~17s a page, and a
+      // 100-page document would be nearer half an hour than seventeen minutes.
+      add('bot', '⏳ Parsing <b>' + esc(d.filename) + '</b> in the background. Every page is read rather than skimmed, which measured around 15-20 seconds per page on our hardware — so a short report is a couple of minutes, and a full quarterly filing can be twenty minutes or more. You don\'t have to wait here: I\'ll show the result when it\'s ready, and it will also appear under "Your documents". You can ask about your other documents meanwhile.');
       pollStatus(d.doc_id, d.filename);
     }
   } catch (err) { upstatus.textContent = 'Network error.'; }
