@@ -116,6 +116,17 @@ def get_my_financials(metric: str, user_id: str, period: str = None, doc_filter:
                     f"{' for ' + period if period else ''} in your documents. "
                     f"Available metrics: {', '.join(avail)}.")
     out = []
+    # A metric that exists in several of the user's documents is the one case where returning the
+    # rows alone is actively misleading: they arrive sorted by filename, so whichever document
+    # sorts first leads, and "total revenues" answered from last week's upload instead of the one
+    # the question was about is indistinguishable from a correct answer -- the citation names a
+    # real file and a real cell. The system prompt already asks for a clarifying question here and
+    # did not produce one, so the notice goes where the decision is made, next to the data.
+    files = sorted({r[0] for r in rows})
+    if len(files) > 1 and not doc_filter:
+        out.append(f"AMBIGUOUS — '{metric}' appears in {len(files)} of this user's documents: "
+                   f"{', '.join(files)}. Unless the question already named one, ASK which "
+                   f"document they mean instead of choosing. The rows below are from all of them.")
     for fn, page, m, per, val, raw, cell, unit in rows:
         loc = f"{fn}" + (f" · p.{page}" if page is not None else "") + f" · {cell}"
         if unit:

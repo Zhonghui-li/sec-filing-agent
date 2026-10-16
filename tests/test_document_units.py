@@ -61,3 +61,51 @@ def test_the_caption_is_found_among_a_full_page_of_text(page_scale):
             "| | Second Quarter.2026 | Second Quarter.2025 |\n"
             "| Total revenues | 101,808 | 92,515 |\n")
     assert page_scale(page) == "millions"
+
+
+# --- a metric that lives in more than one of the user's documents ----------------------------
+
+def _rows_to_output(rows, metric, doc_filter=None):
+    """The formatting half of get_my_financials, exercised without a database: what the agent
+    actually reads is this string, and this string is what decided the wrong answer."""
+    out = []
+    files = sorted({r[0] for r in rows})
+    if len(files) > 1 and not doc_filter:
+        out.append(f"AMBIGUOUS — '{metric}' appears in {len(files)} of this user's documents: "
+                   f"{', '.join(files)}. Unless the question already named one, ASK which "
+                   f"document they mean instead of choosing. The rows below are from all of them.")
+    for fn, page, m, per, val, raw, cell, unit in rows:
+        loc = f"{fn}" + (f" · p.{page}" if page is not None else "") + f" · {cell}"
+        if unit:
+            out.append(f"{m} ({per}): {raw} {unit} (cell value {val:g}, stated in {unit}). [source: {loc}]")
+        else:
+            out.append(f"{m} ({per}): {raw} (exact value {val:g}). [source: {loc}]")
+    return "\n".join(out)
+
+
+ROW_A = ("2ndqtr26.pdf", 5, "Total revenues", "Second Quarter.2026", 101808, "101,808", "cell", None)
+ROW_B = ("unit_test_statement.pdf", 1, "Total revenues", "Second Quarter 2026", 48210, "48,210",
+         "cell", "millions")
+
+
+def test_a_metric_in_two_documents_is_announced_as_ambiguous():
+    """Observed live: asked about "my uploaded document", the agent answered from the PREVIOUS
+    upload. Rows arrive sorted by filename, so the document that sorts first leads, and an answer
+    from the wrong file is indistinguishable from a right one -- the citation names a real file
+    and a real cell. Alphabetical order should not decide which document a question is about."""
+    out = _rows_to_output([ROW_A, ROW_B], "total revenues")
+    assert out.startswith("AMBIGUOUS")
+    assert "2ndqtr26.pdf" in out.split("\n")[0]
+    assert "unit_test_statement.pdf" in out.split("\n")[0]
+
+
+def test_one_document_says_nothing_extra():
+    out = _rows_to_output([ROW_B], "total revenues")
+    assert not out.startswith("AMBIGUOUS")
+    assert "48,210 millions" in out
+
+
+def test_naming_a_document_is_not_ambiguous():
+    """The user answering "unit_test_statement.pdf" is exactly the case that must not re-ask."""
+    out = _rows_to_output([ROW_A, ROW_B], "total revenues", doc_filter="unit_test_statement.pdf")
+    assert not out.startswith("AMBIGUOUS")
