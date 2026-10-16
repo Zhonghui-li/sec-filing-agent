@@ -170,7 +170,35 @@ Upload a statement (an internal report, a non-public company) and the agent answ
 bar with no XBRL. [Docling](https://github.com/docling-project/docling) structured extraction reads
 figures from **table cells**, never prose; citations are **cell-level** (`filename · page · row/col`)
 and deep-link to the PDF page; documents are **per-user isolated** and scoped so a number is never
-attributed to the wrong file. Heavy ingestion runs async in an isolated venv.
+attributed to the wrong file.
+
+Parsing is **its own Cloud Run service**, private and reachable only with the agent's identity token:
+
+```
+  upload ──▶ object storage ──▶ ┌─────────────────────┐
+                                │  parser service     │  docling · one parse
+    row: processing             │  concurrency = 1    │  per instance
+                                └──────────┬──────────┘
+    poll /docstatus ◀── row: ready ◀───────┘  the parser writes its own status
+```
+
+Three decisions that are easy to get wrong:
+
+- **A separate image.** Docling's dependencies are roughly twice the size of the agent's entire
+  image, and a cold start is already dominated by reaching the first line of Python. Only an
+  uploader needs a parser, so only an upload should pay for one.
+- **`concurrency = 1`.** Cloud Run routes by concurrency, so the default of 160 tells it a single
+  instance can take 160 simultaneous parses — it keeps queueing onto a box already saturated by one
+  CPU-bound job rather than starting another, and answers 429 once the queue fills. A parse uses a
+  whole instance, so an instance advertises exactly one.
+- **The parser writes the status row**, rather than reporting back. `/upload` has already returned,
+  so nothing holds the agent instance open, and a recycle mid-parse would strand the row in
+  `processing` forever.
+
+Originals go to object storage rather than the container filesystem, which dies with the instance:
+the document would keep answering questions from its chunks while the citation behind every answer
+404'd. Uploads expire after 30 days through a bucket lifecycle rule **and** a matching sweep of the
+rows — both halves, or that same split returns from the other end.
 → [`ingest/README.md`](ingest/README.md)
 
 ## Run it
@@ -186,8 +214,13 @@ DATABASE_URL=… OPENAI_API_KEY=… python -m agents.sec_agent "How did NVIDIA's
 The service exposes `/ask` (answer + citations + a collapsible **audit trail** of tool calls),
 `/export` (deterministic CSV of metrics × years), `/upload` + `/file/{doc_id}` (private docs), and an
 **OpenAI-compatible** `/v1/chat/completions` that drops into open-webui / LibreChat. Default model
-**gpt-5.4-mini**, over OpenAI's `/v1/responses`. Deployed on Cloud Run with `max-instances=1`, so
-the in-memory daily quota is an exact global cap.
+**gpt-5.4-mini**, over OpenAI's `/v1/responses`.
+
+Deployed as two Cloud Run services: the agent at `max-instances=1`, so the in-memory daily quota is
+an exact global cap, and the parser above, private and scaled to zero. Asking needs no account;
+signing in with Google adds a private space for your own documents, carried by one `HttpOnly`
+cookie so no credential travels in a URL — the citation chip opens a PDF through a browser
+navigation, which cannot send a header.
 
 ## The miss queue — what to check after a deploy
 
