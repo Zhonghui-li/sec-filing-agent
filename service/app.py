@@ -944,4 +944,20 @@ def health():
 
 @app.get("/")
 def index():
-    return FileResponse(os.path.join(_STATIC, "index.html"))
+    # FileResponse already sends an ETag, but with no Cache-Control a browser revalidates on every
+    # navigation -- and that request is the one that waits out a cold start, measured across 29
+    # starts at a median of 13s for a visitor-triggered one. So the page the visitor stares at
+    # while nothing renders is a page their browser already had.
+    #
+    # max-age must outlast the idle window, or it never applies to the case it exists for: Cloud
+    # Run recycles this service after roughly 13 idle minutes, so a 5-minute cache would always
+    # have expired by the time a cold start was possible. stale-while-revalidate is what actually
+    # does the work -- past 10 minutes the browser paints the cached page IMMEDIATELY and fetches
+    # a fresh one behind it, so the cold start happens while the visitor is already reading.
+    #
+    # The cost is that a deploy can show a returning visitor yesterday's page once, after which
+    # the background revalidation has already replaced it. The API calls underneath (/auth/config,
+    # /ask) are not cached and still wait for the container, so nothing stale is ever ANSWERED
+    # from cache -- only the shell is.
+    return FileResponse(os.path.join(_STATIC, "index.html"),
+                        headers={"Cache-Control": "max-age=600, stale-while-revalidate=86400"})
