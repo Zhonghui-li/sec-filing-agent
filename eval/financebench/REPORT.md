@@ -1,11 +1,29 @@
 # Validating the SEC filing agent on FinanceBench
 
 A brief on how we measured the agent against an **independent external benchmark**. The current
-headline is **93% addressable coverage on the numeric set at a zero-fabrication rate, with ~92% of
-narrative answers grounded in a cited filing or tool output** (see the 2026-09 update below; the
-five-round story that reached 87% is kept further down as history). What it misses, it misses by
+headline is **92% addressable coverage on the numeric set with zero hallucinations, and 97% of
+narrative answers grounded in a cited filing or tool output**, measured on gpt-5.4-mini (see the
+2026-10 update below; earlier rounds are kept beneath it as the record of the models they were
+run on, not as current figures). What it misses, it misses by
 declining, not by inventing. A narrative scorecard and an eval-gated retrieval study — whose honest conclusion was to
 *not* ship a +22pp-recall technique that hurt end-to-end answers — follow below.
+
+> **Update (2026-10-12).** Re-run on **gpt-5.4-mini**, the model the service now serves, after the
+> migration off o4-mini. The figures below this line were measured on o4-mini and are kept as the
+> record of that model, not as the current headline.
+>
+> | | | |
+> |---|---|---|
+> | **Numeric** | **49/53 addressable = 92%** | zero hallucinations across all 55 |
+> | **Narrative** | **92/95 = 97% grounded** | 81/82 = 99% excluding out-of-corpus questions |
+>
+> - **Coverage moved 94% to 92% and groundedness 96% to 97%** when the generation model changed.
+>   Neither gap clears the noise this benchmark can resolve at n=53, so the honest reading is that
+>   the migration cost nothing measurable here, not that it traded one for the other.
+> - **The two headline rates are computed on different denominators.** Coverage excludes
+>   out-of-corpus questions; groundedness does not. 97% over all 95 answers is the conservative of
+>   the two readings, and the one quoted elsewhere; the addressable-only figure is 99%.
+> - Run record: `runs_log.jsonl`, ts 2026-10-12T23:37:55Z, git d0a76432.
 
 > **Update (2026-09-13).** A fiscal-year fix, a fourth guardrail false positive, and two scorer
 > boundaries that were wrong. Current headline:
