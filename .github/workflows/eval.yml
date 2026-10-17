@@ -21,7 +21,12 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install pytest pandas
-      - name: L1 — tools + scorer logic (no LLM / DB / secrets)
+      # "No secrets" is not the same as "no network": a handful of these resolve tickers against
+      # SEC's live endpoints on purpose, because a mocked lookup cannot catch the ticker file
+      # changing shape. SEC answers 429 to a shared CI address that has run ten times in a day,
+      # so those tests skip on a transport failure (tests/live_sec.py) rather than paint this job
+      # red for something no committer can act on.
+      - name: L1 — tools + scorer logic (no LLM / DB / secrets; SEC lookups skip if rate-limited)
         run: python -m pytest tests/ -q
 
   # L1 runs against requirements.txt. The image installs service/requirements.txt. Until this job

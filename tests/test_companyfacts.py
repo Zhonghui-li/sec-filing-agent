@@ -286,6 +286,8 @@ def test_live_tool_echoes_resolved_company_name():
 
 from agents.companyfacts import _FiscalCalendar
 
+from tests.live_sec import live_sec
+
 # Target's shape: the year ending 2025-02-01 is FY2024, first reported in the 10-K filed 2025-03
 # (tgt-25) and re-presented as a comparative in the one filed 2026-03 (tgt-26).
 _TGT_CAL = _FiscalCalendar(
@@ -374,6 +376,7 @@ def test_quarterly_periods_fall_back_to_the_date_rule_not_the_annual_offset():
     assert _fiscal_period("2024-06-29", 9) == (2024, "Q3")
 
 
+@live_sec
 def test_a_retired_ticker_resolves_through_the_company_name():
     """Foot Locker left SEC's current-issuer ticker file when it was acquired, so search_filings
     with ticker="FL" resolved to nothing and could not even trigger ingestion — the agent asked

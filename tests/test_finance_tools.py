@@ -6,6 +6,8 @@ the agent depends on, using only the committed data (data/financials.json).
 from agents.finance_tools import (get_financials, compute, get_ratio, get_growth,
                                   compute_formula, edgar_url, cik_for)
 
+from tests.live_sec import live_sec
+
 
 def test_exact_revenue():
     out = get_financials("AAPL", "revenue", 2024)
@@ -29,6 +31,7 @@ def test_abstain_year_unavailable():
     assert "available years" in out.lower()
 
 
+@live_sec
 def test_unknown_company():
     # an unresolved ticker nudges toward the company name (covers delisted/renamed), not a metric msg
     out = get_financials("ZZZZ", "revenue").lower()
@@ -59,6 +62,7 @@ def test_edgar_url_uses_company_cik():
                    "000032019325000079/0000320193-25-000079-index.htm")
 
 
+@live_sec
 def test_cik_lookup():
     assert int(cik_for("AAPL")) == 320193
     assert cik_for("ZZZZ") is None
@@ -199,6 +203,7 @@ def test_crosscheck_covers_avg_based_pct_ratios():
     assert "[CHECK" not in compute_formula("net_income / revenue", "KO", 2023)
 
 
+@live_sec
 def test_capex_resolved_for_uncommon_concept_filer():
     # Verizon tags capex as PaymentsToAcquireOtherProductiveAssets (an uncommon concept). It now
     # resolves either via that added companyfacts concept OR the cash-flow-statement fallback (when
