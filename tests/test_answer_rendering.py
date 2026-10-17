@@ -26,9 +26,17 @@ def _bold_pattern():
     return re.compile(body.group(1)), body.group(2)
 
 
+def _unmath_pattern():
+    body = re.search(r"function unmath\(s\)\{ return s\.replace\(/(.*?)/g, ''\); \}",
+                     INDEX.read_text())
+    assert body, "unmath() is gone or reshaped — LaTeX delimiters can reach the page again"
+    return re.compile(body.group(1))
+
+
 def test_the_answer_goes_through_bold_and_is_escaped_first():
     call = _render_line()
     assert "bold(" in call, f"answer is rendered without bold(): {call}"
+    assert "unmath(" in call, f"answer is rendered without unmath(): {call}"
     assert re.search(r"bold\((?:\w+\()*esc\(", call.replace(" ", "")), (
         f"esc() must run innermost, before any tag is inserted, or bold() hands the DOM "
         f"markup from the model's own text: {call}"
@@ -44,3 +52,9 @@ def test_bold_pattern_renders_a_figure_and_stops_at_a_line_break():
     # a stray pair of asterisks must not swallow everything up to the next one a line later
     stray = "a ** b\nc ** d"
     assert pattern.sub(repl.replace("$1", r"\1"), stray) == stray
+
+
+def test_latex_math_delimiters_do_not_reach_the_page():
+    """Seen live: "16.3% \\((operating income + D&A) / revenue\\)" printed its backslashes."""
+    out = _unmath_pattern().sub("", r"was 16.3% \((operating income + D&A) / revenue\).")
+    assert out == "was 16.3% (operating income + D&A) / revenue.", out

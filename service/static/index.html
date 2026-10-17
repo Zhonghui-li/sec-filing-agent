@@ -346,6 +346,11 @@ function linkify(s){ return s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
 // Runs on an already-escaped string, so the <strong> it inserts is the only markup in it,
 // and before linkAccessions, which steps over markup it does not own.
 function bold(s){ return s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>'); }
+// the same model also reaches for LaTeX math delimiters around a formula, so an answer can
+// arrive as "16.3% \((operating income + D&A) / revenue\)" and print the backslashes. They are
+// markers, not punctuation, so they are dropped rather than turned into parentheses -- the text
+// already carries its own. Seen live on 2026-10-16; nothing else about LaTeX is handled.
+function unmath(s){ return s.replace(/\\[()\[\]]/g, ''); }
 function linkAccessions(html, srcMap){
   return html.replace(/(<a\b[^>]*>.*?<\/a>)|(\d{10}-\d{2}-\d{6})/g, (m, anchor, acc) =>
     anchor ? anchor : (srcMap[acc] ? '<a href="' + srcMap[acc] +
@@ -405,7 +410,7 @@ form.addEventListener('submit', async (e) => {
     (d.sources || []).forEach(s => { srcMap[s.accession] = s.url; });
     let html = '';
     if (abstained) html += abstainBadge(d);
-    html += '<span class="num">' + linkAccessions(bold(linkify(esc(d.answer))), srcMap) + '</span>';
+    html += '<span class="num">' + linkAccessions(bold(unmath(linkify(esc(d.answer)))), srcMap) + '</span>';
 
     // provenance — sources as first-class chips
     if (d.sources && d.sources.length) {
