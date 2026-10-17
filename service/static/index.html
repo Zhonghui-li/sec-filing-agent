@@ -72,7 +72,7 @@
   .num { font-variant-numeric:tabular-nums; }
 
   /* honest-abstention treatment — a feature, not a failure */
-  .abstain-tag { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600;
+  .abstain-tag { display:flex; width:fit-content; align-items:center; gap:6px; font-size:11.5px; font-weight:600;
                  letter-spacing:.4px; text-transform:uppercase; color:var(--amber);
                  background:var(--amber-dim); border:1px solid var(--amber-line);
                  padding:3px 9px; border-radius:20px; margin-bottom:9px; }
@@ -341,6 +341,11 @@ function add(role, html) {
 function esc(s){ return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 function linkify(s){ return s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
   '<a href="$2" target="_blank" rel="noopener">$1</a>'); }
+// the model writes Markdown bold and nothing told it not to: 195 of the 298 answers in the
+// last two eval runs contain **...**, which the page used to print as literal asterisks.
+// Runs on an already-escaped string, so the <strong> it inserts is the only markup in it,
+// and before linkAccessions, which steps over markup it does not own.
+function bold(s){ return s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>'); }
 function linkAccessions(html, srcMap){
   return html.replace(/(<a\b[^>]*>.*?<\/a>)|(\d{10}-\d{2}-\d{6})/g, (m, anchor, acc) =>
     anchor ? anchor : (srcMap[acc] ? '<a href="' + srcMap[acc] +
@@ -400,7 +405,7 @@ form.addEventListener('submit', async (e) => {
     (d.sources || []).forEach(s => { srcMap[s.accession] = s.url; });
     let html = '';
     if (abstained) html += abstainBadge(d);
-    html += '<span class="num">' + linkAccessions(linkify(esc(d.answer)), srcMap) + '</span>';
+    html += '<span class="num">' + linkAccessions(bold(linkify(esc(d.answer))), srcMap) + '</span>';
 
     // provenance — sources as first-class chips
     if (d.sources && d.sources.length) {
