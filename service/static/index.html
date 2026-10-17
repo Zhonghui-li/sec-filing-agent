@@ -139,9 +139,16 @@
      screen, where filling the viewport was the point. Once it became a dialog that only opens on
      demand, the same markup read as a small island of text adrift in a 2000px-wide dark field,
      with nothing saying where the dialog begins or ends. */
-  .login-card { max-width:460px; text-align:center; background:var(--panel);
+  .login-card { max-width:482px; text-align:center; background:var(--panel);
                 border:1px solid var(--line); border-radius:18px; padding:44px 44px 38px;
-                box-shadow:0 24px 60px rgba(0,0,0,.45); }
+                /* A dark shadow on a dark page does nothing. What lifts the card here is the
+                   border catching a rim of light, so the glow is light, not black. */
+                box-shadow:0 0 0 1px rgba(255,255,255,.03), 0 28px 70px rgba(0,0,0,.55),
+                           0 0 90px -30px rgba(53,214,160,.10); }
+  /* Let the browser pick the break. "Sign in to use your / own documents" splits 19 characters
+     against 13; balance evens the lines without anyone hand-tuning a width. */
+  .login-card h1 { text-wrap:balance; }
+  .login-card p { text-wrap:pretty; }
   .login-card .brand { margin-bottom:26px; justify-content:center; }
   .login-card .brand .mono { font-size:23px; }
   .login-card h1 { font-family:var(--serif); font-size:33px; line-height:1.15; font-weight:600;
